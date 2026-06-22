@@ -19,7 +19,6 @@ FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run generate --workspace=@arterio/database \
- && npm run build --workspace=@arterio/database \
  && npm run build --workspace=@arterio/api
 
 # ---- Runtime ----
@@ -31,9 +30,7 @@ RUN addgroup --system --gid 1001 nodejs \
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/package.json ./apps/api/
-COPY --from=builder /app/packages/database/dist ./packages/database/dist
-COPY --from=builder /app/packages/database/package.json ./packages/database/
-COPY --from=builder /app/packages/shared ./packages/shared
+COPY --from=builder /app/packages ./packages
 
 USER nestjs
 EXPOSE 4000
