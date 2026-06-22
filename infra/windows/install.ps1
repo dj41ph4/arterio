@@ -205,10 +205,9 @@ for ($i = 0; $i -lt 30; $i++) {
 if (-not $ready) { throw 'Postgres n''est pas devenu pret a temps - verifiez : wsl docker compose -f infra/docker-compose.yml logs postgres' }
 Write-Ok 'Postgres pret'
 
-Write-Step 'Execution des migrations de la base + seed'
+Write-Step 'Execution des migrations de la base'
 Invoke-Wsl 'docker compose -f infra/docker-compose.yml exec -T api npm run migrate:deploy --workspace=@arterio/database'
-Invoke-Wsl 'docker compose -f infra/docker-compose.yml exec -T api npm run seed --workspace=@arterio/database'
-Write-Ok 'Base de donnees prete (organisation de demo + administrateur crees)'
+Write-Ok 'Base de donnees prete - aucun compte de demo cree : le premier visiteur du site creera l''organisation et l''administrateur via l''assistant de configuration'
 
 # -----------------------------------------------------------------------------
 # 8. Vrai certificat Let's Encrypt
@@ -278,7 +277,7 @@ $url = if ($SkipCertificate) { 'https://localhost (auto-signe - le navigateur af
 Write-Host "`n================================================================"  -ForegroundColor Green
 Write-Host " Arterio fonctionne : $url"                                           -ForegroundColor Green
 Write-Host " Documentation API :  $url/api/docs"                                 -ForegroundColor Green
-Write-Host " Admin par defaut :   admin@arterio.app / changez le mot de passe a la premiere connexion" -ForegroundColor Green
+Write-Host " Premiere visite :    ouvrez $url pour creer votre organisation et votre compte administrateur" -ForegroundColor Green
 Write-Host " Secrets :            $envPath  (sauvegardez ce fichier, il est gitignore)" -ForegroundColor Green
 Write-Host " Journaux :           wsl -d $DistroName -u root -- bash -c `"cd $wslRepoPath && docker compose -f infra/docker-compose.yml logs -f`"" -ForegroundColor Green
 Write-Host "================================================================`n"  -ForegroundColor Green

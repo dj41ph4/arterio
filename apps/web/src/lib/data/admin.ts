@@ -109,4 +109,37 @@ export const settingsApi = {
     a.click();
     URL.revokeObjectURL(url);
   },
+
+  /** Downloads the full portable migration archive (data + media/document files) as a .zip. */
+  async downloadMigration(): Promise<void> {
+    const { accessToken } = useAuthStore.getState();
+    const res = await fetch(`${API_BASE_URL}/settings/migration/export`, {
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    });
+    if (!res.ok) throw new Error('Migration export failed');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `arterio-migration-${new Date().toISOString().slice(0, 10)}.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  /** Restores a migration .zip — always creates a brand-new organization, never merges into the current one. */
+  async importMigration(file: File): Promise<{ organizationId: string; organizationName: string }> {
+    const { accessToken } = useAuthStore.getState();
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${API_BASE_URL}/settings/migration/import`, {
+      method: 'POST',
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+      body: form,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ message: 'Migration import failed' }));
+      throw new Error(body.message ?? 'Migration import failed');
+    }
+    return res.json();
+  },
 };

@@ -205,6 +205,30 @@
     "requestAccess": "Richiedi accesso",
     "secured": "Protetto con crittografia end-to-end e MFA"
   },
+  "setup": {
+    "title": "Benvenuto su Arterio",
+    "subtitle": "Configuriamo il tuo spazio di lavoro",
+    "organizationName": "Nome dell'organizzazione",
+    "organizationNamePlaceholder": "es. Museo delle Belle Arti",
+    "fullName": "Il tuo nome completo",
+    "email": "E-mail amministratore",
+    "password": "Password",
+    "confirmPassword": "Conferma password",
+    "passwordMismatch": "Le password non corrispondono",
+    "passwordTooShort": "Almeno 8 caratteri",
+    "submitButton": "Crea il mio account amministratore",
+    "redirecting": "Già configurato, reindirizzamento…",
+    "featureSearch": "100.000+ opere, milioni di immagini, ricerca istantanea",
+    "featureSecurity": "MFA, chiavi di sicurezza, AES-256, registro di controllo immutabile",
+    "featureAi": "Arricchimento pronto per l'IA, sei lingue, nucleo modulare",
+    "modeNew": "Nuova organizzazione",
+    "modeImport": "Importa una migrazione",
+    "importHint": "Ripristina un file .zip esportato da un'altra installazione di Arterio (Impostazioni → Migrazione → Esporta). Tutto viene ripristinato così com'è, inclusi account e password esistenti.",
+    "importButton": "Scegli il file .zip",
+    "importing": "Importazione in corso…",
+    "importSuccessTitle": "Importazione completata",
+    "importSuccessBody": "Organizzazione «{name}» ripristinata. Accedi con uno degli account del file importato."
+  },
   "exhibitions": {
     "subtitle": "{count, plural, =0 {Nessuna mostra} one {# mostra} other {# mostre}}",
     "searchPlaceholder": "Cerca per titolo, sede o città…",
@@ -284,6 +308,7 @@
     "api": "API e webhook",
     "notifications": "Notifiche",
     "backups": "Backup",
+    "migration": "Migrazione",
     "danger": "Zona pericolosa",
     "language": "Lingua",
     "languageHint": "Scegli la lingua dell'interfaccia."

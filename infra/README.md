@@ -23,10 +23,19 @@ cp ../.env.example ../.env      # puis éditez les secrets (mot de passe DB, cl�
 cd infra
 docker compose up -d
 docker compose exec api npm run migrate:deploy --workspace=@arterio/database
-docker compose exec api npm run seed       --workspace=@arterio/database
 ```
 
 App : `https://localhost` · Doc API : `https://localhost/api/docs` · Console MinIO : `:9001`.
+
+Aucun compte n'est créé automatiquement : la première visite de l'app affiche
+un assistant de configuration pour créer l'organisation et l'administrateur
+avec le mot de passe de votre choix (`POST /setup`, une seule fois, refusé
+si une organisation existe déjà).
+
+Pour un jeu de données de démonstration en local **à la place** de
+l'assistant (ils s'excluent mutuellement — le seed crée déjà une
+organisation, ce qui désactive l'assistant) :
+`docker compose exec api npm run seed --workspace=@arterio/database`.
 
 ## TLS
 

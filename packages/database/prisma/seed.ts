@@ -1,74 +1,26 @@
 /**
- * Seed — creates a demo organization, the system RBAC matrix, an admin user,
- * core taxonomies and a few illustrative artworks.
+ * Seed — creates a DEMO organization, the system RBAC matrix, a demo admin
+ * user, core taxonomies and a few illustrative artworks. For local
+ * development only.
  *
  * Idempotent: safe to run repeatedly (upserts by natural keys).
  *
- * NOTE: password hashing here uses a placeholder. The API owns real Argon2id
- * hashing; for the demo admin we store a clearly-marked dev hash that the API
- * seed routine replaces. Never use this in production.
+ * Production installs (Windows/Synology installers) do NOT run this script —
+ * they leave the database empty and the first visit to the web app shows a
+ * setup wizard (POST /api/v1/setup) that creates the real organization and
+ * admin account with a password the operator chooses. See
+ * apps/api/src/modules/setup.
+ *
+ * NOTE: password hashing here uses a placeholder. The API's bootstrap login
+ * replaces it with a real Argon2id hash on first sign-in — convenient for
+ * dev, never used by the production setup wizard.
  */
 import { PrismaClient, Prisma } from '@prisma/client';
+import { seedRbac } from '../src/rbac';
 
 const prisma = new PrismaClient();
 
-const PERMISSIONS: Array<{ resource: string; action: string; description: string }> = [
-  { resource: 'artwork', action: 'read', description: 'View artworks' },
-  { resource: 'artwork', action: 'create', description: 'Create artworks' },
-  { resource: 'artwork', action: 'update', description: 'Edit artworks' },
-  { resource: 'artwork', action: 'delete', description: 'Delete artworks' },
-  { resource: 'valuation', action: 'read', description: 'View financial valuations' },
-  { resource: 'valuation', action: 'update', description: 'Edit financial valuations' },
-  { resource: 'loan', action: 'read', description: 'View loans' },
-  { resource: 'loan', action: 'approve', description: 'Approve loans' },
-  { resource: 'exhibition', action: 'manage', description: 'Manage exhibitions' },
-  { resource: 'restoration', action: 'manage', description: 'Manage restorations' },
-  { resource: 'document', action: 'sign', description: 'Electronically sign documents' },
-  { resource: 'user', action: 'manage', description: 'Manage users and roles' },
-  { resource: 'settings', action: 'manage', description: 'Manage organization settings' },
-  { resource: 'audit', action: 'read', description: 'Read the audit log' },
-];
-
-const ROLES: Record<string, { name: string; description: string; permissions: 'all' | string[] }> = {
-  admin: { name: 'Administrator', description: 'Full access', permissions: 'all' },
-  curator: {
-    name: 'Curator',
-    description: 'Catalogue, exhibitions, valuations (read)',
-    permissions: [
-      'artwork:read', 'artwork:create', 'artwork:update',
-      'valuation:read', 'exhibition:manage', 'loan:read', 'restoration:manage',
-    ],
-  },
-  registrar: {
-    name: 'Registrar',
-    description: 'Movements, loans, documents',
-    permissions: ['artwork:read', 'artwork:update', 'loan:read', 'loan:approve', 'document:sign'],
-  },
-  conservator: {
-    name: 'Conservator',
-    description: 'Condition & restoration',
-    permissions: ['artwork:read', 'restoration:manage'],
-  },
-  finance: {
-    name: 'Finance',
-    description: 'Valuations & insurance',
-    permissions: ['artwork:read', 'valuation:read', 'valuation:update'],
-  },
-  viewer: { name: 'Viewer', description: 'Read-only', permissions: ['artwork:read'] },
-};
-
 async function main() {
-  console.log('▸ Seeding permissions…');
-  for (const p of PERMISSIONS) {
-    const key = `${p.resource}:${p.action}`;
-    await prisma.permission.upsert({
-      where: { key },
-      update: { description: p.description },
-      create: { key, resource: p.resource, action: p.action, description: p.description },
-    });
-  }
-  const allPermissions = await prisma.permission.findMany();
-
   console.log('▸ Seeding organization…');
   const org = await prisma.organization.upsert({
     where: { slug: 'demo' },
@@ -82,22 +34,8 @@ async function main() {
     },
   });
 
-  console.log('▸ Seeding roles…');
-  for (const [key, role] of Object.entries(ROLES)) {
-    const created = await prisma.role.upsert({
-      where: { organizationId_key: { organizationId: org.id, key } },
-      update: { name: role.name, description: role.description, isSystem: true },
-      create: { organizationId: org.id, key, name: role.name, description: role.description, isSystem: true, policy: {} },
-    });
-    const perms =
-      role.permissions === 'all'
-        ? allPermissions
-        : allPermissions.filter((p) => role.permissions.includes(p.key));
-    await prisma.rolePermission.deleteMany({ where: { roleId: created.id } });
-    await prisma.rolePermission.createMany({
-      data: perms.map((p) => ({ roleId: created.id, permissionId: p.id })),
-    });
-  }
+  console.log('▸ Seeding permissions + roles…');
+  await seedRbac(prisma, org.id);
 
   console.log('▸ Seeding admin user…');
   const admin = await prisma.user.upsert({

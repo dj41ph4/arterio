@@ -17,6 +17,18 @@ export function LoginForm() {
   const setTokens = useAuthStore((s) => s.setTokens);
   const [loading, setLoading] = React.useState(false);
 
+  // Fresh install, nobody has set up an admin account yet — send there
+  // instead of showing a login form with nothing to log into.
+  React.useEffect(() => {
+    if (process.env.NEXT_PUBLIC_DATA_SOURCE !== 'http') return;
+    fetch(`${API_BASE_URL}/setup/status`)
+      .then((r) => r.json())
+      .then((data: { needsSetup: boolean }) => {
+        if (data.needsSetup) router.replace('/setup');
+      })
+      .catch(() => undefined);
+  }, [router]);
+
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);

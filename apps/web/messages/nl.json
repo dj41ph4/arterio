@@ -205,6 +205,30 @@
     "requestAccess": "Toegang aanvragen",
     "secured": "Beveiligd met end-to-end-encryptie en MFA"
   },
+  "setup": {
+    "title": "Welkom bij Arterio",
+    "subtitle": "Laten we je werkruimte instellen",
+    "organizationName": "Naam van de organisatie",
+    "organizationNamePlaceholder": "bijv. Museum voor Schone Kunsten",
+    "fullName": "Je volledige naam",
+    "email": "E-mail beheerder",
+    "password": "Wachtwoord",
+    "confirmPassword": "Wachtwoord bevestigen",
+    "passwordMismatch": "Wachtwoorden komen niet overeen",
+    "passwordTooShort": "Minimaal 8 tekens",
+    "submitButton": "Mijn beheerdersaccount aanmaken",
+    "redirecting": "Al ingesteld, doorverwijzen…",
+    "featureSearch": "100.000+ kunstwerken, miljoenen afbeeldingen, instant zoeken",
+    "featureSecurity": "MFA, beveiligingssleutels, AES-256, onveranderlijk auditlogboek",
+    "featureAi": "AI-klare verrijking, zes talen, modulaire kern",
+    "modeNew": "Nieuwe organisatie",
+    "modeImport": "Migratie importeren",
+    "importHint": "Herstel een .zip-bestand dat is geëxporteerd vanuit een andere Arterio-installatie (Instellingen → Migratie → Exporteren). Alles wordt ongewijzigd herstelt, inclusief bestaande accounts en wachtwoorden.",
+    "importButton": "Kies het .zip-bestand",
+    "importing": "Importeren…",
+    "importSuccessTitle": "Import voltooid",
+    "importSuccessBody": "Organisatie \"{name}\" herstelt. Log in met een van de accounts uit het geïmporteerde bestand."
+  },
   "exhibitions": {
     "subtitle": "{count, plural, =0 {Geen tentoonstellingen} one {# tentoonstelling} other {# tentoonstellingen}}",
     "searchPlaceholder": "Zoeken op titel, locatie of stad…",
@@ -284,6 +308,7 @@
     "api": "API en webhooks",
     "notifications": "Meldingen",
     "backups": "Back-ups",
+    "migration": "Migratie",
     "danger": "Gevarenzone",
     "language": "Taal",
     "languageHint": "Kies de taal van de interface."

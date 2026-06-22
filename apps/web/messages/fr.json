@@ -205,6 +205,30 @@
     "requestAccess": "Demander un accès",
     "secured": "Sécurisé par chiffrement de bout en bout et MFA"
   },
+  "setup": {
+    "title": "Bienvenue sur Arterio",
+    "subtitle": "Configurons votre espace de travail",
+    "organizationName": "Nom de l'organisation",
+    "organizationNamePlaceholder": "ex. Musée des Beaux-Arts",
+    "fullName": "Votre nom complet",
+    "email": "E-mail administrateur",
+    "password": "Mot de passe",
+    "confirmPassword": "Confirmer le mot de passe",
+    "passwordMismatch": "Les mots de passe ne correspondent pas",
+    "passwordTooShort": "8 caractères minimum",
+    "submitButton": "Créer mon compte administrateur",
+    "redirecting": "Déjà configuré, redirection…",
+    "featureSearch": "100 000+ œuvres, millions d'images, recherche instantanée",
+    "featureSecurity": "MFA, clés de sécurité, AES-256, journal d'audit immuable",
+    "featureAi": "Enrichissement IA, six langues, cœur modulaire",
+    "modeNew": "Nouvelle organisation",
+    "modeImport": "Importer une migration",
+    "importHint": "Restaurez un fichier .zip exporté depuis une autre installation d'Arterio (Paramètres → Migration → Exporter). Tout est restauré tel quel, y compris les comptes et mots de passe existants.",
+    "importButton": "Choisir le fichier .zip",
+    "importing": "Import en cours…",
+    "importSuccessTitle": "Import terminé",
+    "importSuccessBody": "Organisation « {name} » restaurée. Connectez-vous avec un des comptes du fichier importé."
+  },
   "exhibitions": {
     "subtitle": "{count, plural, =0 {Aucune exposition} one {# exposition} other {# expositions}}",
     "searchPlaceholder": "Rechercher par titre, lieu ou ville…",
@@ -284,6 +308,7 @@
     "api": "API et webhooks",
     "notifications": "Notifications",
     "backups": "Sauvegardes",
+    "migration": "Migration",
     "danger": "Zone dangereuse",
     "language": "Langue",
     "languageHint": "Choisissez la langue de l'interface."

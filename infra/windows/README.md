@@ -57,9 +57,10 @@ détecté et ignoré ; il reprend juste où il s'est arrêté.
    mots de passe DB/MinIO). **Ce fichier n'est jamais régénéré lors d'un
    relancement** — sauvegardez-le.
 4. Toute la stack `docker-compose.yml`, construite et démarrée.
-5. Les migrations de la base + le seed de démo idempotent (crée
-   l'administrateur par défaut — changez son mot de passe à la première
-   connexion).
+5. Les migrations de la base — aucun compte de démo n'est créé. La
+   **première visite** du site affiche un assistant de configuration où
+   vous créez vous-même l'organisation et le compte administrateur, avec le
+   mot de passe de votre choix.
 6. Un vrai certificat Let's Encrypt via le défi HTTP-01 webroot (conteneur
    `certbot`), installé dans `infra/nginx/certs/`, avec Nginx rechargé
    pour le prendre en compte.

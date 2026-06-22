@@ -12,6 +12,7 @@ import { ArtistsModule } from './modules/artists/artists.module';
 import { AiModule } from './modules/ai/ai.module';
 import { MembersModule } from './modules/members/members.module';
 import { SettingsModule } from './modules/settings/settings.module';
+import { SetupModule } from './modules/setup/setup.module';
 import { HealthController } from './health.controller';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PermissionsGuard } from './common/guards/permissions.guard';
@@ -45,6 +46,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
     AiModule,
     MembersModule,
     SettingsModule,
+    SetupModule,
   ],
   controllers: [HealthController],
   providers: [

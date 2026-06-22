@@ -120,6 +120,13 @@ Démarrez le projet. `postgres`, `redis`, `elasticsearch`, `minio` démarrent
 tout de suite ; `nginx` a besoin d'un certificat avant de pouvoir démarrer —
 voir l'étape suivante.
 
+Une fois `postgres` prêt, ouvrez le **Terminal** du projet et lancez les
+migrations (la base est vide, sans aucun compte — voir la note ci-dessous) :
+
+```sh
+docker compose exec -T api npm run migrate:deploy --workspace=@arterio/database
+```
+
 ## 6. Certificat Let's Encrypt
 
 Utilisez le **Terminal** intégré de Container Manager (clic sur le projet →
@@ -151,6 +158,16 @@ l'utilisateur**, en lançant :
 ```sh
 cd /volume1/docker/arterio && docker compose run --rm certbot renew --quiet && docker compose exec nginx nginx -s reload
 ```
+
+## 7. Créer le compte administrateur
+
+Aucun compte n'est créé automatiquement — la base est vide. Ouvrez
+`https://votre-domaine.com` dans un navigateur : la **première visite**
+affiche un assistant qui vous demande le nom de votre organisation, votre
+nom, votre e-mail et le mot de passe de votre choix, puis vous connecte
+directement. Si quelqu'un d'autre visite le site avant vous, c'est cette
+personne qui créera le compte — assurez-vous d'y aller en premier juste
+après cette étape.
 
 ## Mettre à jour
 

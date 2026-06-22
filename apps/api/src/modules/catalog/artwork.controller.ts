@@ -15,7 +15,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { randomBytes } from 'node:crypto';
-import { extname, join } from 'node:path';
+import { extname } from 'node:path';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS, type ArtworkQuery } from '@arterio/shared';
 import { ArtworkService } from './artwork.service';
@@ -23,9 +23,9 @@ import { ListArtworksQueryDto } from './dto';
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import type { AuthUser } from '../../common/types';
+import { UPLOAD_DIR } from '../../core/config/paths';
 
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
-const UPLOAD_DIR = join(process.cwd(), 'uploads');
 
 @ApiTags('artworks')
 @ApiBearerAuth()

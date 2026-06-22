@@ -1,8 +1,27 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Res, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Res,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import type { Response } from 'express';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { randomBytes } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import { unlink } from 'node:fs/promises';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@arterio/shared';
 import { SettingsService } from './settings.service';
+import { MigrationService } from './migration.service';
 import { CreateApiKeyDto, UpdateExternalSourcesDto, UpdateOrganizationDto, WipeDataDto } from './dto';
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
@@ -14,7 +33,10 @@ import type { AuthUser } from '../../common/types';
 @RequirePermissions(PERMISSIONS.SETTINGS_MANAGE)
 @Controller('settings')
 export class SettingsController {
-  constructor(private readonly settings: SettingsService) {}
+  constructor(
+    private readonly settings: SettingsService,
+    private readonly migration: MigrationService,
+  ) {}
 
   @Get('organization')
   @ApiOperation({ summary: 'Organization profile + notification preferences' })
@@ -69,5 +91,44 @@ export class SettingsController {
     res.setHeader('Content-Disposition', `attachment; filename="arterio-backup-${date}.json"`);
     res.setHeader('Content-Type', 'application/json');
     res.send(JSON.stringify(backup, null, 2));
+  }
+
+  @Get('migration/export')
+  @ApiOperation({
+    summary: 'Download everything (data + media/document files) as a single .zip',
+    description: 'Full portable export for moving this installation to another server.',
+  })
+  async exportMigration(@CurrentUser() user: AuthUser, @Res() res: Response) {
+    await this.migration.exportMigration(user, res);
+  }
+
+  @Post('migration/import')
+  @ApiOperation({
+    summary: 'Restore a .zip produced by migration/export — always creates a new organization',
+  })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: tmpdir(),
+        filename: (_req, _file, cb) => cb(null, `arterio-import-${randomBytes(8).toString('hex')}.zip`),
+      }),
+      limits: { fileSize: 5 * 1024 * 1024 * 1024 },
+      fileFilter: (_req, file, cb) => {
+        if (file.mimetype !== 'application/zip' && file.mimetype !== 'application/x-zip-compressed') {
+          cb(new BadRequestException('Expected a .zip file'), false);
+          return;
+        }
+        cb(null, true);
+      },
+    }),
+  )
+  async importMigration(@UploadedFile() file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No file uploaded');
+    try {
+      return await this.migration.importMigration(file.path);
+    } finally {
+      await unlink(file.path).catch(() => undefined);
+    }
   }
 }

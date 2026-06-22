@@ -205,6 +205,30 @@
     "requestAccess": "Request access",
     "secured": "Secured with end-to-end encryption & MFA"
   },
+  "setup": {
+    "title": "Welcome to Arterio",
+    "subtitle": "Let's set up your workspace",
+    "organizationName": "Organization name",
+    "organizationNamePlaceholder": "e.g. Museum of Fine Arts",
+    "fullName": "Your full name",
+    "email": "Administrator email",
+    "password": "Password",
+    "confirmPassword": "Confirm password",
+    "passwordMismatch": "Passwords do not match",
+    "passwordTooShort": "At least 8 characters",
+    "submitButton": "Create my administrator account",
+    "redirecting": "Already set up, redirecting…",
+    "featureSearch": "100,000+ artworks, millions of images, instant search",
+    "featureSecurity": "MFA, security keys, AES-256, immutable audit trail",
+    "featureAi": "AI-ready enrichment, six languages, modular core",
+    "modeNew": "New organization",
+    "modeImport": "Import a migration",
+    "importHint": "Restore a .zip file exported from another Arterio installation (Settings → Migration → Export). Everything is restored as-is, including existing accounts and passwords.",
+    "importButton": "Choose the .zip file",
+    "importing": "Importing…",
+    "importSuccessTitle": "Import complete",
+    "importSuccessBody": "Organization \"{name}\" restored. Log in with one of the accounts from the imported file."
+  },
   "artists": {
     "subtitle": "{count, plural, =0 {No artists} one {# artist} other {# artists}}",
     "searchPlaceholder": "Search by name, nationality or movement…",
@@ -284,6 +308,7 @@
     "api": "API & webhooks",
     "notifications": "Notifications",
     "backups": "Backups",
+    "migration": "Migration",
     "danger": "Danger zone",
     "language": "Language",
     "languageHint": "Choose the language for the interface."

@@ -11,6 +11,7 @@ import {
   KeyRound,
   Bell,
   DatabaseBackup,
+  PackageOpen,
   Sun,
   Moon,
   Monitor,
@@ -34,6 +35,7 @@ import { NotificationsPanel } from './notifications-panel';
 import { ApiKeysPanel } from './api-keys-panel';
 import { ExternalSourcesPanel } from './external-sources-panel';
 import { BackupsPanel } from './backups-panel';
+import { MigrationPanel } from './migration-panel';
 import { settingsApi } from '@/lib/data/admin';
 
 const SECTIONS = [
@@ -44,6 +46,7 @@ const SECTIONS = [
   { id: 'api', icon: KeyRound, key: 'api', danger: false },
   { id: 'notifications', icon: Bell, key: 'notifications', danger: false },
   { id: 'backups', icon: DatabaseBackup, key: 'backups', danger: false },
+  { id: 'migration', icon: PackageOpen, key: 'migration', danger: false },
   { id: 'danger', icon: AlertTriangle, key: 'danger', danger: true },
 ] as const;
 
@@ -414,6 +417,7 @@ export function SettingsView() {
           )}
           {section === 'notifications' && <NotificationsPanel />}
           {section === 'backups' && <BackupsPanel />}
+          {section === 'migration' && <MigrationPanel />}
           {section === 'danger' && <DangerZone />}
         </div>
       </div>
