@@ -340,8 +340,8 @@ export function CollectionView({ favoritesOnly = false }: { favoritesOnly?: bool
     try {
       await exportCollectionToXlsx(locale);
       toast.success('Export terminé');
-    } catch {
-      toast.error("Échec de l'export");
+    } catch (err) {
+      toast.error(err instanceof Error ? `Échec de l'export : ${err.message}` : "Échec de l'export");
     } finally {
       setExporting(false);
     }
