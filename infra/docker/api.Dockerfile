@@ -19,6 +19,8 @@ FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run generate --workspace=@arterio/database \
+ && npm run build --workspace=@arterio/database \
+ && npm run build --workspace=@arterio/shared \
  && npm run build --workspace=@arterio/api
 
 # ---- Runtime ----

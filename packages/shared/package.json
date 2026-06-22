@@ -3,12 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "description": "Cross-cutting types, domain constants and i18n helpers shared by web and api.",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./dist/index.js"
   },
   "scripts": {
+    "build": "tsc",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
