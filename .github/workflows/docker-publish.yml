@@ -4,6 +4,10 @@ name: Build and publish Docker images
 # main. This is what the Synology NAS / Windows install pulls from — see
 # infra/synology/README.md. No source code needs to live on the NAS.
 #
+# Versioning: each push to main auto-increments the patch version (starting at
+# 1.0.0) and tags the images with that number AND `latest`. A matching git tag
+# (vX.Y.Z) is created so the history of releases is visible in the repo.
+#
 # Requires two repository secrets (Settings > Secrets and variables > Actions):
 #   DOCKERHUB_USERNAME — your Docker Hub username
 #   DOCKERHUB_TOKEN     — a Docker Hub access token (hub.docker.com > Account
@@ -13,14 +17,51 @@ name: Build and publish Docker images
 on:
   push:
     branches: [main]
-    tags: ['v*']
   workflow_dispatch: {}
 
 env:
   OWNER: dj41ph4
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # Compute the next semantic version and create the git tag once, so both
+  # images (api + web) share the same version number.
+  # ---------------------------------------------------------------------------
+  version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+    steps:
+      - name: Checkout (full history + tags)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute next version
+        id: bump
+        run: |
+          git fetch --tags --force
+          latest=$(git tag -l 'v*.*.*' | sort -V | tail -1)
+          if [ -z "$latest" ]; then
+            next="1.0.0"
+          else
+            v=${latest#v}
+            IFS=. read -r MA MI PA <<< "$v"
+            next="$MA.$MI.$((PA + 1))"
+          fi
+          echo "Next version: $next"
+          echo "version=$next" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push git tag
+        run: |
+          next="${{ steps.bump.outputs.version }}"
+          git tag "v$next"
+          git push origin "v$next"
+
   build-and-push:
+    needs: version
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -44,8 +85,8 @@ jobs:
           images: docker.io/${{ env.OWNER }}/arterio-${{ matrix.component }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ needs.version.outputs.version }}
             type=sha,format=short
-            type=ref,event=tag
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
