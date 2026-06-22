@@ -3,10 +3,13 @@ import { createHash, randomBytes } from 'node:crypto';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { CryptoService } from '../../core/crypto/crypto.service';
 import type { AuthUser } from '../../common/types';
-import type { CreateApiKeyDto, UpdateOrganizationDto, WipeCategory } from './dto';
+import type { CreateApiKeyDto, UpdateOAuthProviderDto, UpdateOrganizationDto, WipeCategory } from './dto';
 
 export const EXTERNAL_SOURCES = ['europeana', 'rijksmuseum', 'harvard', 'smithsonian'] as const;
 export type ExternalSourceKey = (typeof EXTERNAL_SOURCES)[number];
+
+export const OAUTH_PROVIDERS = ['google', 'microsoft'] as const;
+export type OAuthProviderKey = (typeof OAUTH_PROVIDERS)[number];
 
 @Injectable()
 export class SettingsService {
@@ -50,6 +53,44 @@ export class SettingsService {
     });
 
     return this.getOrganization(user);
+  }
+
+  /** Whether each OAuth provider has a client id + secret configured (no secrets returned). */
+  async getOAuthProviders(user: AuthUser) {
+    const org = await this.prisma.organization.findUniqueOrThrow({ where: { id: user.organizationId } });
+    const settings = (org.settings as Record<string, unknown>) ?? {};
+    const oauth = (settings.oauth as Record<string, { clientId?: string }>) ?? {};
+    return Object.fromEntries(
+      OAUTH_PROVIDERS.map((p) => [p, Boolean(oauth[p]?.clientId)]),
+    ) as Record<OAuthProviderKey, boolean>;
+  }
+
+  /** Encrypts and stores the client secret; the client id is not secret and stored in clear. */
+  async updateOAuthProvider(user: AuthUser, provider: OAuthProviderKey, dto: UpdateOAuthProviderDto) {
+    if (!OAUTH_PROVIDERS.includes(provider)) {
+      throw new NotFoundException(`Unknown OAuth provider "${provider}"`);
+    }
+    const org = await this.prisma.organization.findUniqueOrThrow({ where: { id: user.organizationId } });
+    const settings = (org.settings as Record<string, unknown>) ?? {};
+    const oauth = (settings.oauth as Record<string, { clientId?: string; clientSecretEnc?: string }>) ?? {};
+    const existing = oauth[provider] ?? {};
+
+    const next = { ...existing };
+    if (dto.clientId !== undefined) {
+      if (dto.clientId === '') delete next.clientId;
+      else next.clientId = dto.clientId;
+    }
+    if (dto.clientSecret !== undefined) {
+      if (dto.clientSecret === '') delete next.clientSecretEnc;
+      else next.clientSecretEnc = this.crypto.encrypt(dto.clientSecret);
+    }
+
+    await this.prisma.organization.update({
+      where: { id: user.organizationId },
+      data: { settings: { ...settings, oauth: { ...oauth, [provider]: next } } },
+    });
+
+    return this.getOAuthProviders(user);
   }
 
   async updateOrganization(user: AuthUser, dto: UpdateOrganizationDto) {

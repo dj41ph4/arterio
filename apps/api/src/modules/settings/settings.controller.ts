@@ -22,7 +22,8 @@ import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagg
 import { PERMISSIONS } from '@arterio/shared';
 import { SettingsService } from './settings.service';
 import { MigrationService } from './migration.service';
-import { CreateApiKeyDto, UpdateExternalSourcesDto, UpdateOrganizationDto, WipeDataDto } from './dto';
+import { CreateApiKeyDto, UpdateExternalSourcesDto, UpdateOAuthProviderDto, UpdateOrganizationDto, WipeDataDto } from './dto';
+import type { OAuthProviderKey } from './settings.service';
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import type { AuthUser } from '../../common/types';
@@ -54,6 +55,22 @@ export class SettingsController {
   @ApiOperation({ summary: 'Configure third-party API keys used by artist-enrichment fallback providers' })
   updateExternalSources(@CurrentUser() user: AuthUser, @Body() dto: UpdateExternalSourcesDto) {
     return this.settings.updateExternalSources(user, dto);
+  }
+
+  @Get('oauth')
+  @ApiOperation({ summary: 'Whether each OAuth provider (Google, Microsoft) is configured' })
+  getOAuthProviders(@CurrentUser() user: AuthUser) {
+    return this.settings.getOAuthProviders(user);
+  }
+
+  @Patch('oauth/:provider')
+  @ApiOperation({ summary: 'Configure an OAuth provider client id/secret for sign-in' })
+  updateOAuthProvider(
+    @CurrentUser() user: AuthUser,
+    @Param('provider') provider: OAuthProviderKey,
+    @Body() dto: UpdateOAuthProviderDto,
+  ) {
+    return this.settings.updateOAuthProvider(user, provider, dto);
   }
 
   @Get('api-keys')

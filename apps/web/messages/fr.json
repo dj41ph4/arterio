@@ -201,6 +201,8 @@
     "or": "ou",
     "continueWithGoogle": "Continuer avec Google",
     "continueWithMicrosoft": "Continuer avec Microsoft",
+    "oauthError": "La connexion a échoué. Réessayez ou utilisez votre mot de passe.",
+    "backToLogin": "Retour à la connexion",
     "noAccount": "Pas encore de compte ?",
     "requestAccess": "Demander un accès",
     "secured": "Sécurisé par chiffrement de bout en bout et MFA"

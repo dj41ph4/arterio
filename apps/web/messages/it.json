@@ -201,6 +201,8 @@
     "or": "oppure",
     "continueWithGoogle": "Continua con Google",
     "continueWithMicrosoft": "Continua con Microsoft",
+    "oauthError": "Accesso non riuscito. Riprova o usa la tua password.",
+    "backToLogin": "Torna all'accesso",
     "noAccount": "Non hai un account?",
     "requestAccess": "Richiedi accesso",
     "secured": "Protetto con crittografia end-to-end e MFA"

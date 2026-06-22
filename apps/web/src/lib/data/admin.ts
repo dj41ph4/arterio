@@ -54,6 +54,8 @@ export interface OrganizationSettings {
   externalSources: Record<'europeana' | 'rijksmuseum' | 'harvard' | 'smithsonian', boolean>;
 }
 
+export type OAuthProviderKey = 'google' | 'microsoft';
+
 export interface ApiKeyView {
   id: string;
   name: string;
@@ -78,6 +80,13 @@ export const settingsApi = {
   /** Send "" for a field to clear it, omit a field to leave it unchanged. */
   updateExternalSources: (patch: Partial<Record<'europeana' | 'rijksmuseum' | 'harvard' | 'smithsonian', string>>) =>
     apiFetch<OrganizationSettings>('/settings/external-sources', { method: 'PATCH', body: JSON.stringify(patch) }),
+
+  getOAuthProviders: () => apiFetch<Record<OAuthProviderKey, boolean>>('/settings/oauth'),
+  updateOAuthProvider: (provider: OAuthProviderKey, patch: { clientId?: string; clientSecret?: string }) =>
+    apiFetch<Record<OAuthProviderKey, boolean>>(`/settings/oauth/${provider}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
 
   listApiKeys: () => apiFetch<ApiKeyView[]>('/settings/api-keys'),
   createApiKey: (input: { name: string; scopes?: string[]; isPublic?: boolean }) =>

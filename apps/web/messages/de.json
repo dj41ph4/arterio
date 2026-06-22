@@ -201,6 +201,8 @@
     "or": "oder",
     "continueWithGoogle": "Mit Google fortfahren",
     "continueWithMicrosoft": "Mit Microsoft fortfahren",
+    "oauthError": "Anmeldung fehlgeschlagen. Bitte erneut versuchen oder Passwort verwenden.",
+    "backToLogin": "Zurück zur Anmeldung",
     "noAccount": "Noch kein Konto?",
     "requestAccess": "Zugang anfragen",
     "secured": "Gesichert mit Ende-zu-Ende-Verschlüsselung und MFA"

@@ -83,6 +83,14 @@ export class AuthService {
     return tokens;
   }
 
+  /** Issues a token pair for an already-verified user — used by the OAuth callback. */
+  async issueTokensForUser(userId: string, meta: { ip?: string; ua?: string }) {
+    const authUser = await this.loadAuthUser(userId);
+    if (!authUser) throw new UnauthorizedException('User not found');
+    await this.prisma.user.update({ where: { id: userId }, data: { lastLoginAt: new Date() } });
+    return this.issueTokens(authUser, meta);
+  }
+
   async refresh(refreshToken: string, meta: { ip?: string; ua?: string }) {
     let payload;
     try {

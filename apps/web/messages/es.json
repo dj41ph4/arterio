@@ -201,6 +201,8 @@
     "or": "o",
     "continueWithGoogle": "Continuar con Google",
     "continueWithMicrosoft": "Continuar con Microsoft",
+    "oauthError": "Error al iniciar sesión. Inténtalo de nuevo o usa tu contraseña.",
+    "backToLogin": "Volver al inicio de sesión",
     "noAccount": "¿No tienes cuenta?",
     "requestAccess": "Solicitar acceso",
     "secured": "Protegido con cifrado de extremo a extremo y MFA"

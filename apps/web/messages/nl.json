@@ -201,6 +201,8 @@
     "or": "of",
     "continueWithGoogle": "Doorgaan met Google",
     "continueWithMicrosoft": "Doorgaan met Microsoft",
+    "oauthError": "Inloggen mislukt. Probeer het opnieuw of gebruik je wachtwoord.",
+    "backToLogin": "Terug naar inloggen",
     "noAccount": "Nog geen account?",
     "requestAccess": "Toegang aanvragen",
     "secured": "Beveiligd met end-to-end-encryptie en MFA"

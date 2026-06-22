@@ -34,6 +34,7 @@ import { GeneralPanel } from './general-panel';
 import { NotificationsPanel } from './notifications-panel';
 import { ApiKeysPanel } from './api-keys-panel';
 import { ExternalSourcesPanel } from './external-sources-panel';
+import { OAuthPanel } from './oauth-panel';
 import { BackupsPanel } from './backups-panel';
 import { MigrationPanel } from './migration-panel';
 import { settingsApi } from '@/lib/data/admin';
@@ -385,26 +386,29 @@ export function SettingsView() {
           )}
 
           {section === 'security' && (
-            <Card>
-              <CardHeader>
-                <CardTitle>{t('settings.security')}</CardTitle>
-                <CardDescription>End-to-end protection for your collection.</CardDescription>
-              </CardHeader>
-              <CardContent className="divide-y divide-border">
-                {[
-                  ['Two-factor authentication (TOTP)', true],
-                  ['Passkeys / WebAuthn', true],
-                  ['Require MFA for all members', false],
-                  ['Immutable audit log', true],
-                  ['Encrypt documents at rest (AES-256)', true],
-                ].map(([label, on]) => (
-                  <div key={label as string} className="flex items-center justify-between py-3">
-                    <span className="text-sm">{label}</span>
-                    <Switch defaultChecked={on as boolean} />
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+            <>
+              <Card>
+                <CardHeader>
+                  <CardTitle>{t('settings.security')}</CardTitle>
+                  <CardDescription>End-to-end protection for your collection.</CardDescription>
+                </CardHeader>
+                <CardContent className="divide-y divide-border">
+                  {[
+                    ['Two-factor authentication (TOTP)', true],
+                    ['Passkeys / WebAuthn', true],
+                    ['Require MFA for all members', false],
+                    ['Immutable audit log', true],
+                    ['Encrypt documents at rest (AES-256)', true],
+                  ].map(([label, on]) => (
+                    <div key={label as string} className="flex items-center justify-between py-3">
+                      <span className="text-sm">{label}</span>
+                      <Switch defaultChecked={on as boolean} />
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+              <OAuthPanel />
+            </>
           )}
 
           {section === 'general' && <GeneralPanel />}

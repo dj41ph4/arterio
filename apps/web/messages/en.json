@@ -201,6 +201,8 @@
     "or": "or",
     "continueWithGoogle": "Continue with Google",
     "continueWithMicrosoft": "Continue with Microsoft",
+    "oauthError": "Sign-in failed. Please try again or use your password.",
+    "backToLogin": "Back to sign in",
     "noAccount": "Don't have an account?",
     "requestAccess": "Request access",
     "secured": "Secured with end-to-end encryption & MFA"

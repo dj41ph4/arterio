@@ -65,6 +65,18 @@ export class WipeDataDto {
   categories!: WipeCategory[];
 }
 
+export class UpdateOAuthProviderDto {
+  @ApiPropertyOptional({ description: 'Leave out to keep unchanged, or send "" to clear' })
+  @IsOptional()
+  @IsString()
+  clientId?: string;
+
+  @ApiPropertyOptional({ description: 'Leave out to keep unchanged, or send "" to clear' })
+  @IsOptional()
+  @IsString()
+  clientSecret?: string;
+}
+
 export class CreateApiKeyDto {
   @IsString()
   @MaxLength(100)

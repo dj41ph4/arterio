@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { motion } from 'framer-motion';
 import { Mail, Lock, ArrowRight, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -11,16 +11,23 @@ import { Input } from '@/components/ui/input';
 import { useAuthStore } from '@/stores/auth-store';
 import { API_BASE_URL } from '@/lib/api/client';
 
+const USE_API = process.env.NEXT_PUBLIC_DATA_SOURCE === 'http';
+
 export function LoginForm() {
   const t = useTranslations('auth');
+  const locale = useLocale();
   const router = useRouter();
   const setTokens = useAuthStore((s) => s.setTokens);
   const [loading, setLoading] = React.useState(false);
+  const [oauthProviders, setOauthProviders] = React.useState<{ google: boolean; microsoft: boolean }>({
+    google: false,
+    microsoft: false,
+  });
 
   // Fresh install, nobody has set up an admin account yet — send there
   // instead of showing a login form with nothing to log into.
   React.useEffect(() => {
-    if (process.env.NEXT_PUBLIC_DATA_SOURCE !== 'http') return;
+    if (!USE_API) return;
     fetch(`${API_BASE_URL}/setup/status`)
       .then((r) => r.json())
       .then((data: { needsSetup: boolean }) => {
@@ -29,11 +36,26 @@ export function LoginForm() {
       .catch(() => undefined);
   }, [router]);
 
+  // Only show a provider's button once it actually has credentials configured
+  // in Settings — otherwise clicking it would just fail.
+  React.useEffect(() => {
+    if (!USE_API) return;
+    fetch(`${API_BASE_URL}/auth/oauth/providers`)
+      .then((r) => r.json())
+      .then(setOauthProviders)
+      .catch(() => undefined);
+  }, []);
+
+  function startOAuth(provider: 'google' | 'microsoft') {
+    const params = new URLSearchParams({ returnOrigin: window.location.origin, locale });
+    window.location.href = `${API_BASE_URL}/auth/oauth/${provider}/start?${params.toString()}`;
+  }
+
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
 
-    if (process.env.NEXT_PUBLIC_DATA_SOURCE !== 'http') {
+    if (!USE_API) {
       // Demo mode: no backend wired — navigate straight to the workspace.
       setTimeout(() => router.push('/dashboard'), 650);
       return;
@@ -123,20 +145,28 @@ export function LoginForm() {
         )}
       </Button>
 
-      <div className="flex items-center gap-3">
-        <span className="h-px flex-1 bg-border" />
-        <span className="text-xs uppercase text-muted-foreground">{t('or')}</span>
-        <span className="h-px flex-1 bg-border" />
-      </div>
+      {(oauthProviders.google || oauthProviders.microsoft) && (
+        <>
+          <div className="flex items-center gap-3">
+            <span className="h-px flex-1 bg-border" />
+            <span className="text-xs uppercase text-muted-foreground">{t('or')}</span>
+            <span className="h-px flex-1 bg-border" />
+          </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <Button type="button" variant="outline" onClick={() => router.push('/dashboard')}>
-          Google
-        </Button>
-        <Button type="button" variant="outline" onClick={() => router.push('/dashboard')}>
-          Microsoft
-        </Button>
-      </div>
+          <div className="grid grid-cols-2 gap-3">
+            {oauthProviders.google && (
+              <Button type="button" variant="outline" onClick={() => startOAuth('google')}>
+                {t('continueWithGoogle')}
+              </Button>
+            )}
+            {oauthProviders.microsoft && (
+              <Button type="button" variant="outline" onClick={() => startOAuth('microsoft')}>
+                {t('continueWithMicrosoft')}
+              </Button>
+            )}
+          </div>
+        </>
+      )}
 
       <p className="text-center text-sm text-muted-foreground">
         {t('noAccount')}{' '}
