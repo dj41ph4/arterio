@@ -104,6 +104,9 @@ services:
       REDIS_URL: redis://redis:6379
       ELASTICSEARCH_NODE: http://elasticsearch:9200
       S3_ENDPOINT: http://minio:9000
+    labels:
+      # Watched by Watchtower for automatic redeploy on new :latest.
+      com.centurylinklabs.watchtower.enable: 'true'
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -120,7 +123,27 @@ services:
     # No NEXT_PUBLIC_API_URL here: it's a build-time value, so setting it at
     # runtime does nothing. The browser derives the API URL from the host that
     # served the page (see apps/web/src/lib/api/client.ts).
+    labels:
+      com.centurylinklabs.watchtower.enable: 'true'
     depends_on: [api]
+    networks: [arterio]
+
+  # Mises a jour automatiques : surveille Docker Hub et re-deploie api/web des
+  # qu'une nouvelle image :latest est publiee par GitHub Actions. Aucun geste
+  # manuel sur le NAS apres un `git push`. Ne touche QUE les conteneurs portant
+  # le label watchtower.enable=true (api + web) — postgres/redis/etc. sont figes.
+  # Depot Docker Hub prive : renseignez REPO_USER/REPO_PASS dans .env.
+  watchtower:
+    image: containrrr/watchtower:latest
+    restart: unless-stopped
+    environment:
+      WATCHTOWER_CLEANUP: 'true'
+      WATCHTOWER_LABEL_ENABLE: 'true'
+      WATCHTOWER_POLL_INTERVAL: '120'
+      REPO_USER: ${REPO_USER:-}
+      REPO_PASS: ${REPO_PASS:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     networks: [arterio]
 
   nginx:
