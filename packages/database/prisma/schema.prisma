@@ -17,215 +17,15 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  // SQLite: zero-config, single file in a mapped volume. The app is a
+  // self-hosted appliance — no separate database server to deploy.
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
 // ----------------------------------------------------------------------------
 //  Enums
 // ----------------------------------------------------------------------------
-
-enum Locale {
-  en
-  fr
-  it
-  es
-  de
-  nl
-}
-
-enum MemberStatus {
-  active
-  invited
-  suspended
-  disabled
-}
-
-enum ArtworkStatus {
-  draft
-  active
-  on_loan
-  on_exhibition
-  in_storage
-  in_restoration
-  in_transit
-  sold
-  deaccessioned
-  archived
-}
-
-enum ConditionRating {
-  excellent
-  good
-  fair
-  poor
-  critical
-  unknown
-}
-
-enum AcquisitionMethod {
-  purchase
-  donation
-  bequest
-  commission
-  exchange
-  loan_in
-  found
-  unknown
-}
-
-enum AuthenticationStatus {
-  authenticated
-  attributed
-  workshop
-  after
-  follower
-  manner_of
-  forgery
-  unverified
-}
-
-enum Currency {
-  EUR
-  USD
-  GBP
-  CHF
-  JPY
-}
-
-enum MediaType {
-  image
-  video
-  audio
-  model_3d
-  document
-}
-
-enum MediaRole {
-  primary
-  gallery
-  detail
-  signature
-  verso
-  frame
-  before_restoration
-  after_restoration
-  raking_light
-  uv
-  infrared
-  xray
-}
-
-enum DocumentType {
-  invoice
-  certificate
-  expertise_report
-  condition_report
-  restoration_report
-  insurance_policy
-  loan_agreement
-  provenance_record
-  customs
-  other
-}
-
-enum LocationKind {
-  building
-  floor
-  room
-  wall
-  display_case
-  storage
-  shelf
-  external
-}
-
-enum LoanDirection {
-  outgoing
-  incoming
-}
-
-enum LoanStatus {
-  requested
-  approved
-  in_transit
-  active
-  returned
-  cancelled
-  overdue
-}
-
-enum ExhibitionKind {
-  temporary
-  permanent
-  traveling
-  virtual
-}
-
-enum ExhibitionStatus {
-  planned
-  active
-  closed
-  archived
-}
-
-enum RestorationStatus {
-  proposed
-  approved
-  in_progress
-  completed
-  cancelled
-}
-
-enum WorkflowKind {
-  acquisition
-  restoration
-  loan
-  deaccession
-  sale
-  valuation
-  custom
-}
-
-enum AlertType {
-  insurance_expiring
-  loan_due
-  restoration_due
-  valuation_review
-  document_missing
-  custom
-}
-
-enum AlertSeverity {
-  info
-  warning
-  critical
-}
-
-enum NotificationChannel {
-  email
-  push
-  webhook
-  slack
-  discord
-  teams
-  telegram
-  sms
-}
-
-enum AuditAction {
-  create
-  update
-  delete
-  login
-  logout
-  login_failed
-  permission_change
-  export
-  import
-  sign
-  view_sensitive
-}
 
 // ----------------------------------------------------------------------------
 //  Tenancy & identity
@@ -236,7 +36,7 @@ model Organization {
   slug          String   @unique
   name          String
   legalName     String?
-  defaultLocale Locale   @default(en)
+  defaultLocale String   @default("en")
   // Branding + per-tenant settings (theme accent, logo url, workflow config…)
   settings      Json
   logoKey       String?
@@ -282,8 +82,8 @@ model User {
   fullName      String
   displayName   String?
   avatarKey     String?
-  locale        Locale       @default(en)
-  status        MemberStatus @default(active)
+  locale        String       @default("en")
+  status        String @default("active")
 
   mfaEnabled    Boolean @default(false)
   lastLoginAt   DateTime?
@@ -315,7 +115,7 @@ model Membership {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   userId         String
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  status         MemberStatus @default(active)
+  status         String @default("active")
   createdAt      DateTime     @default(now())
 
   @@unique([organizationId, userId])
@@ -639,7 +439,7 @@ model Artwork {
   artistId             String?
   artist               Artist?              @relation(fields: [artistId], references: [id])
   attribution          String? // free-text when no artist record
-  authentication       AuthenticationStatus @default(unverified)
+  authentication       String @default("unverified")
   signature            String?
   signatureDescription String?
 
@@ -671,12 +471,12 @@ model Artwork {
   dominantColors Json
 
   // Condition & status
-  status      ArtworkStatus   @default(draft)
-  condition   ConditionRating @default(unknown)
+  status      String   @default("draft")
+  condition   String @default("unknown")
   conditionNote Json
 
   // Acquisition & ownership
-  acquisitionMethod AcquisitionMethod @default(unknown)
+  acquisitionMethod String @default("unknown")
   acquisitionDate   DateTime?
   // Free-text payment method (CASH, VIREMENT, LEASING…) — kept separate from
   // acquisitionMethod, which is a coarse 3-state enum and would lose detail.
@@ -737,7 +537,7 @@ model ArtworkValuation {
   artworkId String  @unique
   artwork   Artwork @relation(fields: [artworkId], references: [id], onDelete: Cascade)
 
-  currency        Currency @default(EUR)
+  currency        String @default("EUR")
   // Stored AES-256-GCM encrypted (string ciphertext). Decrypted only for
   // authorized roles; never serialized to logs/exports in clear.
   purchasePriceEnc  String?
@@ -762,8 +562,8 @@ model MediaAsset {
   artworkId      String?
   artwork        Artwork?     @relation(fields: [artworkId], references: [id], onDelete: Cascade)
 
-  type      MediaType @default(image)
-  role      MediaRole @default(gallery)
+  type      String @default("image")
+  role      String @default("gallery")
   // S3 keys for original + generated derivatives (webp/avif/thumbnails/IIIF)
   storageKey   String
   derivatives  Json // { thumb, medium, large, webp, avif, iiif }
@@ -794,7 +594,7 @@ model Document {
   artworkId      String?
   artwork        Artwork?     @relation(fields: [artworkId], references: [id], onDelete: SetNull)
 
-  type      DocumentType @default(other)
+  type      String @default("other")
   title     String
   // OCR-extracted text (searchable); populated by import/OCR pipeline
   ocrText   String?
@@ -852,7 +652,7 @@ model Location {
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  kind     LocationKind @default(room)
+  kind     String @default("room")
   name     String
   code     String?
   parentId String?
@@ -896,8 +696,8 @@ model Loan {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   reference     String
-  direction     LoanDirection @default(outgoing)
-  status        LoanStatus    @default(requested)
+  direction     String @default("outgoing")
+  status        String    @default("requested")
   counterparty  String // borrowing/lending institution
   contactInfo   Json
   startDate     DateTime?
@@ -939,7 +739,7 @@ model Transport {
   departureAt DateTime?
   arrivalAt   DateTime?
   cost        Float?
-  currency    Currency @default(EUR)
+  currency    String @default("EUR")
   notes       String?
   createdAt   DateTime @default(now())
 
@@ -954,7 +754,7 @@ model InsurancePolicy {
   insurer    String
   policyNumber String?
   coverageEnc String? // insured value, encrypted
-  currency   Currency @default(EUR)
+  currency   String @default("EUR")
   startDate  DateTime?
   endDate    DateTime?
   notes      String?
@@ -975,8 +775,8 @@ model Exhibition {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   title       Json
-  kind        ExhibitionKind   @default(temporary)
-  status      ExhibitionStatus @default(planned)
+  kind        String   @default("temporary")
+  status      String @default("planned")
   description Json
   venue       String?
   startDate   DateTime?
@@ -1014,13 +814,13 @@ model Restoration {
   artworkId      String
   artwork        Artwork      @relation(fields: [artworkId], references: [id], onDelete: Cascade)
 
-  status      RestorationStatus @default(proposed)
+  status      String @default("proposed")
   title       String
   diagnosis   Json
   treatment   Json
   conservator String?
   costEnc     String? // encrypted cost
-  currency    Currency          @default(EUR)
+  currency    String          @default("EUR")
   startDate   DateTime?
   endDate     DateTime?
   // media ids used for before/after comparison
@@ -1042,7 +842,7 @@ model WorkflowDefinition {
   id             String       @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  kind           WorkflowKind @default(custom)
+  kind           String @default("custom")
   name           String
   // States, transitions, guards, roles — declarative state machine
   definition     Json
@@ -1096,8 +896,8 @@ model Alert {
   organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   artworkId      String?
   artwork        Artwork?      @relation(fields: [artworkId], references: [id], onDelete: Cascade)
-  type           AlertType
-  severity       AlertSeverity @default(warning)
+  type           String
+  severity       String @default("warning")
   title          String
   message        String?
   dueAt          DateTime?
@@ -1112,7 +912,7 @@ model Notification {
   id        String              @id @default(cuid())
   userId    String
   user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  channel   NotificationChannel @default(push)
+  channel   String @default("push")
   title     String
   body      String?
   data      Json
@@ -1192,7 +992,7 @@ model AuditLog {
   actorId        String?
   actor          User?        @relation(fields: [actorId], references: [id], onDelete: SetNull)
 
-  action    AuditAction
+  action    String
   resource  String // e.g. "artwork", "loan"
   resourceId String?
   // before/after diff (sensitive values redacted/encrypted)

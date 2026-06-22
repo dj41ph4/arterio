@@ -8,7 +8,12 @@ export const envSchema = z.object({
   // Extra CORS origins (comma-separated) on top of APP_URL + auto-allowed LAN.
   CORS_ORIGINS: z.string().optional(),
 
-  DATABASE_URL: z.string().default('postgresql://arterio:arterio@localhost:5432/arterio?schema=public'),
+  // SQLite by default — a single file, no separate database server. In Docker
+  // this points at a mapped volume (see infra/docker/api.Dockerfile).
+  DATABASE_URL: z.string().default('file:./dev.db'),
+  // Where uploaded media is written. Defaults to <cwd>/uploads; the container
+  // overrides it to live alongside the database in the mapped /data volume.
+  UPLOAD_DIR: z.string().optional(),
   REDIS_URL: z.string().default('redis://localhost:6379'),
 
   JWT_ACCESS_SECRET: z.string().min(16).default('dev-access-secret-change-me-please'),

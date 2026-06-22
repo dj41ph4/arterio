@@ -1,138 +1,47 @@
 # =============================================================================
-#  Arterio — stack Synology (images pre-construites, pas de code source requis)
-#  Les images api/web sont construites par GitHub Actions et publiees sur
-#  Docker Hub a chaque envoi de code sur main. Ce dossier (docker-compose.yml +
-#  nginx/ + .env) est TOUT ce qu'il faut sur le NAS — voir README.md.
+#  Arterio — déploiement Synology (simple)
+#
+#  Deux images pré-construites (API + Web) publiées sur Docker Hub par GitHub
+#  Actions à chaque `git push`. La base de données est un fichier SQLite dans le
+#  dossier mappé ./data — AUCUN serveur PostgreSQL/Redis à installer à côté.
+#
+#  Pour déployer : Container Manager → Projet → coller ce fichier → Lancer.
+#  Premier lancement : ouvrez http://IP-DU-NAS:3000 → assistant de configuration.
+#  À sauvegarder : le seul dossier ./data (base + photos/documents).
 # =============================================================================
 
 name: arterio
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-arterio}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-in-production}
-      POSTGRES_DB: ${POSTGRES_DB:-arterio}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-arterio}']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks: [arterio]
-
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    command: redis-server --appendonly yes
-    volumes:
-      - redisdata:/data
-    healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks: [arterio]
-
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
-    restart: unless-stopped
-    environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-      - 'ES_JAVA_OPTS=-Xms512m -Xmx512m'
-    ulimits:
-      memlock: { soft: -1, hard: -1 }
-    volumes:
-      - esdata:/usr/share/elasticsearch/data
-    healthcheck:
-      test: ['CMD-SHELL', "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\"'"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-    networks: [arterio]
-
-  minio:
-    image: minio/minio:latest
-    restart: unless-stopped
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-arterio}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-change-me-in-production}
-    volumes:
-      - miniodata:/data
-    healthcheck:
-      test: ['CMD', 'mc', 'ready', 'local']
-      interval: 15s
-      timeout: 10s
-      retries: 5
-    networks: [arterio]
-
-  minio-init:
-    image: minio/mc:latest
-    depends_on:
-      minio: { condition: service_healthy }
-    entrypoint: >
-      /bin/sh -c "
-      mc alias set local http://minio:9000 ${S3_ACCESS_KEY:-arterio} ${S3_SECRET_KEY:-change-me-in-production};
-      mc mb --ignore-existing local/${S3_BUCKET:-arterio-media};
-      mc anonymous set download local/${S3_BUCKET:-arterio-media};
-      exit 0;
-      "
-    networks: [arterio]
-
-  # Images pre-construites par GitHub Actions — voir .github/workflows/docker-publish.yml
-  # Remplacez "dj41ph4" si vous publiez depuis un autre compte/organisation Docker Hub.
   api:
     image: docker.io/dj41ph4/arterio-api:latest
     restart: unless-stopped
-    env_file: .env
     ports:
       - '4000:4000'
-    environment:
-      # Authoritative — overrides any NODE_ENV in .env so prod settings apply.
-      NODE_ENV: production
-      # Canonical front-end URL. LAN origins (10.x/192.168.x/172.16-31.x/localhost)
-      # are auto-allowed by CORS, so for a NAS reached by IP you usually don't need
-      # to touch this. Set APP_URL / CORS_ORIGINS in .env for a public domain.
-      APP_URL: ${APP_URL:-http://localhost:3000}
-      CORS_ORIGINS: ${CORS_ORIGINS:-}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-arterio}:${POSTGRES_PASSWORD:-change-me-in-production}@postgres:5432/${POSTGRES_DB:-arterio}?schema=public
-      REDIS_URL: redis://redis:6379
-      ELASTICSEARCH_NODE: http://elasticsearch:9200
-      S3_ENDPOINT: http://minio:9000
+    volumes:
+      # Tout le persistant : base SQLite + médias. Le seul dossier à sauvegarder.
+      - ./data:/data
+    # environment:
+    #   # Sécurité (recommandé en production) — sinon des valeurs de dev sont
+    #   # utilisées. Générez des secrets aléatoires longs et une clé 32 octets base64 :
+    #   JWT_ACCESS_SECRET: change-me-long-random-string
+    #   JWT_REFRESH_SECRET: change-me-another-long-random-string
+    #   DATA_ENCRYPTION_KEY: change-me-32-bytes-base64
     labels:
-      # Watched by Watchtower for automatic redeploy on new :latest.
       com.centurylinklabs.watchtower.enable: 'true'
-    depends_on:
-      postgres: { condition: service_healthy }
-      redis: { condition: service_healthy }
-    networks: [arterio]
 
   web:
     image: docker.io/dj41ph4/arterio-web:latest
     restart: unless-stopped
-    env_file: .env
     ports:
       - '3000:3000'
-    environment:
-      NODE_ENV: production
-    # No NEXT_PUBLIC_API_URL here: it's a build-time value, so setting it at
-    # runtime does nothing. The browser derives the API URL from the host that
-    # served the page (see apps/web/src/lib/api/client.ts).
+    depends_on: [api]
     labels:
       com.centurylinklabs.watchtower.enable: 'true'
-    depends_on: [api]
-    networks: [arterio]
 
-  # Mises a jour automatiques : surveille Docker Hub et re-deploie api/web des
-  # qu'une nouvelle image :latest est publiee par GitHub Actions. Aucun geste
-  # manuel sur le NAS apres un `git push`. Ne touche QUE les conteneurs portant
-  # le label watchtower.enable=true (api + web) — postgres/redis/etc. sont figes.
-  # Depot Docker Hub prive : renseignez REPO_USER/REPO_PASS dans .env.
+  # Mises à jour automatiques : surveille Docker Hub et re-déploie api/web dès
+  # qu'une nouvelle image :latest est publiée. Rien à faire sur le NAS après un
+  # `git push`. Dépôt Docker Hub privé : ajoutez REPO_USER / REPO_PASS ci-dessous.
   watchtower:
     image: containrrr/watchtower:latest
     restart: unless-stopped
@@ -140,42 +49,7 @@ services:
       WATCHTOWER_CLEANUP: 'true'
       WATCHTOWER_LABEL_ENABLE: 'true'
       WATCHTOWER_POLL_INTERVAL: '120'
-      REPO_USER: ${REPO_USER:-}
-      REPO_PASS: ${REPO_PASS:-}
+      # REPO_USER: dj41ph4
+      # REPO_PASS: <token Docker Hub>
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    networks: [arterio]
-
-  nginx:
-    image: nginx:1.27-alpine
-    restart: unless-stopped
-    ports:
-      - '80:80'
-      - '443:443'
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./nginx/certs:/etc/nginx/certs:ro
-      - ./nginx/www:/var/www/certbot:ro
-    depends_on: [web, api]
-    networks: [arterio]
-
-  # Pas demarre par `up -d` (pas de restart policy) — invoque a la demande :
-  # docker compose run --rm certbot ... (voir README.md).
-  certbot:
-    image: certbot/certbot:latest
-    volumes:
-      - ./nginx/letsencrypt:/etc/letsencrypt
-      - ./nginx/www:/var/www/certbot
-      - ./nginx/certs:/etc/nginx/certs
-    networks: [arterio]
-
-volumes:
-  pgdata:
-  redisdata:
-  esdata:
-  miniodata:
-
-networks:
-  arterio:
-    driver: bridge

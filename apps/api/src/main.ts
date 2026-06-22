@@ -5,9 +5,9 @@ import { ConfigService } from '@nestjs/config';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
-import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { AppModule } from './app.module';
+import { UPLOAD_DIR } from './core/config/paths';
 import type { Env } from './core/config/configuration';
 
 async function bootstrap() {
@@ -18,9 +18,8 @@ async function bootstrap() {
   // ---------------------------------------------------------------------------
   // Uploaded media — served directly from disk in dev (bypasses the /api prefix)
   // ---------------------------------------------------------------------------
-  const uploadDir = join(process.cwd(), 'uploads');
-  mkdirSync(uploadDir, { recursive: true });
-  app.useStaticAssets(uploadDir, { prefix: '/uploads' });
+  mkdirSync(UPLOAD_DIR, { recursive: true });
+  app.useStaticAssets(UPLOAD_DIR, { prefix: '/uploads' });
 
   const config = app.get(ConfigService<Env, true>);
   const port = config.get('PORT', { infer: true });

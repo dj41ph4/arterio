@@ -73,3 +73,7 @@ infra/windows/backups/*
 # Uploads (local dev storage)
 storage/
 uploads/
+
+# SQLite databases (created at runtime in mapped volume)
+*.db
+*.db-journal

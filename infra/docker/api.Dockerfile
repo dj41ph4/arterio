@@ -26,18 +26,23 @@ RUN npm run generate --workspace=@arterio/database \
 # ---- Runtime ----
 FROM base AS runner
 ENV NODE_ENV=production
-RUN addgroup --system --gid 1001 nodejs \
- && adduser --system --uid 1001 nestjs
 
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/package.json ./apps/api/
 COPY --from=builder /app/packages ./packages
 
-USER nestjs
-EXPOSE 4000
+# Everything persistent lives under /data — map ONE folder on the NAS and you
+# keep the database + uploaded media across updates. Runs as root so it can
+# always write to a bind-mounted Synology folder (no PUID/PGID juggling).
 ENV PORT=4000
-# On boot: create/sync the database schema (no migration files exist — the
-# project uses `prisma db push`, which is idempotent and a no-op once the schema
-# matches), then start the API. This makes a fresh Postgres "just work".
+ENV DATABASE_URL=file:/data/arterio.db
+ENV UPLOAD_DIR=/data/uploads
+RUN mkdir -p /data/uploads
+VOLUME /data
+
+EXPOSE 4000
+# On boot: create/sync the SQLite schema (no migration files — the project uses
+# `prisma db push`, idempotent and a no-op once the schema matches), then start
+# the API. A fresh install "just works"; first visit shows the setup wizard.
 CMD ["sh", "-c", "npx prisma db push --schema=packages/database/prisma/schema.prisma --skip-generate && node apps/api/dist/main.js"]
