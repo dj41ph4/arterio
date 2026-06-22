@@ -1,12 +1,15 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { motion } from 'framer-motion';
 import { Frame, Search, MapPin, Calendar } from 'lucide-react';
 import { formatDate } from '@/lib/format';
+import { apiFetch } from '@/lib/api/client';
 import { PageHeader } from '@/components/app-shell/page-header';
 import { Badge } from '@/components/ui/badge';
+
+const USE_API = process.env.NEXT_PUBLIC_DATA_SOURCE === 'http';
 
 interface ExhibitionView {
   id: string;
@@ -21,7 +24,7 @@ interface ExhibitionView {
 
 const TODAY = new Date('2026-06-21');
 
-const EXHIBITIONS: ExhibitionView[] = [
+const DEMO_EXHIBITIONS: ExhibitionView[] = [
   { id: 'ex1', title: 'Lumières du Nord', venue: 'Rijksmuseum', city: 'Amsterdam', startDate: '2026-04-10', endDate: '2026-08-30', artworkCount: 18, color: '#0ea5e9' },
   { id: 'ex2', title: 'Cubisme & Fragmentation', venue: 'Centre Pompidou', city: 'Paris', startDate: '2026-06-01', endDate: '2026-09-15', artworkCount: 12, color: '#8b5cf6' },
   { id: 'ex3', title: "Rétrospective de l'Âge d'or", venue: 'Mauritshuis', city: 'La Haye', startDate: '2025-11-20', endDate: '2026-03-01', artworkCount: 24, color: '#b45309' },
@@ -43,13 +46,21 @@ const PHASE_TONE = { upcoming: 'info', current: 'success', past: 'neutral' } as 
 export function ExhibitionsView() {
   const t = useTranslations();
   const [search, setSearch] = useState('');
+  const [exhibitions, setExhibitions] = useState<ExhibitionView[]>(USE_API ? [] : DEMO_EXHIBITIONS);
+
+  useEffect(() => {
+    if (!USE_API) return;
+    apiFetch<{ data: ExhibitionView[] }>('/exhibitions')
+      .then((res) => setExhibitions(res.data))
+      .catch(() => setExhibitions([]));
+  }, []);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return EXHIBITIONS.filter(
-      (e) => e.title.toLowerCase().includes(q) || e.venue.toLowerCase().includes(q) || e.city.toLowerCase().includes(q),
-    ).sort((a, b) => +new Date(a.startDate) - +new Date(b.startDate));
-  }, [search]);
+    return exhibitions
+      .filter((e) => e.title.toLowerCase().includes(q) || e.venue.toLowerCase().includes(q) || e.city.toLowerCase().includes(q))
+      .sort((a, b) => +new Date(a.startDate) - +new Date(b.startDate));
+  }, [search, exhibitions]);
 
   return (
     <div className="flex h-full flex-col">

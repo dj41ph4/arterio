@@ -1,11 +1,14 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Truck, Search, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
 import { formatDate } from '@/lib/format';
+import { apiFetch } from '@/lib/api/client';
 import { PageHeader } from '@/components/app-shell/page-header';
 import { Badge } from '@/components/ui/badge';
+
+const USE_API = process.env.NEXT_PUBLIC_DATA_SOURCE === 'http';
 
 interface LoanView {
   id: string;
@@ -20,7 +23,7 @@ interface LoanView {
 
 const TODAY = new Date('2026-06-21');
 
-const LOANS: LoanView[] = [
+const DEMO_LOANS: LoanView[] = [
   { id: 'l1', artworkTitle: 'Landscape near Spring', artist: 'Johannes Vermeer', direction: 'out', counterparty: 'Rijksmuseum, Amsterdam', startDate: '2026-04-01', endDate: '2026-09-30', status: 'active' },
   { id: 'l2', artworkTitle: 'Self-Portrait No. VII', artist: 'Caspar David Friedrich', direction: 'out', counterparty: 'Tate Modern, Londres', startDate: '2026-06-15', endDate: '2026-06-28', status: 'active' },
   { id: 'l3', artworkTitle: 'Composition Argenteuil', artist: 'Artemisia Gentileschi', direction: 'in', counterparty: 'Collection privée Dubois', startDate: '2026-03-10', endDate: '2026-06-10', status: 'overdue' },
@@ -35,13 +38,21 @@ const STATUS_TONE = { pending: 'info', active: 'success', returned: 'neutral', o
 export function LoansView() {
   const t = useTranslations();
   const [search, setSearch] = useState('');
+  const [loans, setLoans] = useState<LoanView[]>(USE_API ? [] : DEMO_LOANS);
+
+  useEffect(() => {
+    if (!USE_API) return;
+    apiFetch<{ data: LoanView[] }>('/loans')
+      .then((res) => setLoans(res.data))
+      .catch(() => setLoans([]));
+  }, []);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return LOANS.filter(
-      (l) => l.artworkTitle.toLowerCase().includes(q) || l.artist.toLowerCase().includes(q) || l.counterparty.toLowerCase().includes(q),
-    ).sort((a, b) => +new Date(b.startDate) - +new Date(a.startDate));
-  }, [search]);
+    return loans
+      .filter((l) => l.artworkTitle.toLowerCase().includes(q) || l.artist.toLowerCase().includes(q) || l.counterparty.toLowerCase().includes(q))
+      .sort((a, b) => +new Date(b.startDate) - +new Date(a.startDate));
+  }, [search, loans]);
 
   return (
     <div className="flex h-full flex-col">

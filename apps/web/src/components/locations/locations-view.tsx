@@ -1,9 +1,12 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { MapPin, Search, ChevronRight, Building2 } from 'lucide-react';
+import { apiFetch } from '@/lib/api/client';
 import { PageHeader } from '@/components/app-shell/page-header';
+
+const USE_API = process.env.NEXT_PUBLIC_DATA_SOURCE === 'http';
 
 interface LocationView {
   id: string;
@@ -14,7 +17,7 @@ interface LocationView {
   capacity: number;
 }
 
-const LOCATIONS: LocationView[] = [
+const DEMO_LOCATIONS: LocationView[] = [
   { id: 'loc1', building: 'Bâtiment principal', floor: 'RDC', room: 'Galerie A — Maîtres anciens', artworkCount: 22, capacity: 30 },
   { id: 'loc2', building: 'Bâtiment principal', floor: 'RDC', room: 'Galerie B — Impressionnistes', artworkCount: 18, capacity: 25 },
   { id: 'loc3', building: 'Bâtiment principal', floor: '1er étage', room: 'Galerie C — Art moderne', artworkCount: 31, capacity: 40 },
@@ -27,10 +30,18 @@ const LOCATIONS: LocationView[] = [
 export function LocationsView() {
   const t = useTranslations();
   const [search, setSearch] = useState('');
+  const [locations, setLocations] = useState<LocationView[]>(USE_API ? [] : DEMO_LOCATIONS);
+
+  useEffect(() => {
+    if (!USE_API) return;
+    apiFetch<{ data: LocationView[] }>('/locations')
+      .then((res) => setLocations(res.data))
+      .catch(() => setLocations([]));
+  }, []);
 
   const grouped = useMemo(() => {
     const q = search.toLowerCase();
-    const filtered = LOCATIONS.filter(
+    const filtered = locations.filter(
       (l) => l.room.toLowerCase().includes(q) || l.building.toLowerCase().includes(q) || l.floor.toLowerCase().includes(q),
     );
     const map = new Map<string, LocationView[]>();
@@ -40,7 +51,7 @@ export function LocationsView() {
       map.set(loc.building, list);
     }
     return map;
-  }, [search]);
+  }, [search, locations]);
 
   const total = [...grouped.values()].reduce((s, list) => s + list.length, 0);
 

@@ -1,12 +1,15 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { FileText, Search, Receipt, ShieldCheck, ScrollText, Download, Lock } from 'lucide-react';
 import { formatDate } from '@/lib/format';
+import { apiFetch } from '@/lib/api/client';
 import { PageHeader } from '@/components/app-shell/page-header';
 import { Badge } from '@/components/ui/badge';
+
+const USE_API = process.env.NEXT_PUBLIC_DATA_SOURCE === 'http';
 
 interface DocumentView {
   id: string;
@@ -17,7 +20,7 @@ interface DocumentView {
   sizeKb: number;
 }
 
-const DOCUMENTS: DocumentView[] = [
+const DEMO_DOCUMENTS: DocumentView[] = [
   { id: 'd1', title: 'Facture d\'acquisition — Vermeer', type: 'invoice', linkedTo: 'Landscape near Spring', uploadedAt: '2024-03-12', sizeKb: 312 },
   { id: 'd2', title: 'Certificat d\'authenticité', type: 'certificate', linkedTo: 'Composition Argenteuil', uploadedAt: '2024-05-02', sizeKb: 880 },
   { id: 'd3', title: 'Rapport de condition annuel', type: 'report', linkedTo: 'Allegory of Twilight', uploadedAt: '2026-01-20', sizeKb: 1540 },
@@ -34,13 +37,21 @@ const TYPE_TONE = { invoice: 'neutral', certificate: 'violet', report: 'info', i
 export function DocumentsView() {
   const t = useTranslations();
   const [search, setSearch] = useState('');
+  const [documents, setDocuments] = useState<DocumentView[]>(USE_API ? [] : DEMO_DOCUMENTS);
+
+  useEffect(() => {
+    if (!USE_API) return;
+    apiFetch<{ data: DocumentView[] }>('/documents')
+      .then((res) => setDocuments(res.data))
+      .catch(() => setDocuments([]));
+  }, []);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return DOCUMENTS.filter(
-      (d) => d.title.toLowerCase().includes(q) || d.linkedTo.toLowerCase().includes(q),
-    ).sort((a, b) => +new Date(b.uploadedAt) - +new Date(a.uploadedAt));
-  }, [search]);
+    return documents
+      .filter((d) => d.title.toLowerCase().includes(q) || d.linkedTo.toLowerCase().includes(q))
+      .sort((a, b) => +new Date(b.uploadedAt) - +new Date(a.uploadedAt));
+  }, [search, documents]);
 
   return (
     <div className="flex h-full flex-col">
