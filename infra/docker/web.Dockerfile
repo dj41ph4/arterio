@@ -19,7 +19,8 @@ FROM base AS builder
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build --workspace=@arterio/web
+RUN npm run build --workspace=@arterio/shared \
+ && npm run build --workspace=@arterio/web
 
 # ---- Runtime ----
 FROM base AS runner

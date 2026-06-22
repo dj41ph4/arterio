@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "description": "Arterio Prisma schema, client and seed.",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
+    "build": "prisma generate && tsc",
     "generate": "prisma generate",
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",

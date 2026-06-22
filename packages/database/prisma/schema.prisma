@@ -12,13 +12,12 @@
 // ============================================================================
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
-  // NOTE: temporarily sqlite for local dev without Docker/Postgres installed.
-  // Production deploys use postgresql — see infra/docker-compose.yml.
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
