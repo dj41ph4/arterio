@@ -91,7 +91,11 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      APP_URL: http://10.0.0.49
+      # Canonical front-end URL. LAN origins (10.x/192.168.x/172.16-31.x/localhost)
+      # are auto-allowed by CORS, so for a NAS reached by IP you usually don't need
+      # to touch this. Set APP_URL / CORS_ORIGINS in .env for a public domain.
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
       DATABASE_URL: postgresql://${POSTGRES_USER:-arterio}:${POSTGRES_PASSWORD:-change-me-in-production}@postgres:5432/${POSTGRES_DB:-arterio}?schema=public
       REDIS_URL: redis://redis:6379
       ELASTICSEARCH_NODE: http://elasticsearch:9200
@@ -105,8 +109,9 @@ services:
     image: docker.io/dj41ph4/arterio-web:latest
     restart: unless-stopped
     env_file: .env
-    environment:
-      NEXT_PUBLIC_API_URL: http://10.0.0.49:4000/api/v1
+    # No NEXT_PUBLIC_API_URL here: it's a build-time value, so setting it at
+    # runtime does nothing. The browser derives the API URL from the host that
+    # served the page (see apps/web/src/lib/api/client.ts).
     depends_on: [api]
     networks: [arterio]
 

@@ -25,6 +25,7 @@ async function bootstrap() {
   const config = app.get(ConfigService<Env, true>);
   const port = config.get('PORT', { infer: true });
   const appUrl = config.get('APP_URL', { infer: true });
+  const corsOrigins = config.get('CORS_ORIGINS', { infer: true });
   const isProd = config.get('NODE_ENV', { infer: true }) === 'production';
 
   // ---------------------------------------------------------------------------
@@ -39,10 +40,45 @@ async function bootstrap() {
   app.use(cookieParser());
 
   // ---------------------------------------------------------------------------
-  // CORS — allow the web app and Swagger UI in dev
+  // CORS — a self-hosted appliance is reached by raw IP over the LAN, so we
+  // can't know the exact origin ahead of time. We allow:
+  //   - the canonical APP_URL,
+  //   - any origin listed in CORS_ORIGINS (comma-separated),
+  //   - localhost (dev / same-machine),
+  //   - any private-LAN origin (10.x, 192.168.x, 172.16–31.x, *.local).
+  // A public deployment should set APP_URL/CORS_ORIGINS to its real domain.
   // ---------------------------------------------------------------------------
+  const explicitOrigins = new Set(
+    [appUrl, ...(corsOrigins ? corsOrigins.split(',') : [])]
+      .map((o) => o.trim())
+      .filter(Boolean),
+  );
+
+  const isLanOrigin = (origin: string): boolean => {
+    try {
+      const { hostname } = new URL(origin);
+      return (
+        hostname === 'localhost' ||
+        hostname === '127.0.0.1' ||
+        hostname.endsWith('.local') ||
+        /^10\./.test(hostname) ||
+        /^192\.168\./.test(hostname) ||
+        /^172\.(1[6-9]|2\d|3[01])\./.test(hostname)
+      );
+    } catch {
+      return false;
+    }
+  };
+
   app.enableCors({
-    origin: isProd ? [appUrl] : [appUrl, 'http://localhost:3000', 'http://localhost:3001'],
+    origin: (origin, callback) => {
+      // Non-browser clients (curl, server-to-server) send no Origin header.
+      if (!origin || explicitOrigins.has(origin) || isLanOrigin(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(null, false);
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-request-id'],

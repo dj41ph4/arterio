@@ -1,6 +1,34 @@
 import { useAuthStore } from '@/stores/auth-store';
 
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
+/**
+ * Resolve the API base URL.
+ *
+ * `NEXT_PUBLIC_API_URL` (baked at build time) always wins when set — use it to
+ * pin a fixed public domain. Otherwise we derive the URL **in the browser** from
+ * the host that served the page, so a self-hosted install works on any IP /
+ * hostname without rebuilding the image:
+ *   - Behind nginx (port 80/443):      same origin, API under `/api/v1`.
+ *   - Direct ports (web :3000):        same host, API on `:4000/api/v1`.
+ *   - Local dev (localhost:3000):      localhost:4000/api/v1.
+ */
+function resolveApiBaseUrl(): string {
+  const baked = process.env.NEXT_PUBLIC_API_URL;
+  if (baked) return baked;
+
+  if (typeof window !== 'undefined') {
+    const { protocol, hostname, port } = window.location;
+    // Served through nginx on the standard ports → API is same-origin under /api.
+    if (port === '' || port === '80' || port === '443') {
+      return `${protocol}//${hostname}${port ? `:${port}` : ''}/api/v1`;
+    }
+    // Direct-port deployment (web on :3000) → API on :4000 of the same host.
+    return `${protocol}//${hostname}:4000/api/v1`;
+  }
+
+  return 'http://localhost:4000/api/v1';
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {

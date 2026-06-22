@@ -5,6 +5,8 @@ export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().default(4000),
   APP_URL: z.string().default('http://localhost:3000'),
+  // Extra CORS origins (comma-separated) on top of APP_URL + auto-allowed LAN.
+  CORS_ORIGINS: z.string().optional(),
 
   DATABASE_URL: z.string().default('postgresql://arterio:arterio@localhost:5432/arterio?schema=public'),
   REDIS_URL: z.string().default('redis://localhost:6379'),
