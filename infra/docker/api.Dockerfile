@@ -37,4 +37,7 @@ COPY --from=builder /app/packages ./packages
 USER nestjs
 EXPOSE 4000
 ENV PORT=4000
-CMD ["node", "apps/api/dist/main.js"]
+# On boot: create/sync the database schema (no migration files exist — the
+# project uses `prisma db push`, which is idempotent and a no-op once the schema
+# matches), then start the API. This makes a fresh Postgres "just work".
+CMD ["sh", "-c", "npx prisma db push --schema=packages/database/prisma/schema.prisma --skip-generate && node apps/api/dist/main.js"]

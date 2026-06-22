@@ -90,7 +90,11 @@ services:
     image: docker.io/dj41ph4/arterio-api:latest
     restart: unless-stopped
     env_file: .env
+    ports:
+      - '4000:4000'
     environment:
+      # Authoritative — overrides any NODE_ENV in .env so prod settings apply.
+      NODE_ENV: production
       # Canonical front-end URL. LAN origins (10.x/192.168.x/172.16-31.x/localhost)
       # are auto-allowed by CORS, so for a NAS reached by IP you usually don't need
       # to touch this. Set APP_URL / CORS_ORIGINS in .env for a public domain.
@@ -109,6 +113,10 @@ services:
     image: docker.io/dj41ph4/arterio-web:latest
     restart: unless-stopped
     env_file: .env
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: production
     # No NEXT_PUBLIC_API_URL here: it's a build-time value, so setting it at
     # runtime does nothing. The browser derives the API URL from the host that
     # served the page (see apps/web/src/lib/api/client.ts).
