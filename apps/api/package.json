@@ -1,0 +1,41 @@
+{
+  "name": "@arterio/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Arterio NestJS API.",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "start:dev": "ts-node-dev --respawn --transpile-only src/main.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.105.0",
+    "@arterio/database": "*",
+    "@arterio/shared": "*",
+    "@nestjs/common": "^10.4.15",
+    "@nestjs/config": "^3.3.0",
+    "@nestjs/core": "^10.4.15",
+    "@nestjs/jwt": "^10.2.0",
+    "@nestjs/platform-express": "^10.4.15",
+    "@nestjs/swagger": "^8.1.0",
+    "@nestjs/throttler": "^6.3.0",
+    "@node-rs/argon2": "^2.0.2",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
+    "cookie-parser": "^1.4.7",
+    "helmet": "^8.0.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.8",
+    "@types/express": "^5.0.0",
+    "@types/multer": "^2.1.0",
+    "@types/node": "^22.10.2",
+    "ts-node-dev": "^2.0.0",
+    "tsx": "^4.22.4",
+    "typescript": "^5.7.2"
+  }
+}

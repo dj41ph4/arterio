@@ -1,0 +1,112 @@
+import { apiFetch, API_BASE_URL } from '@/lib/api/client';
+import { useAuthStore } from '@/stores/auth-store';
+
+// ---------------------------------------------------------------------------
+// Members
+// ---------------------------------------------------------------------------
+
+export interface MemberRole {
+  id: string;
+  key: string;
+  name: string;
+}
+
+export interface MemberView {
+  id: string;
+  email: string;
+  fullName: string;
+  displayName: string | null;
+  status: 'active' | 'invited' | 'suspended' | 'disabled';
+  lastLoginAt: string | null;
+  mfaEnabled: boolean;
+  createdAt: string;
+  roles: MemberRole[];
+}
+
+export interface RoleOption {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
+}
+
+export const membersApi = {
+  list: () => apiFetch<MemberView[]>('/members'),
+  listRoles: () => apiFetch<RoleOption[]>('/members/roles'),
+  invite: (input: { email: string; fullName: string; roleKey: string }) =>
+    apiFetch<MemberView>('/members', { method: 'POST', body: JSON.stringify(input) }),
+  update: (id: string, patch: { roleKey?: string; status?: MemberView['status'] }) =>
+    apiFetch<{ ok: true }>(`/members/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  remove: (id: string) => apiFetch<{ ok: true }>(`/members/${id}`, { method: 'DELETE' }),
+};
+
+// ---------------------------------------------------------------------------
+// Organization / notifications
+// ---------------------------------------------------------------------------
+
+export interface OrganizationSettings {
+  id: string;
+  name: string;
+  legalName: string | null;
+  defaultLocale: string;
+  notifications: Record<string, boolean>;
+  /** Whether each fallback source has a key configured — the secret itself is never returned. */
+  externalSources: Record<'europeana' | 'rijksmuseum' | 'harvard' | 'smithsonian', boolean>;
+}
+
+export interface ApiKeyView {
+  id: string;
+  name: string;
+  prefix: string;
+  scopes: string[];
+  isPublic: boolean;
+  rateLimit: number;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+}
+
+export const settingsApi = {
+  getOrganization: () => apiFetch<OrganizationSettings>('/settings/organization'),
+  updateOrganization: (
+    patch: Partial<Pick<OrganizationSettings, 'name' | 'legalName' | 'defaultLocale'>> & {
+      notifications?: Record<string, boolean>;
+    },
+  ) => apiFetch<OrganizationSettings>('/settings/organization', { method: 'PATCH', body: JSON.stringify(patch) }),
+
+  /** Send "" for a field to clear it, omit a field to leave it unchanged. */
+  updateExternalSources: (patch: Partial<Record<'europeana' | 'rijksmuseum' | 'harvard' | 'smithsonian', string>>) =>
+    apiFetch<OrganizationSettings>('/settings/external-sources', { method: 'PATCH', body: JSON.stringify(patch) }),
+
+  listApiKeys: () => apiFetch<ApiKeyView[]>('/settings/api-keys'),
+  createApiKey: (input: { name: string; scopes?: string[]; isPublic?: boolean }) =>
+    apiFetch<{ id: string; name: string; prefix: string; secret: string; createdAt: string }>('/settings/api-keys', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  revokeApiKey: (id: string) => apiFetch<{ ok: true }>(`/settings/api-keys/${id}`, { method: 'DELETE' }),
+
+  /** Permanently deletes data by category. Irreversible — same behavior on any Prisma datasource. */
+  wipeData: (categories: string[]) =>
+    apiFetch<{ ok: true; deleted: Record<string, number> }>('/settings/danger-zone/wipe', {
+      method: 'POST',
+      body: JSON.stringify({ categories }),
+    }),
+
+  /** Downloads the full org backup as a .json file via the browser. */
+  async downloadBackup(): Promise<void> {
+    const { accessToken } = useAuthStore.getState();
+    const res = await fetch(`${API_BASE_URL}/settings/backup`, {
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    });
+    if (!res.ok) throw new Error('Backup export failed');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `arterio-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+};

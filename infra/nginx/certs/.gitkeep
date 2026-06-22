@@ -1,0 +1,4 @@
+# Place TLS certificates here (fullchain.pem, privkey.pem) or mount your
+# Let's Encrypt live directory. For local testing generate a self-signed pair:
+#   openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+#     -keyout privkey.pem -out fullchain.pem -subj "/CN=localhost"

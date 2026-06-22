@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--workspace=@arterio/web"],
+      "port": 3000
+    },
+    {
+      "name": "web-prod",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "start", "--workspace=@arterio/web"],
+      "port": 3000
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "start:dev", "--workspace=@arterio/api"],
+      "port": 4000
+    }
+  ]
+}
