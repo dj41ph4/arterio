@@ -6,6 +6,9 @@ import {
   Search,
   SlidersHorizontal,
   Columns3,
+  ArrowDownUp,
+  ArrowUp,
+  ArrowDown,
   LayoutGrid,
   Table2,
   Rows3,
@@ -164,6 +167,46 @@ export function FiltersBar({
       )}
 
       <div className="ml-auto flex items-center gap-2">
+        {/* Sort */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="gap-1.5">
+              <ArrowDownUp className="size-3.5" />
+              <span className="hidden sm:inline">{t('grid.sort')}</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="max-h-80 w-56 overflow-y-auto scrollbar-thin">
+            <DropdownMenuLabel>{t('grid.sortBy')}</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {table
+              .getAllLeafColumns()
+              .filter((c) => c.getCanSort())
+              .map((column) => {
+                const sorted = column.getIsSorted();
+                return (
+                  <button
+                    key={column.id}
+                    onClick={column.getToggleSortingHandler()}
+                    className={cn(
+                      'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted',
+                      sorted && 'text-foreground font-medium',
+                      !sorted && 'text-muted-foreground',
+                    )}
+                  >
+                    <span className="flex-1 truncate text-left">{columnLabels[column.id] ?? column.id}</span>
+                    {sorted === 'asc' ? (
+                      <ArrowUp className="size-3.5 text-primary" />
+                    ) : sorted === 'desc' ? (
+                      <ArrowDown className="size-3.5 text-primary" />
+                    ) : (
+                      <ArrowDownUp className="size-3.5 opacity-30" />
+                    )}
+                  </button>
+                );
+              })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
         {/* Columns visibility */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

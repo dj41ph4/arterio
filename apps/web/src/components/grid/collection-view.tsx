@@ -44,6 +44,7 @@ const SORT_FIELD: Record<string, string> = {
   status: 'status',
   condition: 'condition',
   inventoryNumber: 'inventoryNumber',
+  acquisitionDate: 'acquisitionDate',
 };
 
 function Checkbox({
@@ -84,7 +85,10 @@ export function CollectionView({ favoritesOnly = false }: { favoritesOnly?: bool
   const [statusFilter, setStatusFilter] = React.useState<string[]>([]);
   const [collectionFilter, setCollectionFilter] = React.useState<string[]>([]);
   const [sorting, setSorting] = React.useState<SortingState>([{ id: 'updated', desc: true }]);
-  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
+  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({
+    inventoryNumber: false,
+    acquisitionDate: false,
+  });
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({});
   const [viewMode, setViewMode] = React.useState<ViewMode>('table');
   const [importOpen, setImportOpen] = React.useState(false);
@@ -103,8 +107,9 @@ export function CollectionView({ favoritesOnly = false }: { favoritesOnly?: bool
       sort: sorting[0]
         ? { field: SORT_FIELD[sorting[0].id] ?? sorting[0].id, dir: sorting[0].desc ? 'desc' : 'asc' }
         : undefined,
+      locale,
     }),
-    [search, statusFilter, collectionFilter, sorting, favoritesOnly],
+    [search, statusFilter, collectionFilter, sorting, favoritesOnly, locale],
   );
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
@@ -137,7 +142,6 @@ export function CollectionView({ favoritesOnly = false }: { favoritesOnly?: bool
         id: 'artwork',
         size: 300,
         enableHiding: false,
-        enableSorting: false, // title is a per-locale JSON field — not sortable in SQLite without a raw query
         header: () => <>{t('artwork.fields.title')}</>,
         cell: ({ row }) => {
           const a = row.original;
@@ -168,6 +172,16 @@ export function CollectionView({ favoritesOnly = false }: { favoritesOnly?: bool
         header: () => <>{t('artwork.fields.artist')}</>,
         cell: ({ row }) => (
           <span className="truncate text-foreground">{row.original.artistName ?? '—'}</span>
+        ),
+      },
+      {
+        id: 'inventoryNumber',
+        size: 150,
+        header: () => <>{t('artwork.fields.inventoryNumber')}</>,
+        cell: ({ row }) => (
+          <span className="truncate font-mono text-xs text-muted-foreground">
+            {row.original.inventoryNumber}
+          </span>
         ),
       },
       {
@@ -230,7 +244,6 @@ export function CollectionView({ favoritesOnly = false }: { favoritesOnly?: bool
       {
         id: 'value',
         size: 130,
-        enableSorting: false, // value is encrypted at rest — not sortable server-side
         header: () => <>{t('artwork.fields.insuranceValue')}</>,
         cell: ({ row }) => (
           <span className="font-medium tabular-nums text-foreground">
@@ -239,6 +252,16 @@ export function CollectionView({ favoritesOnly = false }: { favoritesOnly?: bool
               row.original.valuation?.currency ?? 'EUR',
               locale,
             )}
+          </span>
+        ),
+      },
+      {
+        id: 'acquisitionDate',
+        size: 130,
+        header: () => <>{t('artwork.fields.acquisitionDate')}</>,
+        cell: ({ row }) => (
+          <span className="text-muted-foreground">
+            {row.original.acquisitionDate ? formatDate(row.original.acquisitionDate, locale) : '—'}
           </span>
         ),
       },
@@ -283,6 +306,7 @@ export function CollectionView({ favoritesOnly = false }: { favoritesOnly?: bool
   const columnLabels: Record<string, string> = {
     artwork: t('artwork.fields.title'),
     artist: t('artwork.fields.artist'),
+    inventoryNumber: t('artwork.fields.inventoryNumber'),
     date: t('artwork.fields.date'),
     technique: t('artwork.fields.technique'),
     status: t('artwork.fields.status'),
@@ -290,6 +314,7 @@ export function CollectionView({ favoritesOnly = false }: { favoritesOnly?: bool
     collection: t('artwork.fields.collection'),
     dimensions: t('artwork.fields.dimensions'),
     value: t('artwork.fields.insuranceValue'),
+    acquisitionDate: t('artwork.fields.acquisitionDate'),
     updated: t('artwork.fields.updatedAt'),
     favorite: t('nav.favorites'),
   };

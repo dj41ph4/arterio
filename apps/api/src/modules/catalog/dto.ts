@@ -43,6 +43,11 @@ export class ListArtworksQueryDto {
   @IsIn(['asc', 'desc'])
   sortDir?: 'asc' | 'desc';
 
+  @ApiPropertyOptional({ description: 'Used to resolve the localized title when sorting by it' })
+  @IsOptional()
+  @IsString()
+  locale?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

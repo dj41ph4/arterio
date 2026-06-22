@@ -44,6 +44,7 @@ export class ArtworkController {
       collectionId: q.collectionId,
       favorite: q.favorite,
       sort: q.sortField ? { field: q.sortField, dir: q.sortDir ?? 'asc' } : undefined,
+      locale: q.locale as ArtworkQuery['locale'],
       cursor: q.cursor ?? null,
       limit: q.limit,
     };

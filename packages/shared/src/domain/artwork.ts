@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { LocalizedText } from '../i18n/locales';
+import type { LocalizedText, Locale } from '../i18n/locales';
 import {
   ACQUISITION_METHOD,
   ARTWORK_STATUS,
@@ -99,6 +99,8 @@ export interface ArtworkQuery {
   yearTo?: number;
   favorite?: boolean;
   sort?: { field: string; dir: 'asc' | 'desc' };
+  /** Used to resolve localized fields (e.g. title) when sorting by them. */
+  locale?: Locale;
   cursor?: string | null;
   limit?: number;
 }

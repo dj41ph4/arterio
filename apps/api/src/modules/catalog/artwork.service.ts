@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { ArtworkQuery, ArtworkView, Paginated, PermissionKey } from '@arterio/shared';
-import { PERMISSIONS } from '@arterio/shared';
+import { DEFAULT_LOCALE, PERMISSIONS, resolveLocalized } from '@arterio/shared';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { CryptoService } from '../../core/crypto/crypto.service';
 import type { AuthUser } from '../../common/types';
@@ -38,10 +38,48 @@ export class ArtworkService {
       ];
     }
 
-    const orderBy = query.sort ? this.buildOrderBy(query.sort.field, query.sort.dir) : { updatedAt: 'desc' as const };
-
     const limit = Math.min(query.limit ?? 50, 200);
     const skip = query.cursor ? Number(query.cursor) : 0;
+    const canView = this.canViewValuation(user);
+
+    // `title` (per-locale Json) and `value` (encrypted at rest) can't be
+    // ORDER BY'd in SQL — resolve/decrypt every matching row once and sort in
+    // memory instead. Sorting by value is silently ignored for users without
+    // VALUATION_READ, since the ordering itself would otherwise leak amounts
+    // they're not allowed to see.
+    const memoryField = query.sort?.field;
+    const useMemorySort =
+      (memoryField === 'title' || (memoryField === 'value' && canView));
+
+    if (useMemorySort) {
+      const all = await this.prisma.artwork.findMany({
+        where: where as never,
+        include: ARTWORK_INCLUDE,
+        orderBy: { updatedAt: 'desc' },
+        take: 5000, // safety cap — this is a single-tenant appliance, not a multi-million-row catalog
+      });
+      const views = all.map((r) =>
+        toArtworkView(r as never, { crypto: this.crypto, canViewValuation: canView, apiOrigin: this.apiOrigin() }),
+      );
+      const dir = query.sort!.dir === 'desc' ? -1 : 1;
+      const locale = query.locale ?? DEFAULT_LOCALE;
+      views.sort((a, b) => {
+        if (memoryField === 'title') {
+          return dir * resolveLocalized(a.title, locale).localeCompare(resolveLocalized(b.title, locale));
+        }
+        const av = a.valuation?.insuranceValue ?? -Infinity;
+        const bv = b.valuation?.insuranceValue ?? -Infinity;
+        return dir * (av - bv);
+      });
+      const total = views.length;
+      return {
+        items: views.slice(skip, skip + limit),
+        total,
+        nextCursor: skip + limit < total ? String(skip + limit) : null,
+      };
+    }
+
+    const orderBy = query.sort ? this.buildOrderBy(query.sort.field, query.sort.dir) : { updatedAt: 'desc' as const };
 
     const [rows, total] = await Promise.all([
       this.prisma.artwork.findMany({
@@ -54,7 +92,6 @@ export class ArtworkService {
       this.prisma.artwork.count({ where: where as never }),
     ]);
 
-    const canView = this.canViewValuation(user);
     return {
       items: rows.map((r) => toArtworkView(r as never, { crypto: this.crypto, canViewValuation: canView, apiOrigin: this.apiOrigin() })),
       total,
@@ -251,7 +288,15 @@ export class ArtworkService {
   /** Builds a Prisma orderBy, routing relation-backed fields (artist) through their join. */
   private buildOrderBy(field: string, dir: 'asc' | 'desc'): Record<string, unknown> {
     if (field === 'artistName') return { artist: { fullName: dir } };
-    const allowed = ['inventoryNumber', 'yearFrom', 'status', 'condition', 'updatedAt', 'createdAt'];
+    const allowed = [
+      'inventoryNumber',
+      'yearFrom',
+      'status',
+      'condition',
+      'updatedAt',
+      'createdAt',
+      'acquisitionDate',
+    ];
     return { [allowed.includes(field) ? field : 'updatedAt']: dir };
   }
 }
