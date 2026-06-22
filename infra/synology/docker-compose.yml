@@ -1,7 +1,7 @@
 # =============================================================================
 #  Arterio — stack Synology (images pre-construites, pas de code source requis)
 #  Les images api/web sont construites par GitHub Actions et publiees sur
-#  ghcr.io a chaque envoi de code sur main. Ce dossier (docker-compose.yml +
+#  Docker Hub a chaque envoi de code sur main. Ce dossier (docker-compose.yml +
 #  nginx/ + .env) est TOUT ce qu'il faut sur le NAS — voir README.md.
 # =============================================================================
 
@@ -85,9 +85,9 @@ services:
     networks: [arterio]
 
   # Images pre-construites par GitHub Actions — voir .github/workflows/docker-publish.yml
-  # Remplacez "dj41ph4" si vous publiez depuis un autre compte/organisation GitHub.
+  # Remplacez "dj41ph4" si vous publiez depuis un autre compte/organisation Docker Hub.
   api:
-    image: ghcr.io/dj41ph4/arterio-api:latest
+    image: docker.io/dj41ph4/arterio-api:latest
     restart: unless-stopped
     env_file: .env
     environment:
@@ -101,7 +101,7 @@ services:
     networks: [arterio]
 
   web:
-    image: ghcr.io/dj41ph4/arterio-web:latest
+    image: docker.io/dj41ph4/arterio-web:latest
     restart: unless-stopped
     env_file: .env
     environment:

@@ -4,7 +4,7 @@ Ce guide met en place un circuit complet, sans jamais utiliser SSH :
 
 ```
 Vous écrivez du code  →  git push sur GitHub  →  GitHub Actions construit
-les images Docker  →  publiées sur ghcr.io (le « hub »)  →  le NAS les
+les images Docker  →  publiées sur Docker Hub  →  le NAS les
 télécharge et redémarre via Container Manager.
 ```
 
@@ -17,24 +17,29 @@ sur le matériel (souvent peu puissant) du NAS.
 
 ## Vue d'ensemble — à faire une seule fois
 
-1. Créer le dépôt GitHub et y pousser le code (10 min).
+1. Créer un compte Docker Hub + un jeton d'accès, et le dépôt GitHub (10 min).
 2. Vérifier que GitHub Actions a bien construit et publié les images.
-3. Rendre les images téléchargeables depuis le NAS.
-4. Préparer le dossier sur le NAS et créer le projet dans Container Manager.
-5. Obtenir le certificat Let's Encrypt.
+3. Préparer le dossier sur le NAS et créer le projet dans Container Manager.
+4. Obtenir le certificat Let's Encrypt.
 
 Ensuite, chaque mise à jour ne demande que l'étape **"Mettre à jour"** plus
 bas — quelques clics, aucune ligne de commande compliquée.
 
 ---
 
-## 1. Créer le dépôt GitHub et y pousser le code
+## 1. Docker Hub + dépôt GitHub
 
-Sur **github.com**, cliquez sur **New repository** :
-- Nom : `arterio`
-- Visibilité : **Private** (recommandé — c'est le code source de votre produit)
-- Ne cochez **aucune** case d'initialisation (pas de README, pas de .gitignore)
-- Cliquez **Create repository**
+**Docker Hub** — sur **hub.docker.com**, créez un compte (gratuit) si vous
+n'en avez pas, puis un jeton d'accès : **Account Settings → Security → New
+Access Token** (nom libre, permissions "Read & Write"). Copiez-le, vous ne
+le reverrez plus.
+
+Sur **github.com**, dans le dépôt `arterio` (créez-le si besoin via **New
+repository**, visibilité **Private**, sans aucune case d'initialisation),
+allez dans **Settings → Secrets and variables → Actions → New repository
+secret** et créez deux secrets :
+- `DOCKERHUB_USERNAME` = votre pseudo Docker Hub (`dj41ph4`)
+- `DOCKERHUB_TOKEN` = le jeton copié juste avant
 
 Sur votre machine de développement (PowerShell, dans le dossier du projet) :
 
@@ -50,43 +55,29 @@ git push -u origin main
 
 GitHub vous demandera de vous authentifier au premier `push` (un navigateur
 s'ouvrira, ou utilisez un *Personal Access Token* à la place du mot de passe
-si demandé).
+si demandé — différent du jeton Docker Hub ci-dessus).
 
 ## 2. Vérifier que les images se sont construites
 
 Sur la page de votre dépôt GitHub, onglet **Actions** : vous devez voir un
 run **"Build and publish Docker images"** qui se termine en vert (✅), en
 général en 3-5 minutes. C'est `.github/workflows/docker-publish.yml` qui
-construit `arterio-api` et `arterio-web` et les publie sur **ghcr.io**.
+construit `arterio-api` et `arterio-web` et les publie sur **Docker Hub**
+(`hub.docker.com/r/dj41ph4/arterio-api`, `.../arterio-web`).
 
 À chaque `git push` sur `main` à partir de maintenant, ce workflow se
 relance automatiquement et republie des images à jour — c'est tout le but
 de l'opération.
 
-## 3. Rendre les images téléchargeables depuis le NAS
+Par défaut, un nouveau dépôt Docker Hub créé automatiquement par un push
+d'image est **public** — le NAS peut donc faire `docker pull` sans aucun
+identifiant, rien à configurer côté Container Manager. Si vous préférez
+les rendre privés (hub.docker.com → le dépôt → **Settings** → **Make
+private**), ajoutez alors les identifiants Docker Hub dans **Container
+Manager → Registre → Ajouter** (URL `https://index.docker.io/v1/`, votre
+pseudo + le même jeton d'accès).
 
-Sur GitHub, allez sur votre profil → onglet **Packages** : vous devez voir
-`arterio-api` et `arterio-web`. Par défaut ils sont **privés**, ce qui
-empêche le NAS de les télécharger sans authentification. Deux options :
-
-### Option A — rendre les images publiques (le plus simple, recommandé)
-
-Pour chacun des deux paquets : ouvrez-le → **Package settings** (en bas de
-la page) → **Change visibility** → **Public** → confirmez. Le NAS pourra
-alors faire `docker pull` sans aucun identifiant. Le code source, lui,
-reste privé — seules les images compilées sont publiques (pas vos secrets,
-ils ne sont jamais dans l'image).
-
-### Option B — garder les images privées (plus de configuration)
-
-Créez un *Personal Access Token* (GitHub → Settings → Developer settings →
-Personal access tokens → Tokens (classic) → scope `read:packages`
-uniquement). Puis, dans **Container Manager → Registre → Ajouter** :
-- URL : `https://ghcr.io`
-- Nom d'utilisateur : `dj41ph4`
-- Mot de passe : le token créé
-
-## 4. Préparer le dossier sur le NAS
+## 3. Préparer le dossier sur le NAS
 
 Via **File Station**, créez le dossier `/volume1/docker/arterio` et
 uploadez-y **uniquement** le contenu de `infra/synology/` de votre dépôt :
@@ -109,7 +100,7 @@ Pour le `.env` : copiez `.env.example` → `.env`, puis remplissez au moins
 fortes (ouvrez le fichier avec l'éditeur de texte de File Station). Mettez
 aussi `APP_URL=https://votre-domaine.com` et `WEBAUTHN_RP_ID=votre-domaine.com`.
 
-## 5. Créer le projet dans Container Manager
+## 4. Créer le projet dans Container Manager
 
 **Projet → Créer**, donnez le chemin `/volume1/docker/arterio` (celui que
 vous venez de remplir) — Container Manager y trouvera le `docker-compose.yml`
@@ -127,7 +118,7 @@ migrations (la base est vide, sans aucun compte — voir la note ci-dessous) :
 docker compose exec -T api npm run migrate:deploy --workspace=@arterio/database
 ```
 
-## 6. Certificat Let's Encrypt
+## 5. Certificat Let's Encrypt
 
 Utilisez le **Terminal** intégré de Container Manager (clic sur le projet →
 icône terminal, le même outil que dans votre capture d'écran). D'abord un
@@ -159,7 +150,7 @@ l'utilisateur**, en lançant :
 cd /volume1/docker/arterio && docker compose run --rm certbot renew --quiet && docker compose exec nginx nginx -s reload
 ```
 
-## 7. Créer le compte administrateur
+## 6. Créer le compte administrateur
 
 Aucun compte n'est créé automatiquement — la base est vide. Ouvrez
 `https://votre-domaine.com` dans un navigateur : la **première visite**
@@ -180,7 +171,7 @@ C'est l'opération que vous referez à chaque nouvelle version :
    docker compose pull
    docker compose up -d
    ```
-   `pull` télécharge les nouvelles images `latest` depuis ghcr.io, `up -d`
+   `pull` télécharge les nouvelles images `latest` depuis Docker Hub, `up -d`
    recrée uniquement les conteneurs dont l'image a changé (`api`, `web`) —
    Postgres/Redis/Elasticsearch/MinIO ne sont pas touchés, aucune perte de
    données.
@@ -200,7 +191,7 @@ docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB
 
 | Symptôme | Vérification |
 |---|---|
-| `Failed to load .../.env` | Le `.env` doit être directement à côté du `docker-compose.yml`, pas dans un sous-dossier — voir l'arborescence à l'étape 4. |
-| Le paquet ghcr.io refuse le téléchargement | Le paquet est encore privé (étape 3) — rendez-le public, ou ajoutez les identifiants dans Container Manager → Registre. |
-| nginx ne démarre pas | Un fichier `fullchain.pem`/`privkey.pem` doit exister dans `nginx/certs/` avant le premier démarrage — voir étape 6. |
+| `Failed to load .../.env` | Le `.env` doit être directement à côté du `docker-compose.yml`, pas dans un sous-dossier — voir l'arborescence à l'étape 3. |
+| Docker Hub refuse le téléchargement | Le dépôt Docker Hub a été rendu privé — ajoutez les identifiants dans Container Manager → Registre (voir étape 2). |
+| nginx ne démarre pas | Un fichier `fullchain.pem`/`privkey.pem` doit exister dans `nginx/certs/` avant le premier démarrage — voir étape 5. |
 | L'Action GitHub échoue (rouge) | Cliquez sur le run dans l'onglet Actions pour voir le détail de l'erreur — le plus souvent une erreur de compilation TypeScript, à corriger comme un bug normal. |

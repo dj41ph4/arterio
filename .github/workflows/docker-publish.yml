@@ -1,8 +1,14 @@
 name: Build and publish Docker images
 
-# Builds the api + web images and pushes them to GitHub Container Registry
-# (ghcr.io) on every push to main. This is what the Synology NAS pulls from —
-# see infra/synology/README.md. No source code needs to live on the NAS.
+# Builds the api + web images and pushes them to Docker Hub on every push to
+# main. This is what the Synology NAS / Windows install pulls from — see
+# infra/synology/README.md. No source code needs to live on the NAS.
+#
+# Requires two repository secrets (Settings > Secrets and variables > Actions):
+#   DOCKERHUB_USERNAME — your Docker Hub username
+#   DOCKERHUB_TOKEN     — a Docker Hub access token (hub.docker.com > Account
+#                         Settings > Security > New Access Token; NOT your
+#                         account password)
 
 on:
   push:
@@ -11,7 +17,6 @@ on:
   workflow_dispatch: {}
 
 env:
-  REGISTRY: ghcr.io
   OWNER: dj41ph4
 
 jobs:
@@ -19,7 +24,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
     strategy:
       matrix:
         component: [api, web]
@@ -27,18 +31,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Log in to GitHub Container Registry
+      - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Extract metadata (tags)
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.OWNER }}/arterio-${{ matrix.component }}
+          images: docker.io/${{ env.OWNER }}/arterio-${{ matrix.component }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=short
