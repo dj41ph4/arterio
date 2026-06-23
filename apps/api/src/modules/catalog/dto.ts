@@ -36,6 +36,16 @@ export class ListArtworksQueryDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsString()
+  exhibitionId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  locationId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @Transform(({ value }) => value === 'true' || value === true)
   favorite?: boolean;
 

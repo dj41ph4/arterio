@@ -97,6 +97,8 @@ export interface ArtworkQuery {
   condition?: ConditionRating[];
   collectionId?: string[];
   artistId?: string[];
+  exhibitionId?: string;
+  locationId?: string;
   yearFrom?: number;
   yearTo?: number;
   favorite?: boolean;

@@ -19,6 +19,8 @@ function toQueryString(query: ArtworkQuery): string {
   if (query.status?.length) params.set('status', query.status.join(','));
   if (query.collectionId?.length) params.set('collectionId', query.collectionId.join(','));
   if (query.artistId?.length) params.set('artistId', query.artistId.join(','));
+  if (query.exhibitionId) params.set('exhibitionId', query.exhibitionId);
+  if (query.locationId) params.set('locationId', query.locationId);
   if (query.favorite) params.set('favorite', 'true');
   if (query.sort) {
     params.set('sortField', query.sort.field);

@@ -11,6 +11,7 @@ import {
   type VisibilityState,
   type RowSelectionState,
 } from '@tanstack/react-table';
+import { useSearchParams } from 'next/navigation';
 import { Check, Star, Pencil, Trash2, X, LibraryBig, Upload, Plus } from 'lucide-react';
 import type { ArtworkView, Locale, ArtworkQuery } from '@arterio/shared';
 import { resolveLocalized } from '@arterio/shared';
@@ -78,7 +79,14 @@ export function CollectionView({ favoritesOnly = false }: { favoritesOnly?: bool
   const t = useTranslations();
   const locale = useLocale() as Locale;
   const router = useRouter();
+  const searchParams = useSearchParams();
   const toggleFav = useToggleFavorite();
+
+  // Deep-link filters from cross-link buttons (exhibition card, location row…).
+  const exhibitionId = searchParams.get('exhibitionId') ?? undefined;
+  const exhibitionLabel = searchParams.get('exhibitionTitle');
+  const locationId = searchParams.get('locationId') ?? undefined;
+  const locationLabel = searchParams.get('locationName');
 
   const [rawSearch, setRawSearch] = React.useState('');
   const search = useDebounce(rawSearch, 250);
@@ -103,13 +111,15 @@ export function CollectionView({ favoritesOnly = false }: { favoritesOnly?: bool
       search: search || undefined,
       status: statusFilter.length ? (statusFilter as ArtworkQuery['status']) : undefined,
       collectionId: collectionFilter.length ? collectionFilter : undefined,
+      exhibitionId,
+      locationId,
       favorite: favoritesOnly || undefined,
       sort: sorting[0]
         ? { field: SORT_FIELD[sorting[0].id] ?? sorting[0].id, dir: sorting[0].desc ? 'desc' : 'asc' }
         : undefined,
       locale,
     }),
-    [search, statusFilter, collectionFilter, sorting, favoritesOnly, locale],
+    [search, statusFilter, collectionFilter, exhibitionId, locationId, sorting, favoritesOnly, locale],
   );
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
@@ -388,6 +398,20 @@ export function CollectionView({ favoritesOnly = false }: { favoritesOnly?: bool
             </div>
           }
         />
+        {(exhibitionId || locationId) && (
+          <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+            <span className="text-foreground">
+              Filtré par {exhibitionId ? 'exposition' : 'emplacement'} :{' '}
+              <strong>{exhibitionLabel ?? locationLabel ?? '—'}</strong>
+            </span>
+            <button
+              onClick={() => router.push('/collection')}
+              className="ml-auto flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+            >
+              <X className="h-3 w-3" /> Retirer le filtre
+            </button>
+          </div>
+        )}
         <FiltersBar
           table={table}
           search={rawSearch}

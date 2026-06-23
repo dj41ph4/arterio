@@ -3,11 +3,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { motion } from 'framer-motion';
-import { Frame, Search, MapPin, Calendar } from 'lucide-react';
+import { toast } from 'sonner';
+import { Frame, Search, MapPin, Calendar, Plus, Trash2, Images } from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import { apiFetch } from '@/lib/api/client';
 import { PageHeader } from '@/components/app-shell/page-header';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { useRouter } from '@/i18n/navigation';
+import { CreateExhibitionModal } from './create-exhibition-modal';
 
 const USE_API = process.env.NEXT_PUBLIC_DATA_SOURCE === 'http';
 
@@ -45,15 +49,30 @@ const PHASE_TONE = { upcoming: 'info', current: 'success', past: 'neutral' } as 
 
 export function ExhibitionsView() {
   const t = useTranslations();
+  const router = useRouter();
   const [search, setSearch] = useState('');
   const [exhibitions, setExhibitions] = useState<ExhibitionView[]>(USE_API ? [] : DEMO_EXHIBITIONS);
+  const [createOpen, setCreateOpen] = useState(false);
 
-  useEffect(() => {
+  const refresh = () => {
     if (!USE_API) return;
     apiFetch<{ data: ExhibitionView[] }>('/exhibitions')
       .then((res) => setExhibitions(res.data))
       .catch(() => setExhibitions([]));
-  }, []);
+  };
+
+  useEffect(refresh, []);
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Supprimer cette exposition ?')) return;
+    try {
+      await apiFetch(`/exhibitions/${id}`, { method: 'DELETE' });
+      toast.success('Exposition supprimée');
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Échec de la suppression');
+    }
+  };
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -68,8 +87,15 @@ export function ExhibitionsView() {
         <PageHeader
           title={t('nav.exhibitions')}
           subtitle={t('exhibitions.subtitle', { count: filtered.length })}
+          actions={
+            <Button size="sm" onClick={() => setCreateOpen(true)} className="flex items-center gap-2">
+              <Plus className="h-4 w-4" /> Nouvelle exposition
+            </Button>
+          }
         />
       </div>
+
+      {USE_API && <CreateExhibitionModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={refresh} />}
 
       <div className="border-b border-border bg-background px-6 py-3">
         <div className="relative max-w-sm">
@@ -114,8 +140,30 @@ export function ExhibitionsView() {
                     <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                       <Calendar className="h-3 w-3" /> {formatDate(ex.startDate)} – {formatDate(ex.endDate)}
                     </p>
-                    <div className="pt-2 border-t border-border text-xs text-muted-foreground">
-                      {t('exhibitions.worksCount', { count: ex.artworkCount })}
+                    <div className="flex items-center justify-between pt-2 border-t border-border text-xs">
+                      {USE_API ? (
+                        <button
+                          onClick={() =>
+                            router.push(
+                              `/collection?exhibitionId=${ex.id}&exhibitionTitle=${encodeURIComponent(ex.title)}`,
+                            )
+                          }
+                          className="flex items-center gap-1 font-medium text-primary hover:underline"
+                        >
+                          <Images className="h-3 w-3" /> {t('exhibitions.worksCount', { count: ex.artworkCount })}
+                        </button>
+                      ) : (
+                        <span className="text-muted-foreground">{t('exhibitions.worksCount', { count: ex.artworkCount })}</span>
+                      )}
+                      {USE_API && (
+                        <button
+                          onClick={() => handleDelete(ex.id)}
+                          className="rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                          title="Supprimer"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </motion.div>

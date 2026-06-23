@@ -23,6 +23,8 @@ export class ArtworkService {
     if (query.condition?.length) where.condition = { in: query.condition };
     if (query.collectionId?.length) where.collectionId = { in: query.collectionId };
     if (query.artistId?.length) where.artistId = { in: query.artistId };
+    if (query.exhibitionId) where.exhibitionItems = { some: { exhibitionId: query.exhibitionId } };
+    if (query.locationId) where.currentLocationId = query.locationId;
     if (query.favorite) where.isFavorite = true;
     if (query.search) {
       where.OR = [

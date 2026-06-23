@@ -43,6 +43,8 @@ export class ArtworkController {
       status: q.status,
       collectionId: q.collectionId,
       artistId: q.artistId,
+      exhibitionId: q.exhibitionId,
+      locationId: q.locationId,
       favorite: q.favorite,
       sort: q.sortField ? { field: q.sortField, dir: q.sortDir ?? 'asc' } : undefined,
       locale: q.locale as ArtworkQuery['locale'],
