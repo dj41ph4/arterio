@@ -270,11 +270,13 @@ export function ArtworkDetailView({ id }: { id: string }) {
               <ArtworkLocationTab artworkId={art.id} currentLocationId={art.currentLocationId} currentLocationName={art.currentLocationName} />
             </TabsContent>
 
-            {(['conservation', 'history'] as const).map((tab) => (
-              <TabsContent key={tab} value={tab}>
-                <PlaceholderTab label={t(`artwork.tabs.${tab}`)} />
-              </TabsContent>
-            ))}
+            <TabsContent value="conservation">
+              <ArtworkConservationTab artworkId={art.id} />
+            </TabsContent>
+
+            <TabsContent value="history">
+              <PlaceholderTab label={t('artwork.tabs.history')} />
+            </TabsContent>
           </Tabs>
         </div>
       </div>
@@ -491,6 +493,132 @@ function ArtworkLocationTab({
           {moveMutation.isPending ? 'Déplacement…' : 'Déplacer'}
         </Button>
       </div>
+    </div>
+  );
+}
+
+interface RestorationRow {
+  id: string;
+  status: 'proposed' | 'in_progress' | 'completed';
+  title: string;
+  diagnosis: string;
+  treatment: string;
+  conservator: string | null;
+  cost: number | null;
+  currency: string;
+  startDate: string | null;
+  endDate: string | null;
+}
+
+const RESTORATION_STATUS_TONE = { proposed: 'info', in_progress: 'warning', completed: 'success' } as const;
+const RESTORATION_STATUS_LABEL = { proposed: 'Proposée', in_progress: 'En cours', completed: 'Terminée' } as const;
+
+function ArtworkConservationTab({ artworkId }: { artworkId: string }) {
+  const qc = useQueryClient();
+  const [formOpen, setFormOpen] = React.useState(false);
+  const [title, setTitle] = React.useState('');
+  const [diagnosis, setDiagnosis] = React.useState('');
+  const [treatment, setTreatment] = React.useState('');
+  const [conservator, setConservator] = React.useState('');
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['artwork-restorations', artworkId],
+    queryFn: () => apiFetch<{ data: RestorationRow[] }>(`/restorations?artworkId=${artworkId}`),
+  });
+  const restorations = data?.data ?? [];
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['artwork-restorations', artworkId] });
+    qc.invalidateQueries({ queryKey: ['artwork', artworkId] });
+  };
+
+  const createMutation = useMutation({
+    mutationFn: () =>
+      apiFetch('/restorations', {
+        method: 'POST',
+        body: JSON.stringify({ artworkId, title, diagnosis: diagnosis || undefined, treatment: treatment || undefined, conservator: conservator || undefined }),
+      }),
+    onSuccess: () => {
+      toast.success('Restauration proposée');
+      setTitle(''); setDiagnosis(''); setTreatment(''); setConservator('');
+      setFormOpen(false);
+      invalidate();
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Échec de la création'),
+  });
+
+  const completeMutation = useMutation({
+    mutationFn: (id: string) => apiFetch(`/restorations/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'completed' }) }),
+    onSuccess: () => { toast.success('Restauration marquée comme terminée'); invalidate(); },
+    onError: () => toast.error('Échec de la mise à jour'),
+  });
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-end">
+        <Button size="sm" variant="outline" onClick={() => setFormOpen((v) => !v)} className="gap-1.5">
+          <Plus className="size-3.5" /> Proposer une restauration
+        </Button>
+      </div>
+
+      {formOpen && (
+        <div className="space-y-3 rounded-xl border border-border bg-card p-4">
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Titre de l'intervention"
+            className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+          />
+          <textarea
+            value={diagnosis}
+            onChange={(e) => setDiagnosis(e.target.value)}
+            placeholder="Diagnostic"
+            className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            rows={2}
+          />
+          <textarea
+            value={treatment}
+            onChange={(e) => setTreatment(e.target.value)}
+            placeholder="Traitement envisagé"
+            className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            rows={2}
+          />
+          <input
+            value={conservator}
+            onChange={(e) => setConservator(e.target.value)}
+            placeholder="Restaurateur·rice"
+            className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+          />
+          <Button size="sm" onClick={() => createMutation.mutate()} disabled={!title.trim() || createMutation.isPending}>
+            {createMutation.isPending ? 'Création…' : 'Créer'}
+          </Button>
+        </div>
+      )}
+
+      {isLoading ? (
+        <Skeleton className="h-24 w-full" />
+      ) : restorations.length === 0 ? (
+        <PlaceholderEmpty icon={Wrench} label="Aucune restauration enregistrée pour cette œuvre" />
+      ) : (
+        <div className="space-y-2">
+          {restorations.map((r) => (
+            <div key={r.id} className="rounded-xl border border-border bg-card p-4">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium text-foreground">{r.title}</p>
+                <Badge tone={RESTORATION_STATUS_TONE[r.status]} dot>{RESTORATION_STATUS_LABEL[r.status]}</Badge>
+              </div>
+              {r.diagnosis && <p className="mt-1 text-xs text-muted-foreground">Diagnostic : {r.diagnosis}</p>}
+              {r.treatment && <p className="mt-1 text-xs text-muted-foreground">Traitement : {r.treatment}</p>}
+              {r.conservator && <p className="mt-1 text-xs text-muted-foreground">Par {r.conservator}</p>}
+              {r.status !== 'completed' && (
+                <Button size="sm" variant="outline" className="mt-2" onClick={() => completeMutation.mutate(r.id)} disabled={completeMutation.isPending}>
+                  Marquer comme terminée
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
