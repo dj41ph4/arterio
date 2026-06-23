@@ -7,6 +7,7 @@ import {
   AlertCircle, Table2, RefreshCw, Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { artworkRepository } from '@/lib/data';
 import { artistRepository, type ArtistView } from '@/lib/data/artist-repository';
@@ -140,6 +141,7 @@ function MappingRow({
 }
 
 export function ImportModal({ open, onClose }: ImportModalProps) {
+  const qc = useQueryClient();
   const [step, setStep] = React.useState<Step>('upload');
   const [loading, setLoading] = React.useState(false);
   const [fileName, setFileName] = React.useState('');
@@ -308,6 +310,11 @@ export function ImportModal({ open, onClose }: ImportModalProps) {
 
     setSummary({ created, skipped, artistsCreated, inventoryGenerated: inventoryPlan.generatedCount });
     setStep('done');
+    qc.invalidateQueries({ queryKey: ['artworks'] });
+    qc.invalidateQueries({ queryKey: ['artist-artworks'] });
+    qc.invalidateQueries({ queryKey: ['stats'] });
+    qc.invalidateQueries({ queryKey: ['facets'] });
+    qc.invalidateQueries({ queryKey: ['artists-all'] });
     toast.success(`${created} œuvre${created > 1 ? 's' : ''} importée${created > 1 ? 's' : ''}`);
   };
 
