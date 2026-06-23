@@ -62,4 +62,8 @@ class MockCollectionRepository implements CollectionRepository {
   }
 }
 
-export const collectionRepository: CollectionRepository = new MockCollectionRepository();
+import { HttpCollectionRepository } from './http/collection-repository';
+
+const source = process.env.NEXT_PUBLIC_DATA_SOURCE ?? 'mock';
+export const collectionRepository: CollectionRepository =
+  source === 'http' ? new HttpCollectionRepository() : new MockCollectionRepository();

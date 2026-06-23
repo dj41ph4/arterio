@@ -11,6 +11,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { CatalogModule } from './modules/catalog/artwork.module';
 import { ArtistsModule } from './modules/artists/artists.module';
 import { ExhibitionsModule } from './modules/exhibitions/exhibitions.module';
+import { CollectionsModule } from './modules/collections/collections.module';
 import { LoansModule } from './modules/loans/loans.module';
 import { LocationsModule } from './modules/locations/locations.module';
 import { DocumentsModule } from './modules/documents/documents.module';
@@ -52,6 +53,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
     CatalogModule,
     ArtistsModule,
     ExhibitionsModule,
+    CollectionsModule,
     LoansModule,
     LocationsModule,
     DocumentsModule,
