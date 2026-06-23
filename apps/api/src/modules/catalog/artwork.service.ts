@@ -1,11 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import type { ArtworkQuery, ArtworkView, Paginated, PermissionKey } from '@arterio/shared';
 import { DEFAULT_LOCALE, PERMISSIONS, resolveLocalized } from '@arterio/shared';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { CryptoService } from '../../core/crypto/crypto.service';
 import type { AuthUser } from '../../common/types';
-import type { Env } from '../../core/config/configuration';
 import { ARTWORK_INCLUDE, toArtworkView } from './artwork.mapper';
 
 @Injectable()
@@ -13,15 +11,10 @@ export class ArtworkService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly crypto: CryptoService,
-    private readonly config: ConfigService<Env, true>,
   ) {}
 
   private canViewValuation(user: AuthUser): boolean {
     return user.permissions.includes(PERMISSIONS.VALUATION_READ as PermissionKey);
-  }
-
-  private apiOrigin(): string {
-    return `http://localhost:${this.config.get('PORT', { infer: true })}`;
   }
 
   async list(user: AuthUser, query: ArtworkQuery): Promise<Paginated<ArtworkView>> {
@@ -59,7 +52,7 @@ export class ArtworkService {
         take: 5000, // safety cap — this is a single-tenant appliance, not a multi-million-row catalog
       });
       const views = all.map((r) =>
-        toArtworkView(r as never, { crypto: this.crypto, canViewValuation: canView, apiOrigin: this.apiOrigin() }),
+        toArtworkView(r as never, { crypto: this.crypto, canViewValuation: canView }),
       );
       const dir = query.sort!.dir === 'desc' ? -1 : 1;
       const locale = query.locale ?? DEFAULT_LOCALE;
@@ -93,7 +86,7 @@ export class ArtworkService {
     ]);
 
     return {
-      items: rows.map((r) => toArtworkView(r as never, { crypto: this.crypto, canViewValuation: canView, apiOrigin: this.apiOrigin() })),
+      items: rows.map((r) => toArtworkView(r as never, { crypto: this.crypto, canViewValuation: canView })),
       total,
       nextCursor: skip + limit < total ? String(skip + limit) : null,
     };
@@ -108,7 +101,7 @@ export class ArtworkService {
     return toArtworkView(row as never, {
       crypto: this.crypto,
       canViewValuation: this.canViewValuation(user),
-      apiOrigin: this.apiOrigin(),
+      
     });
   }
 
@@ -205,7 +198,7 @@ export class ArtworkService {
       ? await this.prisma.artwork.findUniqueOrThrow({ where: { id: row.id }, include: ARTWORK_INCLUDE })
       : row;
 
-    return toArtworkView(final as never, { crypto: this.crypto, canViewValuation: this.canViewValuation(user), apiOrigin: this.apiOrigin() });
+    return toArtworkView(final as never, { crypto: this.crypto, canViewValuation: this.canViewValuation(user) });
   }
 
   async update(user: AuthUser, id: string, body: Record<string, unknown>): Promise<ArtworkView> {
@@ -252,7 +245,7 @@ export class ArtworkService {
     }
 
     const final = await this.prisma.artwork.findUniqueOrThrow({ where: { id }, include: ARTWORK_INCLUDE });
-    return toArtworkView(final as never, { crypto: this.crypto, canViewValuation: this.canViewValuation(user), apiOrigin: this.apiOrigin() });
+    return toArtworkView(final as never, { crypto: this.crypto, canViewValuation: this.canViewValuation(user) });
   }
 
   async attachMedia(user: AuthUser, id: string, file: { filename: string; mimetype: string; size: number }): Promise<ArtworkView> {
@@ -278,7 +271,7 @@ export class ArtworkService {
     });
 
     const final = await this.prisma.artwork.findUniqueOrThrow({ where: { id }, include: ARTWORK_INCLUDE });
-    return toArtworkView(final as never, { crypto: this.crypto, canViewValuation: this.canViewValuation(user), apiOrigin: this.apiOrigin() });
+    return toArtworkView(final as never, { crypto: this.crypto, canViewValuation: this.canViewValuation(user) });
   }
 
   async removeMedia(user: AuthUser, id: string, mediaId: string): Promise<ArtworkView> {
@@ -289,7 +282,7 @@ export class ArtworkService {
     await this.prisma.mediaAsset.delete({ where: { id: mediaId } });
 
     const final = await this.prisma.artwork.findUniqueOrThrow({ where: { id }, include: ARTWORK_INCLUDE });
-    return toArtworkView(final as never, { crypto: this.crypto, canViewValuation: this.canViewValuation(user), apiOrigin: this.apiOrigin() });
+    return toArtworkView(final as never, { crypto: this.crypto, canViewValuation: this.canViewValuation(user) });
   }
 
   async remove(user: AuthUser, id: string): Promise<void> {
@@ -315,7 +308,7 @@ export class ArtworkService {
     ]);
 
     const final = await this.prisma.artwork.findUniqueOrThrow({ where: { id }, include: ARTWORK_INCLUDE });
-    return toArtworkView(final as never, { crypto: this.crypto, canViewValuation: this.canViewValuation(user), apiOrigin: this.apiOrigin() });
+    return toArtworkView(final as never, { crypto: this.crypto, canViewValuation: this.canViewValuation(user) });
   }
 
   /** Builds a Prisma orderBy, routing relation-backed fields (artist) through their join. */

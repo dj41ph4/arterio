@@ -55,12 +55,14 @@ type ArtworkWithRelations = {
 
 export function toArtworkView(
   a: ArtworkWithRelations,
-  opts: { crypto: CryptoService; canViewValuation: boolean; apiOrigin?: string },
+  opts: { crypto: CryptoService; canViewValuation: boolean },
 ): ArtworkView {
-  const imageUrl = a.media?.[0] && opts.apiOrigin ? `${opts.apiOrigin}/uploads/${a.media[0].storageKey}` : null;
-  const media = opts.apiOrigin
-    ? (a.media ?? []).map((m) => ({ id: m.id, url: `${opts.apiOrigin}/uploads/${m.storageKey}` }))
-    : [];
+  // Relative paths, not absolute URLs: the API's own host (often `localhost`
+  // server-side, or a different port than the web app) is meaningless to the
+  // browser. The frontend resolves these against the host it actually used to
+  // reach the API — see apps/web/src/lib/api/client.ts.
+  const imageUrl = a.media?.[0] ? `/uploads/${a.media[0].storageKey}` : null;
+  const media = (a.media ?? []).map((m) => ({ id: m.id, url: `/uploads/${m.storageKey}` }));
   return {
     id: a.id,
     inventoryNumber: a.inventoryNumber,

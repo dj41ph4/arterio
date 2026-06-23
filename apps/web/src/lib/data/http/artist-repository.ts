@@ -1,4 +1,4 @@
-import { apiFetch, API_BASE_URL } from '@/lib/api/client';
+import { apiFetch, API_BASE_URL, toMediaUrl } from '@/lib/api/client';
 import { useAuthStore } from '@/stores/auth-store';
 import type { ArtistQuery, ArtistRepository, ArtistUpdateInput, ArtistView, AutoMergeReport, Paginated } from '../artist-repository';
 
@@ -39,7 +39,7 @@ function toArtistView(row: BackendArtistRow): ArtistView {
     movement: row.movement ?? undefined,
     externalIds: row.externalIds ?? {},
     externalUrls: toExternalUrls(row.externalIds ?? {}),
-    thumbnail: row.thumbnail ?? undefined,
+    thumbnail: toMediaUrl(row.thumbnail) ?? undefined,
     notableWorks: row.notableWorks ?? [],
     influencedBy: row.influencedBy ?? [],
     artworkCount: row._count?.artworks ?? row.artworks?.length ?? 0,

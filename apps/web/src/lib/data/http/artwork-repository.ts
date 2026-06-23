@@ -1,7 +1,17 @@
 import type { ArtworkQuery, ArtworkView, Paginated } from '@arterio/shared';
-import { apiFetch, API_BASE_URL, ApiError } from '@/lib/api/client';
+import { apiFetch, API_BASE_URL, ApiError, toMediaUrl } from '@/lib/api/client';
 import { useAuthStore } from '@/stores/auth-store';
 import type { ArtworkFacets, ArtworkRepository, DashboardStats } from '../types';
+
+/** Resolves the relative media paths returned by the API to absolute URLs. */
+function fixMedia(a: ArtworkView): ArtworkView {
+  return {
+    ...a,
+    primaryImageUrl: toMediaUrl(a.primaryImageUrl),
+    thumbnailUrl: toMediaUrl(a.thumbnailUrl),
+    media: a.media.map((m) => ({ ...m, url: toMediaUrl(m.url) })),
+  };
+}
 
 function toQueryString(query: ArtworkQuery): string {
   const params = new URLSearchParams();
@@ -23,12 +33,14 @@ function toQueryString(query: ArtworkQuery): string {
 export class HttpArtworkRepository implements ArtworkRepository {
   async list(query: ArtworkQuery): Promise<Paginated<ArtworkView>> {
     const qs = toQueryString(query);
-    return apiFetch<Paginated<ArtworkView>>(`/artworks${qs ? `?${qs}` : ''}`);
+    const page = await apiFetch<Paginated<ArtworkView>>(`/artworks${qs ? `?${qs}` : ''}`);
+    return { ...page, items: page.items.map(fixMedia) };
   }
 
   async getById(id: string): Promise<ArtworkView | null> {
     try {
-      return await apiFetch<ArtworkView>(`/artworks/${id}`);
+      const a = await apiFetch<ArtworkView>(`/artworks/${id}`);
+      return fixMedia(a);
     } catch {
       return null;
     }
@@ -84,17 +96,19 @@ export class HttpArtworkRepository implements ArtworkRepository {
   }
 
   async update(id: string, patch: Partial<ArtworkView>): Promise<ArtworkView> {
-    return apiFetch<ArtworkView>(`/artworks/${id}`, {
+    const a = await apiFetch<ArtworkView>(`/artworks/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(patch),
     });
+    return fixMedia(a);
   }
 
   async create(input: Partial<ArtworkView>): Promise<ArtworkView> {
-    return apiFetch<ArtworkView>('/artworks', {
+    const a = await apiFetch<ArtworkView>('/artworks', {
       method: 'POST',
       body: JSON.stringify(input),
     });
+    return fixMedia(a);
   }
 
   async remove(id: string): Promise<void> {
@@ -114,10 +128,11 @@ export class HttpArtworkRepository implements ArtworkRepository {
       const body = await res.json().catch(() => ({ message: res.statusText }));
       throw new ApiError(res.status, body.message ?? res.statusText);
     }
-    return res.json();
+    return fixMedia(await res.json());
   }
 
   async removeMedia(id: string, mediaId: string): Promise<ArtworkView> {
-    return apiFetch<ArtworkView>(`/artworks/${id}/media/${mediaId}`, { method: 'DELETE' });
+    const a = await apiFetch<ArtworkView>(`/artworks/${id}/media/${mediaId}`, { method: 'DELETE' });
+    return fixMedia(a);
   }
 }

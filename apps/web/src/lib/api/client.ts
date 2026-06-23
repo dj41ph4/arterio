@@ -30,6 +30,21 @@ function resolveApiBaseUrl(): string {
 
 export const API_BASE_URL = resolveApiBaseUrl();
 
+/** Origin (no /api/v1 suffix) — uploaded media is served from here, not under /api. */
+const API_ORIGIN = API_BASE_URL.replace(/\/api\/v1\/?$/, '');
+
+/**
+ * Resolves a relative media path (e.g. `/uploads/xyz.jpg`, returned by the API
+ * to avoid baking in a meaningless server-side host) against the origin the
+ * browser actually used. Absolute URLs (external Wikipedia/Wikidata portraits)
+ * are left untouched.
+ */
+export function toMediaUrl<T extends string | null | undefined>(path: T): T | string {
+  if (!path) return path;
+  if (/^https?:\/\//.test(path)) return path;
+  return `${API_ORIGIN}${path}`;
+}
+
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
