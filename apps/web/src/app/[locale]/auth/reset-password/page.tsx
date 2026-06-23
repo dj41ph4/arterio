@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { setRequestLocale } from 'next-intl/server';
 import { ResetPasswordForm } from '@/components/auth/reset-password-form';
 
@@ -11,7 +12,9 @@ export default async function ResetPasswordPage({
   return (
     <div className="flex min-h-dvh items-center justify-center p-6">
       <div className="w-full max-w-sm">
-        <ResetPasswordForm />
+        <Suspense fallback={null}>
+          <ResetPasswordForm />
+        </Suspense>
       </div>
     </div>
   );
