@@ -123,7 +123,11 @@ export class ArtworkService {
       this.prisma.artwork.groupBy({ by: ['condition'], where, _count: true }),
       this.prisma.artwork.groupBy({ by: ['collectionId'], where, _count: true }),
     ]);
-    const collections = await this.prisma.collection.findMany({ where });
+    // Collection has no `deletedAt` column — reusing the artwork `where`
+    // object here (as before this session's soft-delete change) threw
+    // PrismaClientValidationError and took the whole facets endpoint down,
+    // which the Collection page depends on to render at all.
+    const collections = await this.prisma.collection.findMany({ where: { organizationId: user.organizationId } });
     return {
       status: byStatus.map((s) => ({ value: s.status, label: s.status, count: s._count })),
       condition: byCondition.map((c) => ({ value: c.condition, label: c.condition, count: c._count })),
