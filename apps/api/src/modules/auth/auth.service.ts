@@ -120,6 +120,22 @@ export class AuthService {
     return this.issueTokens(authUser, meta);
   }
 
+  /** Enriches the JWT claims with display info the token doesn't carry (fullName, org name). */
+  async getProfile(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { organization: { select: { name: true } } },
+    });
+    if (!user) throw new UnauthorizedException('User not found');
+    return {
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      displayName: user.displayName,
+      organizationName: user.organization.name,
+    };
+  }
+
   get emailConfigured(): boolean {
     return this.email.isConfigured;
   }

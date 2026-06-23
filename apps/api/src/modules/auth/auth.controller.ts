@@ -41,9 +41,10 @@ export class AuthController {
   }
 
   @Get('me')
-  @ApiOperation({ summary: 'Return the authenticated principal' })
-  me(@CurrentUser() user: AuthUser) {
-    return user;
+  @ApiOperation({ summary: 'Return the authenticated principal, enriched with display info the JWT does not carry' })
+  async me(@CurrentUser() user: AuthUser) {
+    const profile = await this.auth.getProfile(user.sub);
+    return { ...user, ...profile };
   }
 
   @Public()

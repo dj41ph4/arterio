@@ -203,6 +203,7 @@
   },
   "auth": {
     "signIn": "Anmelden",
+    "signOut": "Abmelden",
     "signInSubtitle": "Willkommen zurück. Melden Sie sich bei Ihrer Sammlung an.",
     "email": "E-Mail",
     "password": "Passwort",

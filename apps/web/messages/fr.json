@@ -203,6 +203,7 @@
   },
   "auth": {
     "signIn": "Connexion",
+    "signOut": "Déconnexion",
     "signInSubtitle": "Bon retour. Connectez-vous à votre collection.",
     "email": "E-mail",
     "password": "Mot de passe",

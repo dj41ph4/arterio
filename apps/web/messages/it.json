@@ -203,6 +203,7 @@
   },
   "auth": {
     "signIn": "Accedi",
+    "signOut": "Esci",
     "signInSubtitle": "Bentornato. Accedi alla tua collezione.",
     "email": "E-mail",
     "password": "Password",

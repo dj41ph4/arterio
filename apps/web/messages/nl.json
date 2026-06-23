@@ -203,6 +203,7 @@
   },
   "auth": {
     "signIn": "Inloggen",
+    "signOut": "Uitloggen",
     "signInSubtitle": "Welkom terug. Log in op je collectie.",
     "email": "E-mail",
     "password": "Wachtwoord",
