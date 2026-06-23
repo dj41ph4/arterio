@@ -673,10 +673,16 @@ WHERE {
    * tagged 'web' in externalIds so it's visibly the least authoritative hit.
    */
   private async fetchFromWebSearch(name: string): Promise<FallbackHit | null> {
+    // Unlike the dedicated museum APIs above, this hits an arbitrary,
+    // unaccountable third-party site with no SLA. Enrichment runs
+    // synchronously per artist during spreadsheet import (see
+    // HttpArtistRepository.add()) — an unresponsive site without a timeout
+    // would stall the whole import, not just fail this one lookup.
     const searchRes = await fetch(`https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(`"${name}" artist`)}`, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Arterio/1.0)' },
-    });
-    if (!searchRes.ok) return null;
+      signal: AbortSignal.timeout(5_000),
+    }).catch(() => null);
+    if (!searchRes?.ok) return null;
     const html = await searchRes.text();
 
     // Lite results are plain `<a rel="nofollow" href="...">Title</a>` links —
@@ -695,8 +701,11 @@ WHERE {
     }
     if (!pageUrl) return null;
 
-    const pageRes = await fetch(pageUrl, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Arterio/1.0)' } });
-    if (!pageRes.ok) return null;
+    const pageRes = await fetch(pageUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Arterio/1.0)' },
+      signal: AbortSignal.timeout(5_000),
+    }).catch(() => null);
+    if (!pageRes?.ok) return null;
     const pageHtml = await pageRes.text();
 
     const meta =

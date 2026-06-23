@@ -20,7 +20,9 @@ function ApiServerQuestion({
 }) {
   const t = useTranslations('setup');
   const [showHostInput, setShowHostInput] = React.useState(false);
-  const [host, setHost] = React.useState('');
+  // Pre-fill with a previous answer, if any, as a convenience — never trusted
+  // silently (see the comment in SetupForm), the operator must confirm it.
+  const [host, setHost] = React.useState(() => getApiHostOverride()?.replace(/^https?:\/\//, '').replace(/\/api\/v1\/?$/, '') ?? '');
 
   return (
     <motion.div
@@ -224,10 +226,12 @@ export function SetupForm() {
   const [checking, setChecking] = React.useState(true);
   const [importResult, setImportResult] = React.useState<{ organizationName: string } | null>(null);
   // Asked once, before any API call: lets a split web/API deployment point at
-  // the right host instead of guessing from window.location. A previously
-  // saved answer (localStorage) skips the question on the next visit.
+  // the right host instead of guessing from window.location. Always re-asked
+  // here even if a previous answer is saved — landing back on /setup means
+  // the database is fresh, so a stale override from a previous install must
+  // not be trusted silently (it's still offered as the input's default).
   const [apiBase, setApiBase] = React.useState<string | null>(
-    process.env.NEXT_PUBLIC_DATA_SOURCE !== 'http' ? API_BASE_URL : getApiHostOverride(),
+    process.env.NEXT_PUBLIC_DATA_SOURCE !== 'http' ? API_BASE_URL : null,
   );
 
   React.useEffect(() => {
