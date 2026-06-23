@@ -7,6 +7,7 @@ import { validateEnv } from './core/config/configuration';
 import { PrismaModule } from './core/prisma/prisma.module';
 import { CryptoModule } from './core/crypto/crypto.module';
 import { AuditModule } from './core/audit/audit.module';
+import { EmailModule } from './core/email/email.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CatalogModule } from './modules/catalog/artwork.module';
 import { ArtistsModule } from './modules/artists/artists.module';
@@ -48,6 +49,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
     PrismaModule,
     CryptoModule,
     AuditModule,
+    EmailModule,
 
     // Features
     AuthModule,

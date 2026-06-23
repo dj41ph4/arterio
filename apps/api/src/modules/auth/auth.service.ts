@@ -1,17 +1,21 @@
 import {
   Injectable,
   UnauthorizedException,
+  BadRequestException,
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { CryptoService } from '../../core/crypto/crypto.service';
 import { AuditService } from '../../core/audit/audit.service';
+import { EmailService } from '../../core/email/email.service';
 import { TokenService } from './token.service';
 import type { AuthUser } from '../../common/types';
 import type { Env } from '../../core/config/configuration';
 
 const PLACEHOLDER_HASH = 'DEV_PLACEHOLDER_REPLACE_VIA_API';
+const RESET_TOKEN_TTL = 1_800; // 30 minutes
 
 @Injectable()
 export class AuthService {
@@ -23,6 +27,8 @@ export class AuthService {
     private readonly tokens: TokenService,
     private readonly config: ConfigService<Env, true>,
     private readonly audit: AuditService,
+    private readonly email: EmailService,
+    private readonly jwt: JwtService,
   ) {}
 
   /** Loads a user with its effective permission set. */
@@ -112,6 +118,59 @@ export class AuthService {
     if (!authUser) throw new UnauthorizedException('User not found');
     await this.prisma.user.update({ where: { id: userId }, data: { lastLoginAt: new Date() } });
     return this.issueTokens(authUser, meta);
+  }
+
+  get emailConfigured(): boolean {
+    return this.email.isConfigured;
+  }
+
+  /**
+   * Always returns { ok: true } whether or not the email exists or SMTP is
+   * configured — never reveals which emails are registered. Silently no-ops
+   * (logged server-side) when there's no outbound email infra; an admin can
+   * always fall back to MembersService.resetPassword.
+   */
+  async forgotPassword(email: string): Promise<{ ok: true }> {
+    if (!this.email.isConfigured) return { ok: true };
+    const user = await this.prisma.user.findFirst({ where: { email, status: 'active' } });
+    if (!user) return { ok: true };
+
+    const token = await this.jwt.signAsync(
+      { sub: user.id, type: 'password_reset' },
+      { secret: this.config.get('JWT_ACCESS_SECRET', { infer: true }), expiresIn: RESET_TOKEN_TTL },
+    );
+    const link = `${this.config.get('APP_URL', { infer: true })}/auth/reset-password?token=${token}`;
+    await this.email.send(
+      user.email,
+      'Réinitialisation de votre mot de passe Arterio',
+      `<p>Bonjour ${user.fullName},</p><p>Cliquez sur ce lien pour choisir un nouveau mot de passe (valable 30 minutes) :</p><p><a href="${link}">${link}</a></p><p>Si vous n'avez pas demandé cette réinitialisation, ignorez cet e-mail.</p>`,
+    );
+    return { ok: true };
+  }
+
+  async resetPassword(token: string, password: string): Promise<{ ok: true }> {
+    let payload: { sub: string; type: string };
+    try {
+      payload = await this.jwt.verifyAsync(token, { secret: this.config.get('JWT_ACCESS_SECRET', { infer: true }) });
+    } catch {
+      throw new BadRequestException('Invalid or expired reset link');
+    }
+    if (payload.type !== 'password_reset') throw new BadRequestException('Invalid reset token');
+
+    const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+    if (!user) throw new BadRequestException('Invalid reset link');
+
+    const passwordHash = await this.crypto.hashPassword(password);
+    await this.prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+    await this.prisma.refreshToken.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } });
+    await this.audit.log({
+      organizationId: user.organizationId,
+      actorId: user.id,
+      action: 'auth.password_reset_self_service',
+      resource: 'user',
+      resourceId: user.id,
+    });
+    return { ok: true };
   }
 
   async refresh(refreshToken: string, meta: { ip?: string; ua?: string }) {

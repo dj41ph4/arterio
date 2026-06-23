@@ -23,6 +23,10 @@ export function LoginForm() {
     google: false,
     microsoft: false,
   });
+  const [emailConfigured, setEmailConfigured] = React.useState(false);
+  const [forgotOpen, setForgotOpen] = React.useState(false);
+  const [forgotEmail, setForgotEmail] = React.useState('');
+  const [forgotSending, setForgotSending] = React.useState(false);
 
   // Fresh install, nobody has set up an admin account yet — send there
   // instead of showing a login form with nothing to log into.
@@ -44,7 +48,27 @@ export function LoginForm() {
       .then((r) => r.json())
       .then(setOauthProviders)
       .catch(() => undefined);
+    fetch(`${API_BASE_URL}/auth/email-status`)
+      .then((r) => r.json())
+      .then((d: { configured: boolean }) => setEmailConfigured(d.configured))
+      .catch(() => undefined);
   }, []);
+
+  async function handleForgotPassword(e: React.FormEvent) {
+    e.preventDefault();
+    setForgotSending(true);
+    // Always shows the same generic confirmation, success or not — matches the
+    // backend, which never reveals whether an email is registered.
+    await fetch(`${API_BASE_URL}/auth/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: forgotEmail }),
+    }).catch(() => undefined);
+    toast.success(t('forgotPasswordSent'));
+    setForgotOpen(false);
+    setForgotEmail('');
+    setForgotSending(false);
+  }
 
   function startOAuth(provider: 'google' | 'microsoft') {
     const params = new URLSearchParams({ returnOrigin: window.location.origin, locale });
@@ -118,7 +142,7 @@ export function LoginForm() {
           </label>
           <button
             type="button"
-            onClick={() => toast.info(t('forgotPasswordHint'))}
+            onClick={() => (emailConfigured ? setForgotOpen((v) => !v) : toast.info(t('forgotPasswordHint')))}
             className="text-xs font-medium text-primary hover:underline"
           >
             {t('forgotPassword')}
@@ -138,6 +162,25 @@ export function LoginForm() {
           />
         </div>
       </div>
+
+      {forgotOpen && (
+        <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3">
+          <p className="text-xs text-muted-foreground">{t('forgotPasswordPrompt')}</p>
+          <div className="flex gap-2">
+            <Input
+              type="email"
+              required
+              value={forgotEmail}
+              onChange={(e) => setForgotEmail(e.target.value)}
+              placeholder="you@museum.org"
+              className="flex-1"
+            />
+            <Button type="button" size="sm" disabled={forgotSending || !forgotEmail} onClick={handleForgotPassword}>
+              {forgotSending ? <Loader2 className="size-4 animate-spin" /> : t('forgotPasswordSend')}
+            </Button>
+          </div>
+        </div>
+      )}
 
       <Button type="submit" className="w-full shadow-elevated" size="lg" disabled={loading}>
         {loading ? (

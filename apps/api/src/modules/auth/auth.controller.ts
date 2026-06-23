@@ -3,7 +3,7 @@ import { Throttle } from '@nestjs/throttler';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { AuthService } from './auth.service';
-import { LoginDto, RefreshDto } from './dto';
+import { LoginDto, RefreshDto, ForgotPasswordDto, ResetPasswordDto } from './dto';
 import { CurrentUser, Public } from '../../common/decorators';
 import type { AuthUser } from '../../common/types';
 
@@ -44,5 +44,28 @@ export class AuthController {
   @ApiOperation({ summary: 'Return the authenticated principal' })
   me(@CurrentUser() user: AuthUser) {
     return user;
+  }
+
+  @Public()
+  @Get('email-status')
+  @ApiOperation({ summary: 'Whether outbound email is configured — drives the self-service reset UI' })
+  emailStatus() {
+    return { configured: this.auth.emailConfigured };
+  }
+
+  @Public()
+  @Throttle({ auth: { limit: 3, ttl: 60_000 } })
+  @Post('forgot-password')
+  @ApiOperation({ summary: 'Request a password reset email — always returns ok, never reveals whether the email exists' })
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.auth.forgotPassword(dto.email);
+  }
+
+  @Public()
+  @Throttle({ auth: { limit: 5, ttl: 60_000 } })
+  @Post('reset-password')
+  @ApiOperation({ summary: 'Set a new password from a reset link token' })
+  resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.auth.resetPassword(dto.token, dto.password);
   }
 }

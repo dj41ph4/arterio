@@ -23,3 +23,20 @@ export class TokenResponse {
   @ApiProperty() refreshToken!: string;
   @ApiProperty() expiresIn!: number;
 }
+
+export class ForgotPasswordDto {
+  @ApiProperty()
+  @IsEmail()
+  email!: string;
+}
+
+export class ResetPasswordDto {
+  @ApiProperty()
+  @IsString()
+  token!: string;
+
+  @ApiProperty({ minLength: 6 })
+  @IsString()
+  @MinLength(6)
+  password!: string;
+}

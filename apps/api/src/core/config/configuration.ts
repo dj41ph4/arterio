@@ -44,6 +44,19 @@ export const envSchema = z.object({
   RIJKSMUSEUM_API_KEY: z.string().optional(),
   HARVARD_API_KEY: z.string().optional(),
   SMITHSONIAN_API_KEY: z.string().optional(),
+
+  // Outbound email (password reset, future notifications) — optional. The
+  // platform runs fully without it; self-service password reset and email
+  // alerts simply stay unavailable until an operator sets these.
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().default(587),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASSWORD: z.string().optional(),
+  SMTP_SECURE: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+  SMTP_FROM: z.string().default('Arterio <no-reply@arterio.app>'),
 });
 
 export type Env = z.infer<typeof envSchema>;
