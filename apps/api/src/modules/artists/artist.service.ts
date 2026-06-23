@@ -357,9 +357,16 @@ export class ArtistService {
     }
     const movementId = await this.resolveMovementId(user, result.wikidata?.movement, result.wikidata?.movementLabels);
 
+    // The name the user typed is what triggered the search — once Wikidata
+    // confirms a match, its canonical label is authoritative (fixes typos,
+    // accents, name order). Only on this first auto-enrichment, never on a
+    // manual re-trigger later, so a curator's deliberate edit is never undone.
+    const correctedName = result.matchedName;
+
     await this.prisma.artist.update({
       where: { id },
       data: {
+        ...(correctedName ? { fullName: correctedName, sortName: this.toSortName(correctedName) } : {}),
         biography: result.biographies as object,
         externalIds,
         thumbnail: result.thumbnail ?? result.wikidata?.imageUrl ?? result.fallback?.imageUrl,

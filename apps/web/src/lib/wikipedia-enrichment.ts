@@ -10,6 +10,8 @@ const LANGS: Locale[] = ['en', 'fr', 'it', 'es', 'de', 'nl'];
 
 export interface LiveEnrichmentResult {
   qid: string | null;
+  /** Canonical name as labeled by Wikidata — should win over whatever the user typed. */
+  label?: string;
   birthDate?: string;
   deathDate?: string;
   nationality?: string;
@@ -23,7 +25,7 @@ export interface LiveEnrichmentResult {
   sourceUrls: { wikipedia?: string; wikidata?: string };
 }
 
-async function searchWikidataQid(name: string): Promise<string | null> {
+async function searchWikidataQid(name: string): Promise<{ id: string; label: string } | null> {
   const url = `https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(name)}&language=en&limit=5&format=json&type=item&origin=*`;
   const res = await fetch(url);
   if (!res.ok) return null;
@@ -33,7 +35,7 @@ async function searchWikidataQid(name: string): Promise<string | null> {
     data.search.find((r: { description?: string }) =>
       artistTerms.some((t) => r.description?.toLowerCase().includes(t)),
     ) ?? data.search[0];
-  return match?.id ?? null;
+  return match ? { id: match.id, label: match.label ?? name } : null;
 }
 
 async function fetchWikidataDetails(qid: string) {
@@ -101,14 +103,17 @@ async function fetchWikipediaBio(name: string, lang: Locale): Promise<{ text: st
 
 /** Full live enrichment pipeline — same logic as the NestJS ArtistEnrichmentService, run client-side. */
 export async function enrichArtistLive(fullName: string): Promise<LiveEnrichmentResult> {
-  const qid = await searchWikidataQid(fullName);
-  if (!qid) {
+  const found = await searchWikidataQid(fullName);
+  if (!found) {
     return { qid: null, biographies: {}, sourceUrls: {} };
   }
+  const { id: qid, label } = found;
 
   const [details, ...bios] = await Promise.all([
     fetchWikidataDetails(qid),
-    ...LANGS.map((lang) => fetchWikipediaBio(fullName, lang)),
+    // Search Wikipedia under Wikidata's canonical label, not the (possibly
+    // misspelled/differently-cased) name the user typed.
+    ...LANGS.map((lang) => fetchWikipediaBio(label, lang)),
   ]);
 
   const biographies: Partial<Record<Locale, string>> = {};
@@ -123,6 +128,7 @@ export async function enrichArtistLive(fullName: string): Promise<LiveEnrichment
 
   return {
     qid,
+    label,
     ...details,
     biographies,
     sourceUrls: {

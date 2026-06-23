@@ -189,14 +189,15 @@ export function ArtworkDetailView({ id }: { id: string }) {
           )}
 
           <Tabs defaultValue="overview" className="mt-6">
-            <TabsList className="w-full justify-start overflow-x-auto scrollbar-thin">
-              <TabsTrigger value="overview"><ScrollText />{t('artwork.tabs.overview')}</TabsTrigger>
-              <TabsTrigger value="media"><Images />{t('artwork.tabs.media')}</TabsTrigger>
-              <TabsTrigger value="documents"><FileText />{t('artwork.tabs.documents')}</TabsTrigger>
-              <TabsTrigger value="location"><MapPin />{t('artwork.tabs.location')}</TabsTrigger>
-              <TabsTrigger value="conservation"><Wrench />{t('artwork.tabs.conservation')}</TabsTrigger>
-              <TabsTrigger value="history"><History />{t('artwork.tabs.history')}</TabsTrigger>
+            <TabsList className="h-auto w-full flex-wrap justify-start gap-x-1 gap-y-1 border-b-0 pb-1">
+              <TabsTrigger value="overview" className="px-2.5"><ScrollText />{t('artwork.tabs.overview')}</TabsTrigger>
+              <TabsTrigger value="media" className="px-2.5"><Images />{t('artwork.tabs.media')}</TabsTrigger>
+              <TabsTrigger value="documents" className="px-2.5"><FileText />{t('artwork.tabs.documents')}</TabsTrigger>
+              <TabsTrigger value="location" className="px-2.5"><MapPin />{t('artwork.tabs.location')}</TabsTrigger>
+              <TabsTrigger value="conservation" className="px-2.5"><Wrench />{t('artwork.tabs.conservation')}</TabsTrigger>
+              <TabsTrigger value="history" className="px-2.5"><History />{t('artwork.tabs.history')}</TabsTrigger>
             </TabsList>
+            <Separator className="-mt-px" />
 
             <TabsContent value="overview">
               {description && (

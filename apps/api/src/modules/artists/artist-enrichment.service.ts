@@ -62,6 +62,8 @@ export interface ArtistEnrichmentResult {
   };
   /** Set only when Wikidata found nothing and a museum collection API confirmed the artist instead. */
   fallback?: FallbackHit;
+  /** Wikidata's canonical label for the matched entity — should win over a manually typed name. */
+  matchedName?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -130,7 +132,7 @@ export class ArtistEnrichmentService {
         fallback: fallback ?? undefined,
       };
     }
-    const { qid } = match;
+    const { qid, matchedName } = match;
     // Fetch the Wikidata entity FIRST so its per-language sitelinks (exact page
     // titles tied to this specific QID) are available before touching Wikipedia.
     // Searching Wikipedia by name independently — the previous approach — can
@@ -145,6 +147,7 @@ export class ArtistEnrichmentService {
 
     return {
       wikidata,
+      matchedName,
       biographies: Object.fromEntries(
         Object.entries(biographies)
           .filter(([, v]) => v?.extract)

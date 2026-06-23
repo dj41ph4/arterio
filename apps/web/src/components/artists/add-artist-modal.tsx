@@ -43,6 +43,10 @@ export function AddArtistModal({ open, onClose, onAdded }: AddArtistModalProps) 
         addLog('Aucune entrée Wikidata trouvée pour ce nom.');
         return;
       }
+      const canonicalName = data.label ?? name.trim();
+      if (canonicalName !== name.trim()) {
+        addLog(`Nom corrigé d'après Wikidata : "${canonicalName}"`);
+      }
       addLog(`Trouvé : ${data.qid} — ${data.nationality ?? 'nationalité inconnue'}`);
       addLog(`Récupération des biographies (${Object.keys(data.biographies).length} langues trouvées)…`);
       if (data.imageUrl) addLog('Portrait récupéré depuis Wikimedia Commons.');
@@ -51,8 +55,8 @@ export function AddArtistModal({ open, onClose, onAdded }: AddArtistModalProps) 
 
       const artist: ArtistView = {
         id: `artist-${data.qid.toLowerCase()}`,
-        fullName: name.trim(),
-        sortName: name.trim(),
+        fullName: canonicalName,
+        sortName: canonicalName,
         nationality: data.nationality,
         birthDate: data.birthDate,
         deathDate: data.deathDate,
@@ -80,7 +84,7 @@ export function AddArtistModal({ open, onClose, onAdded }: AddArtistModalProps) 
       setResult(artist);
       setStatus('done');
       addLog('Fiche artiste créée avec succès.');
-      toast.success(`${name} ajouté avec données Wikipedia en direct`);
+      toast.success(`${canonicalName} ajouté avec données Wikipedia en direct`);
     } catch (err) {
       setStatus('notfound');
       addLog(`Erreur : ${String(err)}`);
