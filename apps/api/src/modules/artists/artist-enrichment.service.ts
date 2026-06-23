@@ -104,6 +104,34 @@ const P_NOTABLE_WORK = 'P800';
 // Service
 // ---------------------------------------------------------------------------
 
+// Each enrich() call fans out into up to ~15 outbound HTTP requests (Wikidata
+// search/SPARQL/entities, Wikipedia per-locale, then the museum fallback
+// chain). Artist creation triggers this fire-and-forget, so a bulk spreadsheet
+// import that creates hundreds of artists in seconds used to fire hundreds of
+// these chains concurrently — exhausting the container's outbound sockets and,
+// because the API process shares the same fd pool, starving the actual import
+// requests still in flight (they'd start failing/timing out, which surfaced to
+// users as "import stops after a few rows and skips the rest"). This queue
+// caps how many enrich() calls run at once; the rest wait their turn instead
+// of all firing immediately.
+const MAX_CONCURRENT_ENRICHMENTS = 3;
+let activeEnrichments = 0;
+const enrichmentQueue: Array<() => void> = [];
+
+function acquireEnrichmentSlot(): Promise<void> {
+  if (activeEnrichments < MAX_CONCURRENT_ENRICHMENTS) {
+    activeEnrichments++;
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => enrichmentQueue.push(resolve));
+}
+
+function releaseEnrichmentSlot(): void {
+  const next = enrichmentQueue.shift();
+  if (next) next();
+  else activeEnrichments--;
+}
+
 @Injectable()
 export class ArtistEnrichmentService {
   private readonly logger = new Logger(ArtistEnrichmentService.name);
@@ -123,6 +151,15 @@ export class ArtistEnrichmentService {
    * Wikidata search.
    */
   async enrich(fullName: string, organizationId?: string): Promise<ArtistEnrichmentResult> {
+    await acquireEnrichmentSlot();
+    try {
+      return await this.doEnrich(fullName, organizationId);
+    } finally {
+      releaseEnrichmentSlot();
+    }
+  }
+
+  private async doEnrich(fullName: string, organizationId?: string): Promise<ArtistEnrichmentResult> {
     const match = await this.searchWikidata(fullName);
     if (!match) {
       const fallback = await this.fetchFallbackChain(fullName, organizationId);
@@ -233,7 +270,7 @@ export class ArtistEnrichmentService {
       `https://www.wikidata.org/w/api.php?action=wbsearchentities` +
       `&search=${encodeURIComponent(name)}&language=en&limit=8&format=json&type=item&origin=*`;
     try {
-      const res = await fetch(url, { headers: { 'User-Agent': 'Arterio/1.0' } });
+      const res = await fetch(url, { headers: { 'User-Agent': 'Arterio/1.0' }, signal: AbortSignal.timeout(8_000) });
       if (!res.ok) return null;
       const data = (await res.json()) as {
         search: Array<{ id: string; description?: string; label: string }>;
@@ -310,11 +347,13 @@ WHERE {
       const [scalarRes, listsRes, entityRes] = await Promise.all([
         fetch(`${WIKIDATA_SPARQL}?query=${encodeURIComponent(scalarSparql)}&format=json`, {
           headers: { 'Accept': 'application/sparql-results+json', 'User-Agent': 'Arterio/1.0' },
+          signal: AbortSignal.timeout(8_000),
         }),
         fetch(`${WIKIDATA_SPARQL}?query=${encodeURIComponent(listsSparql)}&format=json`, {
           headers: { 'Accept': 'application/sparql-results+json', 'User-Agent': 'Arterio/1.0' },
+          signal: AbortSignal.timeout(8_000),
         }),
-        fetch(entityUrl, { headers: { 'User-Agent': 'Arterio/1.0' } }),
+        fetch(entityUrl, { headers: { 'User-Agent': 'Arterio/1.0' }, signal: AbortSignal.timeout(8_000) }),
       ]);
 
       const scalarData = scalarRes.ok
@@ -385,7 +424,7 @@ WHERE {
     try {
       const res = await fetch(
         `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${qid}&languages=${encodeURIComponent(langs)}&props=labels&format=json&origin=*`,
-        { headers: { 'User-Agent': 'Arterio/1.0' } },
+        { headers: { 'User-Agent': 'Arterio/1.0' }, signal: AbortSignal.timeout(8_000) },
       );
       if (!res.ok) return {};
       const data = (await res.json()) as { entities?: Record<string, { labels?: Record<string, { value: string }> }> };
@@ -423,6 +462,7 @@ WHERE {
         try {
           const summaryRes = await fetch(WIKIPEDIA_REST(lang, pageTitle), {
             headers: { 'User-Agent': 'Arterio/1.0' },
+            signal: AbortSignal.timeout(8_000),
           });
           if (!summaryRes.ok) return;
           const summary = (await summaryRes.json()) as WikipediaSummary;
@@ -517,7 +557,7 @@ WHERE {
   private async fetchFromAic(name: string): Promise<FallbackHit | null> {
     const searchRes = await fetch(
       `https://api.artic.edu/api/v1/artists/search?q=${encodeURIComponent(name)}&limit=3`,
-      { headers: { 'User-Agent': 'Arterio/1.0' } },
+      { headers: { 'User-Agent': 'Arterio/1.0' }, signal: AbortSignal.timeout(8_000) },
     );
     if (!searchRes.ok) return null;
     const searchData = (await searchRes.json()) as { data?: Array<{ id: number; title: string }> };
@@ -526,7 +566,7 @@ WHERE {
 
     const detailRes = await fetch(
       `https://api.artic.edu/api/v1/artists/${hit.id}?fields=id,title,birth_date,death_date`,
-      { headers: { 'User-Agent': 'Arterio/1.0' } },
+      { headers: { 'User-Agent': 'Arterio/1.0' }, signal: AbortSignal.timeout(8_000) },
     );
     if (!detailRes.ok) return null;
     const detail = ((await detailRes.json()) as { data?: { title: string; birth_date?: number; death_date?: number } }).data;
@@ -545,13 +585,16 @@ WHERE {
   private async fetchFromMet(name: string): Promise<FallbackHit | null> {
     const searchRes = await fetch(
       `https://collectionapi.metmuseum.org/public/collection/v1/search?q=${encodeURIComponent(name)}&hasImages=true`,
+      { signal: AbortSignal.timeout(8_000) },
     );
     if (!searchRes.ok) return null;
     const { objectIDs } = (await searchRes.json()) as { objectIDs?: number[] };
     if (!objectIDs?.length) return null;
 
     for (const id of objectIDs.slice(0, 5)) {
-      const objRes = await fetch(`https://collectionapi.metmuseum.org/public/collection/v1/objects/${id}`);
+      const objRes = await fetch(`https://collectionapi.metmuseum.org/public/collection/v1/objects/${id}`, {
+        signal: AbortSignal.timeout(8_000),
+      });
       if (!objRes.ok) continue;
       const obj = (await objRes.json()) as {
         artistDisplayName?: string;
@@ -583,6 +626,7 @@ WHERE {
     if (!key) return null;
     const res = await fetch(
       `https://api.europeana.eu/record/v2/search.json?wskey=${key}&query=who%3A%22${encodeURIComponent(name)}%22&rows=5`,
+      { signal: AbortSignal.timeout(8_000) },
     );
     if (!res.ok) return null;
     const data = (await res.json()) as { items?: Array<{ edmAgentLabel?: Array<{ def?: string[] }>; edmIsShownBy?: string[]; guid?: string }> };
@@ -601,6 +645,7 @@ WHERE {
     if (!key) return null;
     const res = await fetch(
       `https://www.rijksmuseum.nl/api/en/collection?key=${key}&involvedMaker=${encodeURIComponent(name)}&ps=5&format=json`,
+      { signal: AbortSignal.timeout(8_000) },
     );
     if (!res.ok) return null;
     const data = (await res.json()) as { artObjects?: Array<{ principalOrFirstMaker?: string; webImage?: { url?: string }; links?: { web?: string } }> };
@@ -619,6 +664,7 @@ WHERE {
     if (!key) return null;
     const res = await fetch(
       `https://api.harvardartmuseums.org/object?apikey=${key}&person=${encodeURIComponent(name)}&size=5`,
+      { signal: AbortSignal.timeout(8_000) },
     );
     if (!res.ok) return null;
     const data = (await res.json()) as {
@@ -643,6 +689,7 @@ WHERE {
     if (!key) return null;
     const res = await fetch(
       `https://api.si.edu/openaccess/api/v1.0/search?api_key=${key}&q=${encodeURIComponent(`"${name}"`)}&rows=5`,
+      { signal: AbortSignal.timeout(8_000) },
     );
     if (!res.ok) return null;
     const data = (await res.json()) as {
