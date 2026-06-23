@@ -223,6 +223,14 @@
     "secured": "Protegido con cifrado de extremo a extremo y MFA"
   },
   "setup": {
+    "apiServerQuestion": "¿El servidor API está en esta misma máquina?",
+    "apiServerQuestionHint": "La mayoría de las instalaciones ejecutan la web y la API juntas. Responda \"servidor diferente\" solo si los desplegó en máquinas separadas.",
+    "apiServerSame": "Mismo servidor",
+    "apiServerDifferent": "Servidor diferente",
+    "apiServerHostLabel": "Dirección del servidor API",
+    "apiServerHostPlaceholder": "ej. 192.168.1.50 o api.ejemplo.com",
+    "apiServerBack": "Atrás",
+    "apiServerContinue": "Continuar",
     "title": "Bienvenido a Arterio",
     "subtitle": "Configuremos su espacio de trabajo",
     "organizationName": "Nombre de la organización",

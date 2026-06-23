@@ -3,14 +3,87 @@
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
 import { motion } from 'framer-motion';
-import { Building2, User, Mail, Lock, ArrowRight, Loader2, Upload, FileArchive } from 'lucide-react';
+import { Building2, User, Mail, Lock, ArrowRight, Loader2, Upload, FileArchive, Server, Network } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRouter } from '@/i18n/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuthStore } from '@/stores/auth-store';
 import { API_BASE_URL } from '@/lib/api/client';
+import { buildApiBaseFromHost, saveApiHostOverride, getApiHostOverride } from '@/lib/api/setup-host';
 import { cn } from '@/lib/utils';
+
+function ApiServerQuestion({
+  onAnswer,
+}: {
+  onAnswer: (apiBase: string) => void;
+}) {
+  const t = useTranslations('setup');
+  const [showHostInput, setShowHostInput] = React.useState(false);
+  const [host, setHost] = React.useState('');
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="w-full max-w-sm space-y-5"
+    >
+      <div>
+        <h2 className="text-lg font-semibold text-foreground">{t('apiServerQuestion')}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">{t('apiServerQuestionHint')}</p>
+      </div>
+
+      {!showHostInput ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => onAnswer(API_BASE_URL)}
+            className="flex flex-col items-center gap-2 rounded-xl border border-border p-4 text-center transition-colors hover:border-primary hover:bg-primary/5"
+          >
+            <Server className="size-6 text-primary" />
+            <span className="text-sm font-medium">{t('apiServerSame')}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowHostInput(true)}
+            className="flex flex-col items-center gap-2 rounded-xl border border-border p-4 text-center transition-colors hover:border-primary hover:bg-primary/5"
+          >
+            <Network className="size-6 text-primary" />
+            <span className="text-sm font-medium">{t('apiServerDifferent')}</span>
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <label className="text-sm font-medium" htmlFor="apiHost">{t('apiServerHostLabel')}</label>
+          <Input
+            id="apiHost"
+            value={host}
+            onChange={(e) => setHost(e.target.value)}
+            placeholder={t('apiServerHostPlaceholder')}
+            autoFocus
+          />
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={() => setShowHostInput(false)} className="flex-1">
+              {t('apiServerBack')}
+            </Button>
+            <Button
+              type="button"
+              disabled={!host.trim()}
+              onClick={() => {
+                const apiBase = buildApiBaseFromHost(host);
+                saveApiHostOverride(apiBase);
+                onAnswer(apiBase);
+              }}
+              className="flex-1"
+            >
+              {t('apiServerContinue')} <ArrowRight className="size-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+    </motion.div>
+  );
+}
 
 function NewOrgForm({ loading, onSubmit }: { loading: boolean; onSubmit: (e: React.FormEvent<HTMLFormElement>) => void }) {
   const t = useTranslations('setup');
@@ -150,13 +223,20 @@ export function SetupForm() {
   const [loading, setLoading] = React.useState(false);
   const [checking, setChecking] = React.useState(true);
   const [importResult, setImportResult] = React.useState<{ organizationName: string } | null>(null);
+  // Asked once, before any API call: lets a split web/API deployment point at
+  // the right host instead of guessing from window.location. A previously
+  // saved answer (localStorage) skips the question on the next visit.
+  const [apiBase, setApiBase] = React.useState<string | null>(
+    process.env.NEXT_PUBLIC_DATA_SOURCE !== 'http' ? API_BASE_URL : getApiHostOverride(),
+  );
 
   React.useEffect(() => {
+    if (!apiBase) return; // still waiting on the "same server?" question
     if (process.env.NEXT_PUBLIC_DATA_SOURCE !== 'http') {
       setChecking(false);
       return;
     }
-    fetch(`${API_BASE_URL}/setup/status`)
+    fetch(`${apiBase}/setup/status`)
       .then((r) => r.json())
       .then((data: { needsSetup: boolean }) => {
         if (!data.needsSetup) {
@@ -167,7 +247,7 @@ export function SetupForm() {
         }
       })
       .catch(() => setChecking(false));
-  }, [router, t]);
+  }, [apiBase, router, t]);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -195,7 +275,7 @@ export function SetupForm() {
     }
 
     try {
-      const res = await fetch(`${API_BASE_URL}/setup`, {
+      const res = await fetch(`${apiBase}/setup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ organizationName, fullName, email, password }),
@@ -222,7 +302,7 @@ export function SetupForm() {
     try {
       const form = new FormData();
       form.append('file', file);
-      const res = await fetch(`${API_BASE_URL}/setup/import`, { method: 'POST', body: form });
+      const res = await fetch(`${apiBase}/setup/import`, { method: 'POST', body: form });
       if (!res.ok) {
         const body = await res.json().catch(() => ({ message: 'Import failed' }));
         throw new Error(body.message ?? 'Import failed');
@@ -235,6 +315,8 @@ export function SetupForm() {
       setLoading(false);
     }
   }
+
+  if (!apiBase) return <ApiServerQuestion onAnswer={setApiBase} />;
 
   if (checking) return null;
 

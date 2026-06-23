@@ -223,6 +223,14 @@
     "secured": "Secured with end-to-end encryption & MFA"
   },
   "setup": {
+    "apiServerQuestion": "Is the API server on this same machine?",
+    "apiServerQuestionHint": "Most installs run the web app and API together. Answer \"different server\" only if you deployed them on separate machines.",
+    "apiServerSame": "Same server",
+    "apiServerDifferent": "Different server",
+    "apiServerHostLabel": "API server address",
+    "apiServerHostPlaceholder": "e.g. 192.168.1.50 or api.example.com",
+    "apiServerBack": "Back",
+    "apiServerContinue": "Continue",
     "title": "Welcome to Arterio",
     "subtitle": "Let's set up your workspace",
     "organizationName": "Organization name",

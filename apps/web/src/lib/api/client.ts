@@ -1,21 +1,30 @@
 import { useAuthStore } from '@/stores/auth-store';
 
+/** localStorage key for a manually-configured API host — see lib/api/setup-host.ts. */
+export const API_HOST_OVERRIDE_KEY = 'arterio_api_host';
+
 /**
  * Resolve the API base URL.
  *
- * `NEXT_PUBLIC_API_URL` (baked at build time) always wins when set — use it to
- * pin a fixed public domain. Otherwise we derive the URL **in the browser** from
- * the host that served the page, so a self-hosted install works on any IP /
- * hostname without rebuilding the image:
- *   - Behind nginx (port 80/443):      same origin, API under `/api/v1`.
- *   - Direct ports (web :3000):        same host, API on `:4000/api/v1`.
- *   - Local dev (localhost:3000):      localhost:4000/api/v1.
+ * Priority order:
+ *   1. `NEXT_PUBLIC_API_URL` (baked at build time) — pins a fixed public domain.
+ *   2. A manual override saved to localStorage during first-run setup — for
+ *      the split-deployment case where the API genuinely runs on a different
+ *      host than the web app (see the "same server?" question in SetupForm).
+ *   3. Derived **in the browser** from the host that served the page, so a
+ *      typical self-hosted install works on any IP/hostname with no config:
+ *      - Behind nginx (port 80/443):  same origin, API under `/api/v1`.
+ *      - Direct ports (web :3000):    same host, API on `:4000/api/v1`.
+ *      - Local dev (localhost:3000):  localhost:4000/api/v1.
  */
 function resolveApiBaseUrl(): string {
   const baked = process.env.NEXT_PUBLIC_API_URL;
   if (baked) return baked;
 
   if (typeof window !== 'undefined') {
+    const override = window.localStorage?.getItem(API_HOST_OVERRIDE_KEY);
+    if (override) return override;
+
     const { protocol, hostname, port } = window.location;
     // Served through nginx on the standard ports → API is same-origin under /api.
     if (port === '' || port === '80' || port === '443') {

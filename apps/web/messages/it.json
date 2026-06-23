@@ -223,6 +223,14 @@
     "secured": "Protetto con crittografia end-to-end e MFA"
   },
   "setup": {
+    "apiServerQuestion": "Il server API è sulla stessa macchina?",
+    "apiServerQuestionHint": "La maggior parte delle installazioni esegue web app e API insieme. Rispondi \"server diverso\" solo se li hai distribuiti su macchine separate.",
+    "apiServerSame": "Stesso server",
+    "apiServerDifferent": "Server diverso",
+    "apiServerHostLabel": "Indirizzo del server API",
+    "apiServerHostPlaceholder": "es. 192.168.1.50 o api.esempio.com",
+    "apiServerBack": "Indietro",
+    "apiServerContinue": "Continua",
     "title": "Benvenuto su Arterio",
     "subtitle": "Configuriamo il tuo spazio di lavoro",
     "organizationName": "Nome dell'organizzazione",

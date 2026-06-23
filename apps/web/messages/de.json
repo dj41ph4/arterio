@@ -223,6 +223,14 @@
     "secured": "Gesichert mit Ende-zu-Ende-Verschlüsselung und MFA"
   },
   "setup": {
+    "apiServerQuestion": "Läuft der API-Server auf derselben Maschine?",
+    "apiServerQuestionHint": "Die meisten Installationen betreiben Web-App und API zusammen. Wählen Sie \"Anderer Server\" nur, wenn Sie sie auf getrennten Maschinen bereitgestellt haben.",
+    "apiServerSame": "Gleicher Server",
+    "apiServerDifferent": "Anderer Server",
+    "apiServerHostLabel": "Adresse des API-Servers",
+    "apiServerHostPlaceholder": "z. B. 192.168.1.50 oder api.beispiel.com",
+    "apiServerBack": "Zurück",
+    "apiServerContinue": "Weiter",
     "title": "Willkommen bei Arterio",
     "subtitle": "Richten wir Ihren Arbeitsbereich ein",
     "organizationName": "Name der Organisation",

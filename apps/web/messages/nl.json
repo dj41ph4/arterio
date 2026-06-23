@@ -223,6 +223,14 @@
     "secured": "Beveiligd met end-to-end-encryptie en MFA"
   },
   "setup": {
+    "apiServerQuestion": "Draait de API-server op dezelfde machine?",
+    "apiServerQuestionHint": "De meeste installaties draaien de webapp en API samen. Kies \"andere server\" alleen als je ze op afzonderlijke machines hebt geïnstalleerd.",
+    "apiServerSame": "Zelfde server",
+    "apiServerDifferent": "Andere server",
+    "apiServerHostLabel": "Adres van de API-server",
+    "apiServerHostPlaceholder": "bv. 192.168.1.50 of api.voorbeeld.com",
+    "apiServerBack": "Terug",
+    "apiServerContinue": "Doorgaan",
     "title": "Welkom bij Arterio",
     "subtitle": "Laten we je werkruimte instellen",
     "organizationName": "Naam van de organisatie",

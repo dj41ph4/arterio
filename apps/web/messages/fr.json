@@ -223,6 +223,14 @@
     "secured": "Sécurisé par chiffrement de bout en bout et MFA"
   },
   "setup": {
+    "apiServerQuestion": "Le serveur API est-il sur cette même machine ?",
+    "apiServerQuestionHint": "La plupart des installations font tourner le site web et l'API ensemble. Répondez « serveur différent » uniquement si vous les avez déployés sur des machines séparées.",
+    "apiServerSame": "Même serveur",
+    "apiServerDifferent": "Serveur différent",
+    "apiServerHostLabel": "Adresse du serveur API",
+    "apiServerHostPlaceholder": "ex. 192.168.1.50 ou api.exemple.com",
+    "apiServerBack": "Retour",
+    "apiServerContinue": "Continuer",
     "title": "Bienvenue sur Arterio",
     "subtitle": "Configurons votre espace de travail",
     "organizationName": "Nom de l'organisation",
