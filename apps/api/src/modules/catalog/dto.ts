@@ -28,6 +28,12 @@ export class ListArtworksQueryDto {
   @IsArray()
   collectionId?: string[];
 
+  @ApiPropertyOptional({ isArray: true })
+  @IsOptional()
+  @Transform(toArray)
+  @IsArray()
+  artistId?: string[];
+
   @ApiPropertyOptional()
   @IsOptional()
   @Transform(({ value }) => value === 'true' || value === true)

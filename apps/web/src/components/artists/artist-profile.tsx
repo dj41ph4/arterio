@@ -22,8 +22,10 @@ import {
   User,
 } from 'lucide-react';
 import { artistRepository, type ArtistView } from '@/lib/data/artist-repository';
+import { artworkRepository } from '@/lib/data';
 import type { Locale } from '@arterio/shared';
 import { resolveLocalized } from '@arterio/shared';
+import { ArtworkThumbnail } from '@/components/artwork/thumbnail';
 import { EditArtistModal } from './edit-artist-modal';
 
 // ---------------------------------------------------------------------------
@@ -152,6 +154,59 @@ export function ArtistProfile({ id, locale }: { id: string; locale: string }) {
   }
 
   return <ArtistProfileContent artist={artist} locale={locale} />;
+}
+
+function ArtistArtworksSection({
+  artistId,
+  count,
+  locale,
+}: {
+  artistId: string;
+  count: number;
+  locale: Locale;
+}) {
+  const t = useTranslations();
+  const router = useRouter();
+  const { data, isLoading } = useQuery({
+    queryKey: ['artist-artworks', artistId],
+    queryFn: () => artworkRepository.list({ artistId: [artistId], limit: 24 }),
+  });
+
+  return (
+    <section className="rounded-xl border border-border bg-card p-6 space-y-4">
+      <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+        <ImageIcon className="h-4 w-4 text-primary" />
+        {t('artists.worksInCollection', { count })}
+      </h2>
+      <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
+        {isLoading
+          ? Array.from({ length: Math.min(count, 8) }).map((_, i) => (
+              <div key={i} className="aspect-square rounded-lg bg-muted" />
+            ))
+          : data?.items.map((artwork) => (
+              <button
+                key={artwork.id}
+                onClick={() => router.push(`/${locale}/artworks/${artwork.id}`)}
+                className="group space-y-1.5 text-left"
+              >
+                <ArtworkThumbnail
+                  colors={artwork.dominantColors}
+                  src={artwork.thumbnailUrl}
+                  alt={resolveLocalized(artwork.title, locale)}
+                  className="aspect-square w-full transition-transform group-hover:scale-[1.02]"
+                  rounded="lg"
+                />
+                <p className="truncate text-xs font-medium text-foreground">
+                  {resolveLocalized(artwork.title, locale) || t('artwork.fields.title')}
+                </p>
+                <p className="truncate font-mono text-[10px] text-muted-foreground">
+                  {artwork.inventoryNumber}
+                </p>
+              </button>
+            ))}
+      </div>
+    </section>
+  );
 }
 
 function ArtistProfileContent({ artist, locale }: { artist: ArtistView; locale: string }) {
@@ -325,22 +380,9 @@ function ArtistProfileContent({ artist, locale }: { artist: ArtistView; locale: 
               </section>
             )}
 
-            {/* Works in collection (placeholder grid) */}
+            {/* Works in collection */}
             {artist.artworkCount > 0 && (
-              <section className="rounded-xl border border-border bg-card p-6 space-y-4">
-                <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                  <ImageIcon className="h-4 w-4 text-primary" />
-                  {t('artists.worksInCollection', { count: artist.artworkCount })}
-                </h2>
-                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                  {Array.from({ length: Math.min(artist.artworkCount, 8) }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="aspect-square rounded-lg bg-muted animate-none"
-                    />
-                  ))}
-                </div>
-              </section>
+              <ArtistArtworksSection artistId={artist.id} count={artist.artworkCount} locale={currentLocale} />
             )}
           </div>
 

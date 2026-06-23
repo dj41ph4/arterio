@@ -8,11 +8,13 @@ function toQueryString(query: ArtworkQuery): string {
   if (query.search) params.set('search', query.search);
   if (query.status?.length) params.set('status', query.status.join(','));
   if (query.collectionId?.length) params.set('collectionId', query.collectionId.join(','));
+  if (query.artistId?.length) params.set('artistId', query.artistId.join(','));
   if (query.favorite) params.set('favorite', 'true');
   if (query.sort) {
     params.set('sortField', query.sort.field);
     params.set('sortDir', query.sort.dir);
   }
+  if (query.locale) params.set('locale', query.locale);
   if (query.cursor) params.set('cursor', query.cursor);
   if (query.limit) params.set('limit', String(query.limit));
   return params.toString();
