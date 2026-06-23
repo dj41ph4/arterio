@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@arterio/shared';
 import { DocumentService } from './document.service';
@@ -17,8 +17,8 @@ export class DocumentController {
   @Get()
   @RequirePermissions(PERMISSIONS.ARTWORK_READ)
   @ApiOperation({ summary: 'List documents' })
-  list(@CurrentUser() user: AuthUser) {
-    return this.documents.list(user);
+  list(@CurrentUser() user: AuthUser, @Query('artworkId') artworkId?: string) {
+    return this.documents.list(user, artworkId);
   }
 
   @Post()

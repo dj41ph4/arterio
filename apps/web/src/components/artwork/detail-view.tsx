@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { motion } from 'framer-motion';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   ArrowLeft,
@@ -20,11 +20,17 @@ import {
   ScrollText,
   ShieldCheck,
   Trash2,
+  Truck,
+  Frame,
+  Plus,
+  ArrowDownToLine,
+  ArrowUpFromLine,
 } from 'lucide-react';
 import type { Locale } from '@arterio/shared';
 import { resolveLocalized } from '@arterio/shared';
 import { useArtwork, useToggleFavorite } from '@/hooks/use-artworks';
 import { artworkRepository } from '@/lib/data';
+import { apiFetch } from '@/lib/api/client';
 import { Link, useRouter } from '@/i18n/navigation';
 import { formatCurrency, formatDate, formatDimensions } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -34,6 +40,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
+import { CreateDocumentModal } from '@/components/documents/create-document-modal';
 import { ArtworkThumbnail } from './thumbnail';
 import { StatusBadge, ConditionBadge } from './status-badge';
 import { ArtworkFormModal } from './artwork-form-modal';
@@ -193,6 +200,8 @@ export function ArtworkDetailView({ id }: { id: string }) {
               <TabsTrigger value="overview" className="px-2.5"><ScrollText />{t('artwork.tabs.overview')}</TabsTrigger>
               <TabsTrigger value="media" className="px-2.5"><Images />{t('artwork.tabs.media')}</TabsTrigger>
               <TabsTrigger value="documents" className="px-2.5"><FileText />{t('artwork.tabs.documents')}</TabsTrigger>
+              <TabsTrigger value="loans" className="px-2.5"><Truck />{t('artwork.tabs.loans')}</TabsTrigger>
+              <TabsTrigger value="exhibitions" className="px-2.5"><Frame />{t('artwork.tabs.exhibitions')}</TabsTrigger>
               <TabsTrigger value="location" className="px-2.5"><MapPin />{t('artwork.tabs.location')}</TabsTrigger>
               <TabsTrigger value="conservation" className="px-2.5"><Wrench />{t('artwork.tabs.conservation')}</TabsTrigger>
               <TabsTrigger value="history" className="px-2.5"><History />{t('artwork.tabs.history')}</TabsTrigger>
@@ -245,7 +254,23 @@ export function ArtworkDetailView({ id }: { id: string }) {
               <MediaTab artworkId={art.id} media={art.media} />
             </TabsContent>
 
-            {(['documents', 'location', 'conservation', 'history'] as const).map((tab) => (
+            <TabsContent value="documents">
+              <ArtworkDocumentsTab artworkId={art.id} artworkTitle={title} />
+            </TabsContent>
+
+            <TabsContent value="loans">
+              <ArtworkLoansTab artworkId={art.id} />
+            </TabsContent>
+
+            <TabsContent value="exhibitions">
+              <ArtworkExhibitionsTab artworkId={art.id} />
+            </TabsContent>
+
+            <TabsContent value="location">
+              <ArtworkLocationTab artworkId={art.id} currentLocationId={art.currentLocationId} currentLocationName={art.currentLocationName} />
+            </TabsContent>
+
+            {(['conservation', 'history'] as const).map((tab) => (
               <TabsContent key={tab} value={tab}>
                 <PlaceholderTab label={t(`artwork.tabs.${tab}`)} />
               </TabsContent>
@@ -255,6 +280,226 @@ export function ArtworkDetailView({ id }: { id: string }) {
       </div>
 
       <ArtworkFormModal open={editOpen} onClose={() => setEditOpen(false)} artwork={art} />
+    </div>
+  );
+}
+
+interface ArtworkDocumentRow {
+  id: string;
+  title: string;
+  type: 'invoice' | 'certificate' | 'report' | 'insurance';
+  uploadedAt: string;
+}
+
+function ArtworkDocumentsTab({ artworkId, artworkTitle }: { artworkId: string; artworkTitle: string }) {
+  const qc = useQueryClient();
+  const [createOpen, setCreateOpen] = React.useState(false);
+  const { data, isLoading } = useQuery({
+    queryKey: ['artwork-documents', artworkId],
+    queryFn: () => apiFetch<{ data: ArtworkDocumentRow[] }>(`/documents?artworkId=${artworkId}`),
+  });
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Supprimer ce document ?')) return;
+    try {
+      await apiFetch(`/documents/${id}`, { method: 'DELETE' });
+      qc.invalidateQueries({ queryKey: ['artwork-documents', artworkId] });
+      toast.success('Document supprimé');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Échec de la suppression');
+    }
+  };
+
+  const docs = data?.data ?? [];
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-end">
+        <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)} className="gap-1.5">
+          <Plus className="size-3.5" /> Joindre un document
+        </Button>
+      </div>
+      <CreateDocumentModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={() => qc.invalidateQueries({ queryKey: ['artwork-documents', artworkId] })}
+        defaultArtworkId={artworkId}
+        defaultArtworkTitle={artworkTitle}
+      />
+      {isLoading ? (
+        <Skeleton className="h-24 w-full" />
+      ) : docs.length === 0 ? (
+        <PlaceholderEmpty icon={FileText} label="Aucun document lié à cette œuvre" />
+      ) : (
+        <div className="divide-y divide-border rounded-xl border border-border bg-card">
+          {docs.map((doc) => (
+            <div key={doc.id} className="flex items-center gap-3 px-4 py-3">
+              <FileText className="size-4 shrink-0 text-muted-foreground" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-foreground">{doc.title}</p>
+                <p className="text-xs text-muted-foreground">{formatDate(doc.uploadedAt)}</p>
+              </div>
+              <Badge tone="neutral" className="shrink-0">{doc.type}</Badge>
+              <button
+                onClick={() => handleDelete(doc.id)}
+                className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+              >
+                <Trash2 className="size-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ArtworkLoanRow {
+  id: string;
+  direction: 'in' | 'out';
+  counterparty: string;
+  startDate: string;
+  endDate: string;
+  status: 'pending' | 'active' | 'returned' | 'overdue';
+}
+
+const LOAN_STATUS_TONE = { pending: 'info', active: 'success', returned: 'neutral', overdue: 'danger' } as const;
+
+function ArtworkLoansTab({ artworkId }: { artworkId: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['artwork-loans', artworkId],
+    queryFn: () => apiFetch<{ data: ArtworkLoanRow[] }>(`/loans?artworkId=${artworkId}`),
+  });
+  const loans = data?.data ?? [];
+
+  if (isLoading) return <Skeleton className="h-24 w-full" />;
+  if (loans.length === 0) return <PlaceholderEmpty icon={Truck} label="Cette œuvre n'a jamais été prêtée" />;
+
+  return (
+    <div className="space-y-2">
+      {loans.map((loan) => (
+        <div key={loan.id} className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
+          <div className={cn('flex size-8 shrink-0 items-center justify-center rounded-lg', loan.direction === 'out' ? 'bg-blue-500/12 text-blue-600 dark:text-blue-400' : 'bg-violet-500/12 text-violet-600 dark:text-violet-400')}>
+            {loan.direction === 'out' ? <ArrowUpFromLine className="size-4" /> : <ArrowDownToLine className="size-4" />}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-foreground">{loan.counterparty}</p>
+            <p className="text-xs text-muted-foreground">{formatDate(loan.startDate)} – {formatDate(loan.endDate)}</p>
+          </div>
+          <Badge tone={LOAN_STATUS_TONE[loan.status]} dot className="shrink-0">{loan.status}</Badge>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface ArtworkExhibitionRow {
+  id: string;
+  title: string;
+  venue: string;
+  startDate: string;
+  endDate: string;
+  color: string;
+}
+
+function ArtworkExhibitionsTab({ artworkId }: { artworkId: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['artwork-exhibitions', artworkId],
+    queryFn: () => apiFetch<{ data: ArtworkExhibitionRow[] }>(`/exhibitions?artworkId=${artworkId}`),
+  });
+  const exhibitions = data?.data ?? [];
+
+  if (isLoading) return <Skeleton className="h-24 w-full" />;
+  if (exhibitions.length === 0) return <PlaceholderEmpty icon={Frame} label="Cette œuvre n'a participé à aucune exposition" />;
+
+  return (
+    <div className="space-y-2">
+      {exhibitions.map((ex) => (
+        <div key={ex.id} className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
+          <span className="size-2.5 shrink-0 rounded-full" style={{ background: ex.color }} />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-foreground">{ex.title}</p>
+            <p className="truncate text-xs text-muted-foreground">{ex.venue}</p>
+          </div>
+          <span className="shrink-0 text-xs text-muted-foreground">{formatDate(ex.startDate)} – {formatDate(ex.endDate)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface LocationOption {
+  id: string;
+  room: string;
+  building: string;
+}
+
+function ArtworkLocationTab({
+  artworkId,
+  currentLocationId,
+  currentLocationName,
+}: {
+  artworkId: string;
+  currentLocationId?: string | null;
+  currentLocationName?: string | null;
+}) {
+  const qc = useQueryClient();
+  const [selected, setSelected] = React.useState<string>(currentLocationId ?? '');
+  const { data } = useQuery({
+    queryKey: ['locations-all'],
+    queryFn: () => apiFetch<{ data: LocationOption[] }>('/locations'),
+  });
+  const locations = data?.data ?? [];
+
+  const moveMutation = useMutation({
+    mutationFn: (locationId: string) =>
+      apiFetch(`/artworks/${artworkId}/location`, { method: 'PATCH', body: JSON.stringify({ locationId: locationId || null }) }),
+    onSuccess: () => {
+      toast.success('Œuvre déplacée');
+      qc.invalidateQueries({ queryKey: ['artwork', artworkId] });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Échec du déplacement'),
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-border bg-card p-4">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Emplacement actuel</p>
+        <p className="mt-1 flex items-center gap-2 text-sm font-medium text-foreground">
+          <MapPin className="size-4 text-primary" /> {currentLocationName || 'Non renseigné'}
+        </p>
+      </div>
+      <div className="flex items-end gap-2">
+        <div className="flex-1">
+          <label className="text-xs font-medium text-muted-foreground">Déplacer vers</label>
+          <select
+            value={selected}
+            onChange={(e) => setSelected(e.target.value)}
+            className="mt-1.5 w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="">— Aucun —</option>
+            {locations.map((loc) => (
+              <option key={loc.id} value={loc.id}>{loc.building ? `${loc.building} · ${loc.room}` : loc.room}</option>
+            ))}
+          </select>
+        </div>
+        <Button
+          size="sm"
+          onClick={() => moveMutation.mutate(selected)}
+          disabled={moveMutation.isPending || selected === (currentLocationId ?? '')}
+        >
+          {moveMutation.isPending ? 'Déplacement…' : 'Déplacer'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function PlaceholderEmpty({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
+  return (
+    <div className="flex min-h-[120px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-dotted text-center">
+      <Icon className="size-6 text-muted-foreground" />
+      <p className="text-sm text-muted-foreground">{label}</p>
     </div>
   );
 }

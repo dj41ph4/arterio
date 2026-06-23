@@ -104,6 +104,17 @@ export class ArtworkController {
     return { ok: true };
   }
 
+  @Patch(':id/location')
+  @RequirePermissions(PERMISSIONS.ARTWORK_UPDATE)
+  @ApiOperation({ summary: 'Move an artwork to a new location, recording it in the movement history' })
+  moveLocation(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() body: { locationId: string | null; reason?: string },
+  ) {
+    return this.artworks.moveLocation(user, id, body.locationId, body.reason);
+  }
+
   @Post(':id/media')
   @RequirePermissions(PERMISSIONS.ARTWORK_UPDATE)
   @ApiOperation({ summary: 'Upload an image for an artwork (becomes the primary thumbnail if first)' })

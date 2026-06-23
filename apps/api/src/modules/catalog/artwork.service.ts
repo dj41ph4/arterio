@@ -296,6 +296,28 @@ export class ArtworkService {
     await this.prisma.artwork.deleteMany({ where: { id, organizationId: user.organizationId } });
   }
 
+  /** Moves an artwork to a new location, keeping a MovementRecord of where it came from. */
+  async moveLocation(user: AuthUser, id: string, locationId: string | null, reason?: string): Promise<ArtworkView> {
+    const artwork = await this.prisma.artwork.findFirst({ where: { id, organizationId: user.organizationId } });
+    if (!artwork) throw new NotFoundException('Artwork not found');
+
+    await this.prisma.$transaction([
+      this.prisma.movementRecord.create({
+        data: {
+          artworkId: id,
+          fromId: artwork.currentLocationId,
+          toId: locationId,
+          reason: reason || null,
+          movedById: user.sub,
+        },
+      }),
+      this.prisma.artwork.update({ where: { id }, data: { currentLocationId: locationId } }),
+    ]);
+
+    const final = await this.prisma.artwork.findUniqueOrThrow({ where: { id }, include: ARTWORK_INCLUDE });
+    return toArtworkView(final as never, { crypto: this.crypto, canViewValuation: this.canViewValuation(user), apiOrigin: this.apiOrigin() });
+  }
+
   /** Builds a Prisma orderBy, routing relation-backed fields (artist) through their join. */
   private buildOrderBy(field: string, dir: 'asc' | 'desc'): Record<string, unknown> {
     if (field === 'artistName') return { artist: { fullName: dir } };

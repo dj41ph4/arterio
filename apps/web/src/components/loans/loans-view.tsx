@@ -2,11 +2,14 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Truck, Search, ArrowDownToLine, ArrowUpFromLine } from 'lucide-react';
+import { toast } from 'sonner';
+import { Truck, Search, ArrowDownToLine, ArrowUpFromLine, Plus, CornerDownLeft, Check, Trash2 } from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import { apiFetch } from '@/lib/api/client';
 import { PageHeader } from '@/components/app-shell/page-header';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { CreateLoanModal } from './create-loan-modal';
 
 const USE_API = process.env.NEXT_PUBLIC_DATA_SOURCE === 'http';
 
@@ -39,13 +42,17 @@ export function LoansView() {
   const t = useTranslations();
   const [search, setSearch] = useState('');
   const [loans, setLoans] = useState<LoanView[]>(USE_API ? [] : DEMO_LOANS);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
-  useEffect(() => {
+  const refresh = () => {
     if (!USE_API) return;
     apiFetch<{ data: LoanView[] }>('/loans')
       .then((res) => setLoans(res.data))
       .catch(() => setLoans([]));
-  }, []);
+  };
+
+  useEffect(refresh, []);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -54,11 +61,61 @@ export function LoansView() {
       .sort((a, b) => +new Date(b.startDate) - +new Date(a.startDate));
   }, [search, loans]);
 
+  const handleReturn = async (id: string) => {
+    setBusyId(id);
+    try {
+      await apiFetch(`/loans/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'returned' }) });
+      toast.success('Œuvre marquée comme retournée');
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Échec de la mise à jour');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleApprove = async (id: string) => {
+    setBusyId(id);
+    try {
+      await apiFetch(`/loans/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'active' }) });
+      toast.success('Prêt approuvé');
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Échec de la mise à jour');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Supprimer ce prêt ?')) return;
+    setBusyId(id);
+    try {
+      await apiFetch(`/loans/${id}`, { method: 'DELETE' });
+      toast.success('Prêt supprimé');
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Échec de la suppression');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   return (
     <div className="flex h-full flex-col">
       <div className="p-4 pb-3 md:px-6">
-        <PageHeader title={t('nav.loans')} subtitle={t('loans.subtitle', { count: filtered.length })} />
+        <PageHeader
+          title={t('nav.loans')}
+          subtitle={t('loans.subtitle', { count: filtered.length })}
+          actions={
+            <Button size="sm" onClick={() => setCreateOpen(true)} className="flex items-center gap-2">
+              <Plus className="h-4 w-4" /> Prêter une œuvre
+            </Button>
+          }
+        />
       </div>
+
+      {USE_API && <CreateLoanModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={refresh} />}
 
       <div className="border-b border-border bg-background px-6 py-3">
         <div className="relative max-w-sm">
@@ -99,6 +156,38 @@ export function LoansView() {
                 <Badge tone={STATUS_TONE[loan.status]} dot className="shrink-0">
                   {t(`loans.status.${loan.status}`)}
                 </Badge>
+                {USE_API && (
+                  <div className="flex shrink-0 items-center gap-1">
+                    {loan.status === 'pending' && (
+                      <button
+                        onClick={() => handleApprove(loan.id)}
+                        disabled={busyId === loan.id}
+                        title="Approuver"
+                        className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                      >
+                        <Check className="h-4 w-4" />
+                      </button>
+                    )}
+                    {(loan.status === 'active' || loan.status === 'overdue') && (
+                      <button
+                        onClick={() => handleReturn(loan.id)}
+                        disabled={busyId === loan.id}
+                        title="Marquer comme retourné"
+                        className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                      >
+                        <CornerDownLeft className="h-4 w-4" />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleDelete(loan.id)}
+                      disabled={busyId === loan.id}
+                      title="Supprimer"
+                      className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>

@@ -27,9 +27,12 @@ type LoanRow = {
 export class LoanService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async list(user: AuthUser) {
+  async list(user: AuthUser, artworkId?: string) {
     const rows = await this.prisma.loan.findMany({
-      where: { organizationId: user.organizationId },
+      where: {
+        organizationId: user.organizationId,
+        ...(artworkId ? { items: { some: { artworkId } } } : {}),
+      },
       include: {
         items: {
           take: 1,

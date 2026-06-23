@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS } from '@arterio/shared';
 import { LoanService } from './loan.service';
@@ -17,8 +17,8 @@ export class LoanController {
   @Get()
   @RequirePermissions(PERMISSIONS.LOAN_READ)
   @ApiOperation({ summary: 'List loans' })
-  list(@CurrentUser() user: AuthUser) {
-    return this.loans.list(user);
+  list(@CurrentUser() user: AuthUser, @Query('artworkId') artworkId?: string) {
+    return this.loans.list(user, artworkId);
   }
 
   @Post()

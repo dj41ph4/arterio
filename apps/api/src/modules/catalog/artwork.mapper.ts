@@ -28,6 +28,7 @@ type ArtworkWithRelations = {
   acquisitionDate: Date | null;
   paymentMethod: string | null;
   collectionId: string | null;
+  currentLocationId: string | null;
   dominantColors: string[];
   isFavorite: boolean;
   qrSlug: string | null;
@@ -91,6 +92,7 @@ export function toArtworkView(
     collectionId: a.collectionId,
     collectionName: a.collection?.name ?? null,
     collectionColor: a.collection?.color ?? null,
+    currentLocationId: a.currentLocationId,
     currentLocationName: a.currentLocation?.name ?? null,
     hasCertificate: a.hasCertificate,
     hasInvoice: a.hasInvoice,

@@ -26,9 +26,12 @@ function resolveText(value: unknown): string {
 export class ExhibitionService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async list(user: AuthUser) {
+  async list(user: AuthUser, artworkId?: string) {
     const rows = await this.prisma.exhibition.findMany({
-      where: { organizationId: user.organizationId },
+      where: {
+        organizationId: user.organizationId,
+        ...(artworkId ? { items: { some: { artworkId } } } : {}),
+      },
       include: { _count: { select: { items: true } } },
       orderBy: { startDate: 'desc' },
     });

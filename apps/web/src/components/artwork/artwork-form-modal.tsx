@@ -14,6 +14,9 @@ interface ArtworkFormModalProps {
   open: boolean;
   onClose: () => void;
   artwork?: ArtworkView | null;
+  /** Pre-fills and links the new artwork to this artist — used by "create artwork by this artist". */
+  defaultArtistId?: string;
+  defaultArtistName?: string;
 }
 
 interface FormState {
@@ -66,7 +69,7 @@ function FieldLabel({ children, required }: { children: React.ReactNode; require
 
 const inputClass = 'mt-1.5 w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring';
 
-export function ArtworkFormModal({ open, onClose, artwork }: ArtworkFormModalProps) {
+export function ArtworkFormModal({ open, onClose, artwork, defaultArtistId, defaultArtistName }: ArtworkFormModalProps) {
   const t = useTranslations();
   const locale = useLocale() as Locale;
   const isEdit = !!artwork;
@@ -77,8 +80,10 @@ export function ArtworkFormModal({ open, onClose, artwork }: ArtworkFormModalPro
   const [form, setForm] = React.useState<FormState>(emptyForm());
 
   React.useEffect(() => {
-    if (open) setForm(artwork ? fromArtwork(artwork, locale) : emptyForm());
-  }, [open, artwork, locale]);
+    if (!open) return;
+    if (artwork) setForm(fromArtwork(artwork, locale));
+    else setForm({ ...emptyForm(), artistName: defaultArtistName ?? '' });
+  }, [open, artwork, locale, defaultArtistName]);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -95,6 +100,7 @@ export function ArtworkFormModal({ open, onClose, artwork }: ArtworkFormModalPro
       title: { [locale]: form.title.trim() },
       description: form.description.trim() ? { [locale]: form.description.trim() } : {},
       artistName: form.artistName.trim() || null,
+      ...(!isEdit && defaultArtistId ? { artistId: defaultArtistId } : {}),
       yearFrom: form.year ? Number(form.year) : null,
       dateText: form.year || null,
       techniqueName: form.techniqueName.trim() || null,

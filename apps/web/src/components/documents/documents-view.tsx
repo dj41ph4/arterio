@@ -3,11 +3,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { FileText, Search, Receipt, ShieldCheck, ScrollText, Download, Lock } from 'lucide-react';
+import { FileText, Search, Receipt, ShieldCheck, ScrollText, Download, Lock, Plus, Trash2 } from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import { apiFetch } from '@/lib/api/client';
 import { PageHeader } from '@/components/app-shell/page-header';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Link } from '@/i18n/navigation';
+import { CreateDocumentModal } from './create-document-modal';
 
 const USE_API = process.env.NEXT_PUBLIC_DATA_SOURCE === 'http';
 
@@ -15,6 +18,7 @@ interface DocumentView {
   id: string;
   title: string;
   type: 'invoice' | 'certificate' | 'report' | 'insurance';
+  artworkId?: string | null;
   linkedTo: string;
   uploadedAt: string;
   sizeKb: number;
@@ -38,13 +42,27 @@ export function DocumentsView() {
   const t = useTranslations();
   const [search, setSearch] = useState('');
   const [documents, setDocuments] = useState<DocumentView[]>(USE_API ? [] : DEMO_DOCUMENTS);
+  const [createOpen, setCreateOpen] = useState(false);
 
-  useEffect(() => {
+  const refresh = () => {
     if (!USE_API) return;
     apiFetch<{ data: DocumentView[] }>('/documents')
       .then((res) => setDocuments(res.data))
       .catch(() => setDocuments([]));
-  }, []);
+  };
+
+  useEffect(refresh, []);
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Supprimer ce document ?')) return;
+    try {
+      await apiFetch(`/documents/${id}`, { method: 'DELETE' });
+      toast.success('Document supprimé');
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Échec de la suppression');
+    }
+  };
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -56,8 +74,18 @@ export function DocumentsView() {
   return (
     <div className="flex h-full flex-col">
       <div className="p-4 pb-3 md:px-6">
-        <PageHeader title={t('nav.documents')} subtitle={t('documents.subtitle', { count: filtered.length })} />
+        <PageHeader
+          title={t('nav.documents')}
+          subtitle={t('documents.subtitle', { count: filtered.length })}
+          actions={
+            <Button size="sm" onClick={() => setCreateOpen(true)} className="flex items-center gap-2">
+              <Plus className="h-4 w-4" /> Nouveau document
+            </Button>
+          }
+        />
       </div>
+
+      {USE_API && <CreateDocumentModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={refresh} />}
 
       <div className="border-b border-border bg-background px-6 py-3">
         <div className="relative max-w-sm">
@@ -89,7 +117,16 @@ export function DocumentsView() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-foreground">{doc.title}</p>
-                    <p className="truncate text-xs text-muted-foreground">{doc.linkedTo}</p>
+                    {doc.artworkId ? (
+                      <Link
+                        href={`/artworks/${doc.artworkId}`}
+                        className="truncate text-xs text-primary hover:underline"
+                      >
+                        {doc.linkedTo}
+                      </Link>
+                    ) : (
+                      <p className="truncate text-xs text-muted-foreground">{doc.linkedTo}</p>
+                    )}
                   </div>
                   <Badge tone={TYPE_TONE[doc.type]} className="hidden shrink-0 sm:flex">
                     {t(`documents.type.${doc.type}`)}
@@ -113,6 +150,15 @@ export function DocumentsView() {
                   >
                     <Download className="h-3.5 w-3.5" />
                   </button>
+                  {USE_API && (
+                    <button
+                      onClick={() => handleDelete(doc.id)}
+                      className="shrink-0 rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      title="Supprimer"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
               );
             })}

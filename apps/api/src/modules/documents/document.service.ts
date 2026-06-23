@@ -19,6 +19,7 @@ type DocumentRow = {
   id: string;
   title: string;
   type: string;
+  artworkId: string | null;
   createdAt: Date;
   artwork: { title: unknown } | null;
   versions: { sizeBytes: number | null }[];
@@ -28,9 +29,12 @@ type DocumentRow = {
 export class DocumentService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async list(user: AuthUser) {
+  async list(user: AuthUser, artworkId?: string) {
     const rows = await this.prisma.document.findMany({
-      where: { organizationId: user.organizationId },
+      where: {
+        organizationId: user.organizationId,
+        ...(artworkId ? { artworkId } : {}),
+      },
       include: {
         artwork: { select: { title: true } },
         versions: { orderBy: { version: 'desc' }, take: 1, select: { sizeBytes: true } },
@@ -95,6 +99,7 @@ export class DocumentService {
       id: d.id,
       title: d.title,
       type: this.clampType(d.type),
+      artworkId: d.artworkId,
       linkedTo: d.artwork ? resolveText(d.artwork.title) : 'Collection',
       uploadedAt: d.createdAt.toISOString().slice(0, 10),
       sizeKb: Math.round(bytes / 1024),

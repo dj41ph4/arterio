@@ -57,6 +57,7 @@ export interface ArtworkView {
   collectionName?: string | null;
   collectionColor?: string | null;
 
+  currentLocationId?: string | null;
   currentLocationName?: string | null;
   hasCertificate?: boolean;
   hasInvoice?: boolean;

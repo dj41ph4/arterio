@@ -16,6 +16,7 @@ import {
   MapPin,
   Palette,
   Pencil,
+  Plus,
   RefreshCw,
   Sparkles,
   Star,
@@ -26,6 +27,7 @@ import { artworkRepository } from '@/lib/data';
 import type { Locale } from '@arterio/shared';
 import { resolveLocalized } from '@arterio/shared';
 import { ArtworkThumbnail } from '@/components/artwork/thumbnail';
+import { ArtworkFormModal } from '@/components/artwork/artwork-form-modal';
 import { EditArtistModal } from './edit-artist-modal';
 
 // ---------------------------------------------------------------------------
@@ -219,6 +221,7 @@ function ArtistProfileContent({ artist, locale }: { artist: ArtistView; locale: 
     (artist.biography[currentLocale] ? currentLocale : ALL_LOCALES.find((l) => artist.biography[l])) ?? 'en',
   );
   const [editOpen, setEditOpen] = useState(false);
+  const [createArtworkOpen, setCreateArtworkOpen] = useState(false);
 
   const initials = artist.fullName
     .split(' ')
@@ -242,13 +245,22 @@ function ArtistProfileContent({ artist, locale }: { artist: ArtistView; locale: 
           <ArrowLeft className="h-4 w-4" />
           {t('common.back')}
         </button>
-        <button
-          onClick={() => setEditOpen(true)}
-          className="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-        >
-          <Pencil className="h-3.5 w-3.5" />
-          {t('common.edit')}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setCreateArtworkOpen(true)}
+            className="flex items-center gap-2 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Nouvelle œuvre
+          </button>
+          <button
+            onClick={() => setEditOpen(true)}
+            className="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            {t('common.edit')}
+          </button>
+        </div>
       </div>
 
       <EditArtistModal
@@ -256,6 +268,13 @@ function ArtistProfileContent({ artist, locale }: { artist: ArtistView; locale: 
         open={editOpen}
         onClose={() => setEditOpen(false)}
         onDeleted={() => router.push(`/${locale}/artists`)}
+      />
+
+      <ArtworkFormModal
+        open={createArtworkOpen}
+        onClose={() => setCreateArtworkOpen(false)}
+        defaultArtistId={artist.id}
+        defaultArtistName={artist.fullName}
       />
 
       <div className="mx-auto w-full max-w-5xl px-6 py-8 space-y-8">
