@@ -182,6 +182,7 @@ function generate(): ArtworkView[] {
       primaryImageUrl: null,
       thumbnailUrl: null,
       imageCount: Math.floor(r() * 6),
+      media: [],
       isFavorite: r() > 0.85,
       qrSlug: `demo-${i + 1}`,
       createdAt: new Date(created).toISOString(),

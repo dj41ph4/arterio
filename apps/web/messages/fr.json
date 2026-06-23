@@ -153,6 +153,13 @@
       "conservation": "Conservation",
       "history": "Historique"
     },
+    "media": {
+      "dropHint": "Cliquez ou glissez des photos ici",
+      "formats": "JPEG, PNG, WebP ou GIF — jusqu'à 15 Mo",
+      "uploaded": "Photo ajoutée",
+      "uploadFailed": "Échec de l'envoi",
+      "removeFailed": "Impossible de supprimer la photo"
+    },
     "form": {
       "createTitle": "Nouvelle œuvre",
       "editTitle": "Modifier l'œuvre",

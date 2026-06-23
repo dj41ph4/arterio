@@ -132,4 +132,15 @@ export class ArtworkController {
     if (!file) throw new BadRequestException('No file uploaded');
     return this.artworks.attachMedia(user, id, file);
   }
+
+  @Delete(':id/media/:mediaId')
+  @RequirePermissions(PERMISSIONS.ARTWORK_UPDATE)
+  @ApiOperation({ summary: 'Remove an uploaded image from an artwork' })
+  removeMedia(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Param('mediaId') mediaId: string,
+  ) {
+    return this.artworks.removeMedia(user, id, mediaId);
+  }
 }

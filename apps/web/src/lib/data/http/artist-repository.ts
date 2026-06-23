@@ -1,4 +1,5 @@
-import { apiFetch } from '@/lib/api/client';
+import { apiFetch, API_BASE_URL } from '@/lib/api/client';
+import { useAuthStore } from '@/stores/auth-store';
 import type { ArtistQuery, ArtistRepository, ArtistUpdateInput, ArtistView, AutoMergeReport, Paginated } from '../artist-repository';
 
 interface BackendArtistRow {
@@ -106,5 +107,22 @@ export class HttpArtistRepository implements ArtistRepository {
 
   async autoMerge(): Promise<AutoMergeReport> {
     return apiFetch<AutoMergeReport>('/artists/merge/auto', { method: 'POST' });
+  }
+
+  async uploadPhoto(id: string, file: File): Promise<ArtistView> {
+    const { accessToken } = useAuthStore.getState();
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${API_BASE_URL}/artists/${id}/photo`, {
+      method: 'POST',
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+      body: form,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ message: res.statusText }));
+      throw new Error(body.message ?? `Photo upload failed (${res.status})`);
+    }
+    const row = await apiFetch<BackendArtistRow>(`/artists/${id}`);
+    return toArtistView(row);
   }
 }

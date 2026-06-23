@@ -75,6 +75,7 @@ export interface ArtworkView {
   primaryImageUrl?: string | null;
   thumbnailUrl?: string | null;
   imageCount: number;
+  media: { id: string; url: string }[];
 
   isFavorite: boolean;
   qrSlug?: string | null;

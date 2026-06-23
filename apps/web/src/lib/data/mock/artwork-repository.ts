@@ -217,6 +217,7 @@ export class MockArtworkRepository implements ArtworkRepository {
     const id = `art-${Date.now()}-${Math.round(Math.random() * 1e4)}`;
     const created: ArtworkView = {
       id,
+      media: [],
       inventoryNumber: input.inventoryNumber ?? `INV-${String(DATA.length + 1).padStart(4, '0')}`,
       title: input.title ?? { en: 'Untitled' },
       description: input.description ?? {},
@@ -271,6 +272,19 @@ export class MockArtworkRepository implements ArtworkRepository {
     artwork.primaryImageUrl = url;
     artwork.thumbnailUrl = url;
     artwork.imageCount += 1;
+    artwork.media = [...artwork.media, { id: `m${artwork.media.length + 1}`, url }];
+    return artwork;
+  }
+
+  async removeMedia(id: string, mediaId: string): Promise<ArtworkView> {
+    await delay(150);
+    const artwork = DATA.find((a) => a.id === id);
+    if (!artwork) throw new Error('Artwork not found');
+    artwork.media = artwork.media.filter((m) => m.id !== mediaId);
+    artwork.imageCount = artwork.media.length;
+    const first = artwork.media[0]?.url ?? null;
+    artwork.primaryImageUrl = first;
+    artwork.thumbnailUrl = first;
     return artwork;
   }
 }

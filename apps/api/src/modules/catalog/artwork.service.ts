@@ -281,6 +281,17 @@ export class ArtworkService {
     return toArtworkView(final as never, { crypto: this.crypto, canViewValuation: this.canViewValuation(user), apiOrigin: this.apiOrigin() });
   }
 
+  async removeMedia(user: AuthUser, id: string, mediaId: string): Promise<ArtworkView> {
+    const media = await this.prisma.mediaAsset.findFirst({
+      where: { id: mediaId, artworkId: id, artwork: { organizationId: user.organizationId } },
+    });
+    if (!media) throw new NotFoundException('Media not found');
+    await this.prisma.mediaAsset.delete({ where: { id: mediaId } });
+
+    const final = await this.prisma.artwork.findUniqueOrThrow({ where: { id }, include: ARTWORK_INCLUDE });
+    return toArtworkView(final as never, { crypto: this.crypto, canViewValuation: this.canViewValuation(user), apiOrigin: this.apiOrigin() });
+  }
+
   async remove(user: AuthUser, id: string): Promise<void> {
     await this.prisma.artwork.deleteMany({ where: { id, organizationId: user.organizationId } });
   }

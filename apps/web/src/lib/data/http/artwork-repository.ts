@@ -116,4 +116,8 @@ export class HttpArtworkRepository implements ArtworkRepository {
     }
     return res.json();
   }
+
+  async removeMedia(id: string, mediaId: string): Promise<ArtworkView> {
+    return apiFetch<ArtworkView>(`/artworks/${id}/media/${mediaId}`, { method: 'DELETE' });
+  }
 }

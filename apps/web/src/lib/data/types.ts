@@ -51,4 +51,5 @@ export interface ArtworkRepository {
   create(input: Partial<ArtworkView>): Promise<ArtworkView>;
   remove(id: string): Promise<void>;
   uploadMedia(id: string, file: File): Promise<ArtworkView>;
+  removeMedia(id: string, mediaId: string): Promise<ArtworkView>;
 }

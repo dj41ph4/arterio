@@ -1,16 +1,32 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { ArtistEnrichmentService } from './artist-enrichment.service';
 import type { AuthUser } from '../../common/types';
 import type { CreateArtistDto, ListArtistsQueryDto, UpdateArtistDto } from './dto';
 import type { Locale } from '@arterio/shared';
+import type { Env } from '../../core/config/configuration';
 
 @Injectable()
 export class ArtistService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly enrichment: ArtistEnrichmentService,
+    private readonly config: ConfigService<Env, true>,
   ) {}
+
+  private apiOrigin(): string {
+    return `http://localhost:${this.config.get('PORT', { infer: true })}`;
+  }
+
+  /** Manual upload always wins over the auto-fetched Wikipedia portrait. */
+  async uploadPhoto(user: AuthUser, id: string, file: { filename: string }) {
+    const artist = await this.prisma.artist.findFirst({ where: { id, organizationId: user.organizationId } });
+    if (!artist) throw new NotFoundException('Artist not found');
+    const thumbnail = `${this.apiOrigin()}/uploads/${file.filename}`;
+    await this.prisma.artist.update({ where: { id }, data: { thumbnail } });
+    return { thumbnail };
+  }
 
   async list(user: AuthUser, q: ListArtistsQueryDto) {
     const limit = Math.min(Number(q.limit ?? 50), 200);

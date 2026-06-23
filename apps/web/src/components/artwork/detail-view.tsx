@@ -3,6 +3,8 @@
 import * as React from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { motion } from 'framer-motion';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import {
   ArrowLeft,
   Star,
@@ -17,10 +19,12 @@ import {
   Wrench,
   ScrollText,
   ShieldCheck,
+  Trash2,
 } from 'lucide-react';
 import type { Locale } from '@arterio/shared';
 import { resolveLocalized } from '@arterio/shared';
 import { useArtwork, useToggleFavorite } from '@/hooks/use-artworks';
+import { artworkRepository } from '@/lib/data';
 import { Link, useRouter } from '@/i18n/navigation';
 import { formatCurrency, formatDate, formatDimensions } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -236,7 +240,11 @@ export function ArtworkDetailView({ id }: { id: string }) {
               )}
             </TabsContent>
 
-            {(['media', 'documents', 'location', 'conservation', 'history'] as const).map((tab) => (
+            <TabsContent value="media">
+              <MediaTab artworkId={art.id} media={art.media} />
+            </TabsContent>
+
+            {(['documents', 'location', 'conservation', 'history'] as const).map((tab) => (
               <TabsContent key={tab} value={tab}>
                 <PlaceholderTab label={t(`artwork.tabs.${tab}`)} />
               </TabsContent>
@@ -246,6 +254,85 @@ export function ArtworkDetailView({ id }: { id: string }) {
       </div>
 
       <ArtworkFormModal open={editOpen} onClose={() => setEditOpen(false)} artwork={art} />
+    </div>
+  );
+}
+
+function MediaTab({ artworkId, media }: { artworkId: string; media: { id: string; url: string }[] }) {
+  const t = useTranslations();
+  const qc = useQueryClient();
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] = React.useState(false);
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['artwork', artworkId] });
+
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => artworkRepository.uploadMedia(artworkId, file),
+    onSuccess: () => {
+      toast.success(t('artwork.media.uploaded'));
+      invalidate();
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : t('artwork.media.uploadFailed')),
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (mediaId: string) => artworkRepository.removeMedia(artworkId, mediaId),
+    onSuccess: () => invalidate(),
+    onError: () => toast.error(t('artwork.media.removeFailed')),
+  });
+
+  const handleFiles = (files: FileList | null) => {
+    if (!files?.length) return;
+    Array.from(files).forEach((file) => uploadMutation.mutate(file));
+  };
+
+  return (
+    <div className="space-y-4">
+      <div
+        onClick={() => inputRef.current?.click()}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          handleFiles(e.dataTransfer.files);
+        }}
+        className={cn(
+          'flex min-h-[120px] cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed text-center transition-colors',
+          dragOver ? 'border-primary bg-primary/5' : 'border-border bg-dotted hover:border-primary/50',
+        )}
+      >
+        <Images className="size-6 text-muted-foreground" />
+        <p className="text-sm font-medium text-foreground">{t('artwork.media.dropHint')}</p>
+        <p className="text-xs text-muted-foreground">{t('artwork.media.formats')}</p>
+        <input
+          ref={inputRef}
+          type="file"
+          multiple
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          className="hidden"
+          onChange={(e) => { handleFiles(e.target.files); e.target.value = ''; }}
+        />
+      </div>
+
+      {media.length > 0 && (
+        <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
+          {media.map((m) => (
+            <div key={m.id} className="group relative aspect-square overflow-hidden rounded-lg border border-border">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={m.url} alt="" className="h-full w-full object-cover" />
+              <button
+                onClick={() => removeMutation.mutate(m.id)}
+                disabled={removeMutation.isPending}
+                className="absolute right-1.5 top-1.5 flex size-6 items-center justify-center rounded-md bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                aria-label={t('common.delete')}
+              >
+                <Trash2 className="size-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

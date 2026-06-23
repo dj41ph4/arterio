@@ -153,6 +153,13 @@
       "conservation": "Conservation",
       "history": "History"
     },
+    "media": {
+      "dropHint": "Click or drag photos here",
+      "formats": "JPEG, PNG, WebP or GIF — up to 15 MB",
+      "uploaded": "Photo uploaded",
+      "uploadFailed": "Upload failed",
+      "removeFailed": "Could not remove the photo"
+    },
     "form": {
       "createTitle": "New artwork",
       "editTitle": "Edit artwork",

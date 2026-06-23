@@ -59,6 +59,18 @@ export function EditArtistModal({ artist, open, onClose, onDeleted }: EditArtist
     onError: () => toast.error('Échec de la mise à jour'),
   });
 
+  const photoInputRef = React.useRef<HTMLInputElement>(null);
+  const uploadPhotoMutation = useMutation({
+    mutationFn: (file: File) => artistRepository.uploadPhoto(artist.id, file),
+    onSuccess: (updated) => {
+      setThumbnail(updated.thumbnail ?? '');
+      toast.success('Photo mise à jour');
+      qc.invalidateQueries({ queryKey: ['artists-all'] });
+      qc.invalidateQueries({ queryKey: ['artist', artist.id] });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Échec de l'envoi de la photo"),
+  });
+
   const resetMutation = useMutation({
     mutationFn: () => artistRepository.update(artist.id, { resetEnrichment: true }),
     onSuccess: () => {
@@ -125,13 +137,34 @@ export function EditArtistModal({ artist, open, onClose, onDeleted }: EditArtist
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground">Photo (URL)</label>
-              <input
-                value={thumbnail}
-                onChange={(e) => setThumbnail(e.target.value)}
-                placeholder="https://…"
-                className="mt-1.5 w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-              />
+              <label className="text-xs font-medium text-muted-foreground">Photo</label>
+              <div className="mt-1.5 flex items-center gap-2">
+                <input
+                  value={thumbnail}
+                  onChange={(e) => setThumbnail(e.target.value)}
+                  placeholder="https://… ou importer un fichier"
+                  className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                />
+                <button
+                  type="button"
+                  onClick={() => photoInputRef.current?.click()}
+                  disabled={uploadPhotoMutation.isPending}
+                  className="shrink-0 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+                >
+                  {uploadPhotoMutation.isPending ? 'Envoi…' : 'Importer'}
+                </button>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = '';
+                    if (file) uploadPhotoMutation.mutate(file);
+                  }}
+                />
+              </div>
             </div>
           </div>
 

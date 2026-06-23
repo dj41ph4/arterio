@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -7,15 +8,24 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { randomBytes } from 'node:crypto';
+import { extname } from 'node:path';
 import { PERMISSIONS } from '@arterio/shared';
 import { ArtistService } from './artist.service';
 import { CreateArtistDto, ListArtistsQueryDto, UpdateArtistDto } from './dto';
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import type { AuthUser } from '../../common/types';
+import { UPLOAD_DIR } from '../../core/config/paths';
+
+const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
 @ApiTags('artists')
 @ApiBearerAuth()
@@ -64,6 +74,35 @@ export class ArtistController {
   })
   remove(@CurrentUser() user: AuthUser, @Param('id') id: string, @Query('force') force?: string) {
     return this.artists.remove(user, id, force === 'true');
+  }
+
+  @Post(':id/photo')
+  @RequirePermissions(PERMISSIONS.ARTWORK_UPDATE)
+  @ApiOperation({ summary: 'Upload a portrait photo — overrides any auto-fetched Wikipedia image' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: UPLOAD_DIR,
+        filename: (_req, file, cb) => cb(null, `${randomBytes(16).toString('hex')}${extname(file.originalname)}`),
+      }),
+      limits: { fileSize: 15 * 1024 * 1024 },
+      fileFilter: (_req, file, cb) => {
+        if (!ALLOWED_IMAGE_TYPES.has(file.mimetype)) {
+          cb(new BadRequestException('Unsupported image type'), false);
+          return;
+        }
+        cb(null, true);
+      },
+    }),
+  )
+  uploadPhoto(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('No file uploaded');
+    return this.artists.uploadPhoto(user, id, file);
   }
 
   @Post('merge/auto')

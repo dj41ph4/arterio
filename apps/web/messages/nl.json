@@ -153,6 +153,13 @@
       "conservation": "Conservering",
       "history": "Geschiedenis"
     },
+    "media": {
+      "dropHint": "Klik of sleep foto's hierheen",
+      "formats": "JPEG, PNG, WebP of GIF — tot 15 MB",
+      "uploaded": "Foto geüpload",
+      "uploadFailed": "Uploaden mislukt",
+      "removeFailed": "Foto kon niet worden verwijderd"
+    },
     "form": {
       "createTitle": "Nieuw kunstwerk",
       "editTitle": "Kunstwerk bewerken",

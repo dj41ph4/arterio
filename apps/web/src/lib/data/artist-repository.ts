@@ -77,6 +77,8 @@ export interface ArtistRepository {
   enrich(id: string): Promise<ArtistView>;
   /** Finds and merges near-duplicate artists, verifying each group against Wikidata to avoid homonym mistakes. */
   autoMerge(): Promise<AutoMergeReport>;
+  /** Manual portrait upload — overrides any auto-fetched Wikipedia image. */
+  uploadPhoto(id: string, file: File): Promise<ArtistView>;
 }
 
 export interface AutoMergeReport {
@@ -318,6 +320,13 @@ export class MockArtistRepository implements ArtistRepository {
   async enrich(id: string): Promise<ArtistView> {
     const artist = this.data.find((a) => a.id === id);
     if (!artist) throw new Error('Artist not found');
+    return artist;
+  }
+
+  async uploadPhoto(id: string, file: File): Promise<ArtistView> {
+    const artist = this.data.find((a) => a.id === id);
+    if (!artist) throw new Error('Artist not found');
+    artist.thumbnail = URL.createObjectURL(file);
     return artist;
   }
 

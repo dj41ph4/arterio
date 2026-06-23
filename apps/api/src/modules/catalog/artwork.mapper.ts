@@ -48,7 +48,7 @@ type ArtworkWithRelations = {
     valuationSource: string | null;
   } | null;
   tags: { tag: { name: string } }[];
-  media?: { storageKey: string }[];
+  media?: { id: string; storageKey: string }[];
   _count?: { media: number };
 };
 
@@ -57,6 +57,9 @@ export function toArtworkView(
   opts: { crypto: CryptoService; canViewValuation: boolean; apiOrigin?: string },
 ): ArtworkView {
   const imageUrl = a.media?.[0] && opts.apiOrigin ? `${opts.apiOrigin}/uploads/${a.media[0].storageKey}` : null;
+  const media = opts.apiOrigin
+    ? (a.media ?? []).map((m) => ({ id: m.id, url: `${opts.apiOrigin}/uploads/${m.storageKey}` }))
+    : [];
   return {
     id: a.id,
     inventoryNumber: a.inventoryNumber,
@@ -106,6 +109,7 @@ export function toArtworkView(
     primaryImageUrl: imageUrl,
     thumbnailUrl: imageUrl,
     imageCount: a._count?.media ?? 0,
+    media,
     isFavorite: a.isFavorite,
     qrSlug: a.qrSlug,
     createdAt: a.createdAt.toISOString(),
@@ -123,6 +127,6 @@ export const ARTWORK_INCLUDE = {
   currentLocation: { select: { name: true } },
   valuation: true,
   tags: { include: { tag: { select: { name: true } } } },
-  media: { orderBy: { sortOrder: 'asc' as const }, take: 1, select: { storageKey: true } },
+  media: { orderBy: { sortOrder: 'asc' as const }, select: { id: true, storageKey: true } },
   _count: { select: { media: true } },
 } as const;
