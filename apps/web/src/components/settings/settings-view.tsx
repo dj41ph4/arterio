@@ -24,7 +24,6 @@ import { LOCALES, LOCALE_META, type Locale } from '@arterio/shared';
 import { usePathname, useRouter } from '@/i18n/navigation';
 import { PageHeader } from '@/components/app-shell/page-header';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { ACCENT_PRESETS } from '@/lib/accent';
 import { useUiStore } from '@/stores/ui-store';
@@ -35,6 +34,7 @@ import { NotificationsPanel } from './notifications-panel';
 import { ApiKeysPanel } from './api-keys-panel';
 import { ExternalSourcesPanel } from './external-sources-panel';
 import { OAuthPanel } from './oauth-panel';
+import { AuditLogPanel } from './audit-log-panel';
 import { BackupsPanel } from './backups-panel';
 import { MigrationPanel } from './migration-panel';
 import { settingsApi } from '@/lib/data/admin';
@@ -390,23 +390,33 @@ export function SettingsView() {
               <Card>
                 <CardHeader>
                   <CardTitle>{t('settings.security')}</CardTitle>
-                  <CardDescription>End-to-end protection for your collection.</CardDescription>
+                  <CardDescription>État réel des protections de cette installation.</CardDescription>
                 </CardHeader>
                 <CardContent className="divide-y divide-border">
                   {[
-                    ['Two-factor authentication (TOTP)', true],
-                    ['Passkeys / WebAuthn', true],
-                    ['Require MFA for all members', false],
-                    ['Immutable audit log', true],
-                    ['Encrypt documents at rest (AES-256)', true],
-                  ].map(([label, on]) => (
-                    <div key={label as string} className="flex items-center justify-between py-3">
-                      <span className="text-sm">{label}</span>
-                      <Switch defaultChecked={on as boolean} />
+                    { label: 'Chiffrement des valuations (AES-256-GCM)', available: true },
+                    { label: 'Journal d\'audit inviolable (chaîné par hachage)', available: true },
+                    { label: 'Limitation de débit sur la connexion (anti brute-force)', available: true },
+                    { label: 'Authentification à deux facteurs (TOTP)', available: false },
+                    { label: 'Clés de sécurité / Passkeys (WebAuthn)', available: false },
+                  ].map((item) => (
+                    <div key={item.label} className="flex items-center justify-between py-3">
+                      <span className="text-sm">{item.label}</span>
+                      <span
+                        className={cn(
+                          'rounded-full px-2.5 py-0.5 text-xs font-medium',
+                          item.available
+                            ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+                            : 'bg-muted text-muted-foreground',
+                        )}
+                      >
+                        {item.available ? 'Actif' : 'Non disponible'}
+                      </span>
                     </div>
                   ))}
                 </CardContent>
               </Card>
+              <AuditLogPanel />
               <OAuthPanel />
             </>
           )}

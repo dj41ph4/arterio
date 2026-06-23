@@ -44,4 +44,13 @@ export class MembersController {
   remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.members.remove(user, id);
   }
+
+  @Post(':id/reset-password')
+  @ApiOperation({
+    summary: 'Reset a member back to bootstrap state',
+    description: 'No outbound-email infra to support self-service reset — an admin resets the member, who then sets a fresh password on their next login. Revokes all of their active sessions.',
+  })
+  resetPassword(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.members.resetPassword(user, id);
+  }
 }

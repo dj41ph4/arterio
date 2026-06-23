@@ -6,6 +6,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { CryptoService } from '../../core/crypto/crypto.service';
+import { AuditService } from '../../core/audit/audit.service';
 import { TokenService } from './token.service';
 import type { AuthUser } from '../../common/types';
 import type { Env } from '../../core/config/configuration';
@@ -21,6 +22,7 @@ export class AuthService {
     private readonly crypto: CryptoService,
     private readonly tokens: TokenService,
     private readonly config: ConfigService<Env, true>,
+    private readonly audit: AuditService,
   ) {}
 
   /** Loads a user with its effective permission set. */
@@ -57,6 +59,18 @@ export class AuthService {
       await this.prisma.loginEvent
         .create({ data: { email, success: false, reason, ip: meta.ip, userAgent: meta.ua } })
         .catch(() => undefined);
+      if (user) {
+        await this.audit.log({
+          organizationId: user.organizationId,
+          actorId: user.id,
+          action: 'auth.login_failed',
+          resource: 'user',
+          resourceId: user.id,
+          metadata: { reason },
+          ip: meta.ip,
+          userAgent: meta.ua,
+        });
+      }
       throw new UnauthorizedException('Invalid credentials');
     };
 
@@ -80,6 +94,15 @@ export class AuthService {
     await this.prisma.loginEvent
       .create({ data: { userId: user.id, email, success: true, ip: meta.ip, userAgent: meta.ua } })
       .catch(() => undefined);
+    await this.audit.log({
+      organizationId: user.organizationId,
+      actorId: user.id,
+      action: 'auth.login_success',
+      resource: 'user',
+      resourceId: user.id,
+      ip: meta.ip,
+      userAgent: meta.ua,
+    });
     return tokens;
   }
 

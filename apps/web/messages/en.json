@@ -207,6 +207,7 @@
     "email": "Email",
     "password": "Password",
     "forgotPassword": "Forgot password?",
+    "forgotPasswordHint": "No email is configured on this install — ask an administrator to reset your password from Settings → Members.",
     "rememberMe": "Remember me",
     "signInButton": "Sign in",
     "or": "or",

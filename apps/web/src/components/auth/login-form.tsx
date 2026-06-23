@@ -116,7 +116,11 @@ export function LoginForm() {
           <label className="text-sm font-medium" htmlFor="password">
             {t('password')}
           </label>
-          <button type="button" className="text-xs font-medium text-primary hover:underline">
+          <button
+            type="button"
+            onClick={() => toast.info(t('forgotPasswordHint'))}
+            className="text-xs font-medium text-primary hover:underline"
+          >
             {t('forgotPassword')}
           </button>
         </div>

@@ -2,10 +2,11 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { validateEnv } from './core/config/configuration';
 import { PrismaModule } from './core/prisma/prisma.module';
 import { CryptoModule } from './core/crypto/crypto.module';
+import { AuditModule } from './core/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CatalogModule } from './modules/catalog/artwork.module';
 import { ArtistsModule } from './modules/artists/artists.module';
@@ -34,6 +35,8 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
     ThrottlerModule.forRoot([
       { name: 'short', ttl: 1_000, limit: 20 },
       { name: 'long', ttl: 60_000, limit: 300 },
+      // Brute-force protection on login/refresh — see AuthController.
+      { name: 'auth', ttl: 60_000, limit: 5 },
     ]),
 
     // JwtService for the global JwtAuthGuard below (verify-only — secret passed per-call)
@@ -42,6 +45,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
     // Infrastructure
     PrismaModule,
     CryptoModule,
+    AuditModule,
 
     // Features
     AuthModule,
@@ -58,7 +62,9 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
   ],
   controllers: [HealthController],
   providers: [
-    // Order matters: JwtAuthGuard populates req.user, PermissionsGuard reads it.
+    // Order matters: throttling rejects abusive callers first, then
+    // JwtAuthGuard populates req.user, then PermissionsGuard reads it.
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
   ],

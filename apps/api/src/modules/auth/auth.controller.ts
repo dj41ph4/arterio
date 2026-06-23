@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Post, Req } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { AuthService } from './auth.service';
@@ -16,6 +17,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ auth: { limit: 5, ttl: 60_000 } })
   @Post('login')
   @ApiOperation({ summary: 'Authenticate and receive access + refresh tokens' })
   login(@Body() dto: LoginDto, @Req() req: Request) {
@@ -23,6 +25,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ auth: { limit: 10, ttl: 60_000 } })
   @Post('refresh')
   @ApiOperation({ summary: 'Rotate a refresh token for a new token pair' })
   refresh(@Body() dto: RefreshDto, @Req() req: Request) {

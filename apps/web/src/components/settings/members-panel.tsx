@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { UserPlus, Trash2, ShieldCheck, Mail } from 'lucide-react';
+import { UserPlus, Trash2, ShieldCheck, Mail, KeyRound } from 'lucide-react';
 import { membersApi, type MemberView } from '@/lib/data/admin';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -103,6 +103,12 @@ export function MembersPanel() {
     onError: (e: unknown) => toast.error(e instanceof Error ? e.message : 'Échec de la désactivation'),
   });
 
+  const resetPasswordMutation = useMutation({
+    mutationFn: (id: string) => membersApi.resetPassword(id),
+    onSuccess: () => toast.success('Mot de passe réinitialisé — le membre en définit un nouveau à sa prochaine connexion'),
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : 'Échec de la réinitialisation'),
+  });
+
   return (
     <Card>
       <CardHeader>
@@ -137,6 +143,17 @@ export function MembersPanel() {
                     <option key={r.key} value={r.key}>{r.name}</option>
                   ))}
                 </select>
+                {m.status !== 'disabled' && (
+                  <button
+                    onClick={() => {
+                      if (confirm(`Réinitialiser le mot de passe de ${m.fullName} ?`)) resetPasswordMutation.mutate(m.id);
+                    }}
+                    title="Réinitialiser le mot de passe"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-amber-500/10 hover:text-amber-500"
+                  >
+                    <KeyRound className="h-4 w-4" />
+                  </button>
+                )}
                 {m.status !== 'disabled' && (
                   <button
                     onClick={() => removeMutation.mutate(m.id)}

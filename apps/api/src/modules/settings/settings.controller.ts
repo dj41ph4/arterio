@@ -73,6 +73,18 @@ export class SettingsController {
     return this.settings.updateOAuthProvider(user, provider, dto);
   }
 
+  @Get('audit-log')
+  @ApiOperation({ summary: 'Recent audit trail entries, most recent first' })
+  getAuditLog(@CurrentUser() user: AuthUser) {
+    return this.settings.getAuditLog(user);
+  }
+
+  @Get('audit-log/verify')
+  @ApiOperation({ summary: 'Recomputes the hash chain to prove the audit trail has not been tampered with' })
+  verifyAuditLog(@CurrentUser() user: AuthUser) {
+    return this.settings.verifyAuditLog(user);
+  }
+
   @Get('api-keys')
   @ApiOperation({ summary: 'List API keys (secrets never returned after creation)' })
   listApiKeys(@CurrentUser() user: AuthUser) {

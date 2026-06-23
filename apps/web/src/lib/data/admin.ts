@@ -38,6 +38,7 @@ export const membersApi = {
   update: (id: string, patch: { roleKey?: string; status?: MemberView['status'] }) =>
     apiFetch<{ ok: true }>(`/members/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   remove: (id: string) => apiFetch<{ ok: true }>(`/members/${id}`, { method: 'DELETE' }),
+  resetPassword: (id: string) => apiFetch<{ ok: true }>(`/members/${id}/reset-password`, { method: 'POST' }),
 };
 
 // ---------------------------------------------------------------------------

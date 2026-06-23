@@ -3,6 +3,7 @@ import type { ArtworkQuery, ArtworkView, Paginated, PermissionKey } from '@arter
 import { DEFAULT_LOCALE, PERMISSIONS, resolveLocalized } from '@arterio/shared';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { CryptoService } from '../../core/crypto/crypto.service';
+import { AuditService } from '../../core/audit/audit.service';
 import type { AuthUser } from '../../common/types';
 import { ARTWORK_INCLUDE, toArtworkView } from './artwork.mapper';
 
@@ -11,6 +12,7 @@ export class ArtworkService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly crypto: CryptoService,
+    private readonly audit: AuditService,
   ) {}
 
   private canViewValuation(user: AuthUser): boolean {
@@ -288,7 +290,18 @@ export class ArtworkService {
   }
 
   async remove(user: AuthUser, id: string): Promise<void> {
+    const artwork = await this.prisma.artwork.findFirst({ where: { id, organizationId: user.organizationId } });
     await this.prisma.artwork.deleteMany({ where: { id, organizationId: user.organizationId } });
+    if (artwork) {
+      await this.audit.log({
+        organizationId: user.organizationId,
+        actorId: user.sub,
+        action: 'artwork.delete',
+        resource: 'artwork',
+        resourceId: id,
+        metadata: { inventoryNumber: artwork.inventoryNumber },
+      });
+    }
   }
 
   /** Moves an artwork to a new location, keeping a MovementRecord of where it came from. */

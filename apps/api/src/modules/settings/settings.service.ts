@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { createHash, randomBytes } from 'node:crypto';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { CryptoService } from '../../core/crypto/crypto.service';
+import { AuditService } from '../../core/audit/audit.service';
 import type { AuthUser } from '../../common/types';
 import type { CreateApiKeyDto, UpdateOAuthProviderDto, UpdateOrganizationDto, WipeCategory } from './dto';
 
@@ -16,6 +17,7 @@ export class SettingsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly crypto: CryptoService,
+    private readonly audit: AuditService,
   ) {}
 
   async getOrganization(user: AuthUser) {
@@ -215,7 +217,40 @@ export class SettingsService {
       }
     });
 
+    await this.audit.log({
+      organizationId: orgId,
+      actorId: user.sub,
+      action: 'settings.danger_zone_wipe',
+      resource: 'organization',
+      resourceId: orgId,
+      metadata: { categories, deleted: counts },
+    });
+
     return { ok: true, deleted: counts };
+  }
+
+  /** Most recent audit entries first — the read side of the hash-chained trail. */
+  async getAuditLog(user: AuthUser, limit = 100) {
+    const rows = await this.prisma.auditLog.findMany({
+      where: { organizationId: user.organizationId },
+      include: { actor: { select: { fullName: true, email: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(limit, 200),
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      action: r.action,
+      resource: r.resource,
+      resourceId: r.resourceId,
+      actorName: r.actor?.fullName ?? r.actor?.email ?? 'system',
+      metadata: r.metadata,
+      ip: r.ip,
+      createdAt: r.createdAt,
+    }));
+  }
+
+  async verifyAuditLog(user: AuthUser) {
+    return this.audit.verifyChain(user.organizationId);
   }
 
   async exportBackup(user: AuthUser) {

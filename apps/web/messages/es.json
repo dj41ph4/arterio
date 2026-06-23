@@ -207,6 +207,7 @@
     "email": "Correo electrónico",
     "password": "Contraseña",
     "forgotPassword": "¿Olvidaste tu contraseña?",
+    "forgotPasswordHint": "No hay correo configurado en esta instalación — pide a un administrador que restablezca tu contraseña desde Ajustes → Miembros.",
     "rememberMe": "Recuérdame",
     "signInButton": "Iniciar sesión",
     "or": "o",

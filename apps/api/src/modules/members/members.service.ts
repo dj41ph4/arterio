@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
+import { AuditService } from '../../core/audit/audit.service';
 import type { AuthUser } from '../../common/types';
 import type { InviteMemberDto, UpdateMemberDto } from './dto';
 
@@ -7,7 +8,10 @@ const PLACEHOLDER_HASH = 'DEV_PLACEHOLDER_REPLACE_VIA_API';
 
 @Injectable()
 export class MembersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   async list(user: AuthUser) {
     const users = await this.prisma.user.findMany({
@@ -69,6 +73,15 @@ export class MembersService {
       include: { userRoles: { include: { role: true } } },
     });
 
+    await this.audit.log({
+      organizationId: user.organizationId,
+      actorId: user.sub,
+      action: 'member.invite',
+      resource: 'user',
+      resourceId: created.id,
+      metadata: { email: dto.email, roleKey: dto.roleKey },
+    });
+
     return {
       id: created.id,
       email: created.email,
@@ -99,6 +112,15 @@ export class MembersService {
       });
     }
 
+    await this.audit.log({
+      organizationId: user.organizationId,
+      actorId: user.sub,
+      action: 'member.update',
+      resource: 'user',
+      resourceId: id,
+      metadata: { roleKey: dto.roleKey, status: dto.status },
+    });
+
     return { ok: true };
   }
 
@@ -117,6 +139,45 @@ export class MembersService {
       where: { userId: id, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+
+    await this.audit.log({
+      organizationId: user.organizationId,
+      actorId: user.sub,
+      action: 'member.remove',
+      resource: 'user',
+      resourceId: id,
+      metadata: { email: target.email },
+    });
+
+    return { ok: true };
+  }
+
+  /**
+   * Admin-triggered password reset — there's no outbound-email infra to
+   * support a self-service "forgot password" flow, so an administrator resets
+   * the member back to the placeholder hash; their next login bootstraps a
+   * fresh password from whatever they type, exactly like a brand-new invite.
+   * All of the member's active sessions are revoked immediately.
+   */
+  async resetPassword(user: AuthUser, id: string) {
+    const target = await this.prisma.user.findFirst({ where: { id, organizationId: user.organizationId } });
+    if (!target) throw new NotFoundException('Member not found');
+
+    await this.prisma.user.update({ where: { id }, data: { passwordHash: PLACEHOLDER_HASH } });
+    await this.prisma.refreshToken.updateMany({
+      where: { userId: id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+
+    await this.audit.log({
+      organizationId: user.organizationId,
+      actorId: user.sub,
+      action: 'member.reset_password',
+      resource: 'user',
+      resourceId: id,
+      metadata: { email: target.email },
+    });
+
     return { ok: true };
   }
 }

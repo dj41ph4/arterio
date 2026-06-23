@@ -207,6 +207,7 @@
     "email": "E-mail",
     "password": "Wachtwoord",
     "forgotPassword": "Wachtwoord vergeten?",
+    "forgotPasswordHint": "Er is geen e-mail geconfigureerd op deze installatie — vraag een beheerder om je wachtwoord te resetten via Instellingen → Leden.",
     "rememberMe": "Onthoud mij",
     "signInButton": "Inloggen",
     "or": "of",

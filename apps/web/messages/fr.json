@@ -207,6 +207,7 @@
     "email": "E-mail",
     "password": "Mot de passe",
     "forgotPassword": "Mot de passe oublié ?",
+    "forgotPasswordHint": "Aucun e-mail n'est configuré sur cette installation — demandez à un administrateur de réinitialiser votre mot de passe depuis Paramètres → Membres.",
     "rememberMe": "Se souvenir de moi",
     "signInButton": "Se connecter",
     "or": "ou",
