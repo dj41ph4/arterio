@@ -109,7 +109,10 @@ export const settingsApi = {
     const res = await fetch(`${API_BASE_URL}/settings/backup`, {
       headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
     });
-    if (!res.ok) throw new Error('Backup export failed');
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ message: res.statusText }));
+      throw new Error(body.message ?? `Backup export failed (${res.status})`);
+    }
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -125,7 +128,10 @@ export const settingsApi = {
     const res = await fetch(`${API_BASE_URL}/settings/migration/export`, {
       headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
     });
-    if (!res.ok) throw new Error('Migration export failed');
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ message: res.statusText }));
+      throw new Error(body.message ?? `Migration export failed (${res.status})`);
+    }
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

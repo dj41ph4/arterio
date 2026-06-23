@@ -18,8 +18,8 @@ export function MigrationPanel() {
     try {
       await settingsApi.downloadMigration();
       toast.success('Export de migration téléchargé');
-    } catch {
-      toast.error("Échec de l'export");
+    } catch (err) {
+      toast.error(err instanceof Error ? `Échec de l'export : ${err.message}` : "Échec de l'export");
     } finally {
       setExporting(false);
     }

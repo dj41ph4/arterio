@@ -14,8 +14,8 @@ export function BackupsPanel() {
     try {
       await settingsApi.downloadBackup();
       toast.success('Sauvegarde téléchargée');
-    } catch {
-      toast.error('Échec de la sauvegarde');
+    } catch (err) {
+      toast.error(err instanceof Error ? `Échec de la sauvegarde : ${err.message}` : 'Échec de la sauvegarde');
     } finally {
       setDownloading(false);
     }
