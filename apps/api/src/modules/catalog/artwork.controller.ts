@@ -61,6 +61,28 @@ export class ArtworkController {
     return this.artworks.facets(user);
   }
 
+  @Get('trash')
+  @RequirePermissions(PERMISSIONS.ARTWORK_DELETE)
+  @ApiOperation({ summary: 'List soft-deleted artworks' })
+  listTrash(@CurrentUser() user: AuthUser) {
+    return this.artworks.listTrash(user);
+  }
+
+  @Post(':id/restore')
+  @RequirePermissions(PERMISSIONS.ARTWORK_DELETE)
+  @ApiOperation({ summary: 'Restore an artwork from the trash' })
+  restore(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.artworks.restore(user, id);
+  }
+
+  @Delete(':id/purge')
+  @RequirePermissions(PERMISSIONS.ARTWORK_DELETE)
+  @ApiOperation({ summary: 'Permanently delete an artwork already in the trash — cannot be undone' })
+  async purge(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    await this.artworks.purge(user, id);
+    return { ok: true };
+  }
+
   @Post()
   @RequirePermissions(PERMISSIONS.ARTWORK_CREATE)
   @ApiOperation({ summary: 'Create an artwork' })

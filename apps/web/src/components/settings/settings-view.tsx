@@ -35,6 +35,7 @@ import { ApiKeysPanel } from './api-keys-panel';
 import { ExternalSourcesPanel } from './external-sources-panel';
 import { OAuthPanel } from './oauth-panel';
 import { AuditLogPanel } from './audit-log-panel';
+import { TrashPanel } from './trash-panel';
 import { BackupsPanel } from './backups-panel';
 import { MigrationPanel } from './migration-panel';
 import { settingsApi } from '@/lib/data/admin';
@@ -432,7 +433,12 @@ export function SettingsView() {
           {section === 'notifications' && <NotificationsPanel />}
           {section === 'backups' && <BackupsPanel />}
           {section === 'migration' && <MigrationPanel />}
-          {section === 'danger' && <DangerZone />}
+          {section === 'danger' && (
+            <>
+              <TrashPanel />
+              <DangerZone />
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -508,6 +508,9 @@ model Artwork {
   aiMeta Json
 
   isFavorite Boolean @default(false)
+  // Soft delete — never hard-removed by the app; the trash view restores or
+  // a separate "empty trash" action purges for good.
+  deletedAt  DateTime?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   createdById String?

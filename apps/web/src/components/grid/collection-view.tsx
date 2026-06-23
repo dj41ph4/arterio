@@ -16,7 +16,9 @@ import { Check, Star, Pencil, Trash2, X, LibraryBig, Upload, Plus } from 'lucide
 import type { ArtworkView, Locale, ArtworkQuery } from '@arterio/shared';
 import { resolveLocalized } from '@arterio/shared';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import { useArtworksInfinite, useToggleFavorite } from '@/hooks/use-artworks';
+import { artworkRepository } from '@/lib/data';
 import { useFacets } from '@/hooks/use-artworks';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useRouter } from '@/i18n/navigation';
@@ -79,6 +81,7 @@ export function CollectionView({ favoritesOnly = false }: { favoritesOnly?: bool
   const t = useTranslations();
   const locale = useLocale() as Locale;
   const router = useRouter();
+  const qc = useQueryClient();
   const searchParams = useSearchParams();
   const toggleFav = useToggleFavorite();
 
@@ -345,6 +348,20 @@ export function CollectionView({ favoritesOnly = false }: { favoritesOnly?: bool
 
   const selectedCount = Object.keys(rowSelection).length;
 
+  const handleBulkDelete = async () => {
+    const ids = Object.keys(rowSelection);
+    if (!ids.length) return;
+    if (!confirm(`Mettre ${ids.length} œuvre(s) à la corbeille ?`)) return;
+    try {
+      await Promise.all(ids.map((id) => artworkRepository.remove(id)));
+      toast.success(`${ids.length} œuvre(s) déplacée(s) vers la corbeille`);
+      setRowSelection({});
+      qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'artworks' });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Échec de la suppression');
+    }
+  };
+
   const handleExport = async () => {
     setExporting(true);
     try {
@@ -495,7 +512,7 @@ export function CollectionView({ favoritesOnly = false }: { favoritesOnly?: bool
                 size="sm"
                 variant="ghost"
                 className="text-destructive hover:text-destructive"
-                onClick={() => toast.warning('Delete is disabled in the demo.')}
+                onClick={handleBulkDelete}
               >
                 <Trash2 className="size-3.5" /> {t('common.delete')}
               </Button>

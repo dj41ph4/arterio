@@ -1,5 +1,16 @@
 import { apiFetch, API_BASE_URL } from '@/lib/api/client';
 import { useAuthStore } from '@/stores/auth-store';
+import type { ArtworkView, Paginated } from '@arterio/shared';
+
+// ---------------------------------------------------------------------------
+// Trash (soft-deleted artworks)
+// ---------------------------------------------------------------------------
+
+export const trashApi = {
+  list: () => apiFetch<Paginated<ArtworkView>>('/artworks/trash'),
+  restore: (id: string) => apiFetch<ArtworkView>(`/artworks/${id}/restore`, { method: 'POST' }),
+  purge: (id: string) => apiFetch<{ ok: true }>(`/artworks/${id}/purge`, { method: 'DELETE' }),
+};
 
 // ---------------------------------------------------------------------------
 // Members

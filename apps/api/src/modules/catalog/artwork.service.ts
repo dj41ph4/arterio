@@ -20,7 +20,7 @@ export class ArtworkService {
   }
 
   async list(user: AuthUser, query: ArtworkQuery): Promise<Paginated<ArtworkView>> {
-    const where: Record<string, unknown> = { organizationId: user.organizationId };
+    const where: Record<string, unknown> = { organizationId: user.organizationId, deletedAt: null };
     if (query.status?.length) where.status = { in: query.status };
     if (query.condition?.length) where.condition = { in: query.condition };
     if (query.collectionId?.length) where.collectionId = { in: query.collectionId };
@@ -98,7 +98,7 @@ export class ArtworkService {
 
   async getById(user: AuthUser, id: string): Promise<ArtworkView> {
     const row = await this.prisma.artwork.findFirst({
-      where: { id, organizationId: user.organizationId },
+      where: { id, organizationId: user.organizationId, deletedAt: null },
       include: ARTWORK_INCLUDE,
     });
     if (!row) throw new NotFoundException('Artwork not found');
@@ -117,7 +117,7 @@ export class ArtworkService {
   }
 
   async facets(user: AuthUser) {
-    const where = { organizationId: user.organizationId };
+    const where = { organizationId: user.organizationId, deletedAt: null };
     const [byStatus, byCondition, byCollection] = await Promise.all([
       this.prisma.artwork.groupBy({ by: ['status'], where, _count: true }),
       this.prisma.artwork.groupBy({ by: ['condition'], where, _count: true }),
@@ -289,19 +289,64 @@ export class ArtworkService {
     return toArtworkView(final as never, { crypto: this.crypto, canViewValuation: this.canViewValuation(user) });
   }
 
+  /** Soft delete — moves the artwork to the trash. Recoverable via restore(); never silently unrecoverable. */
   async remove(user: AuthUser, id: string): Promise<void> {
-    const artwork = await this.prisma.artwork.findFirst({ where: { id, organizationId: user.organizationId } });
-    await this.prisma.artwork.deleteMany({ where: { id, organizationId: user.organizationId } });
-    if (artwork) {
-      await this.audit.log({
-        organizationId: user.organizationId,
-        actorId: user.sub,
-        action: 'artwork.delete',
-        resource: 'artwork',
-        resourceId: id,
-        metadata: { inventoryNumber: artwork.inventoryNumber },
-      });
-    }
+    const artwork = await this.prisma.artwork.findFirst({ where: { id, organizationId: user.organizationId, deletedAt: null } });
+    if (!artwork) throw new NotFoundException('Artwork not found');
+    await this.prisma.artwork.update({ where: { id }, data: { deletedAt: new Date() } });
+    await this.audit.log({
+      organizationId: user.organizationId,
+      actorId: user.sub,
+      action: 'artwork.delete',
+      resource: 'artwork',
+      resourceId: id,
+      metadata: { inventoryNumber: artwork.inventoryNumber },
+    });
+  }
+
+  async listTrash(user: AuthUser): Promise<Paginated<ArtworkView>> {
+    const canView = this.canViewValuation(user);
+    const rows = await this.prisma.artwork.findMany({
+      where: { organizationId: user.organizationId, deletedAt: { not: null } },
+      include: ARTWORK_INCLUDE,
+      orderBy: { deletedAt: 'desc' },
+    });
+    return {
+      items: rows.map((r) => toArtworkView(r as never, { crypto: this.crypto, canViewValuation: canView })),
+      total: rows.length,
+      nextCursor: null,
+    };
+  }
+
+  async restore(user: AuthUser, id: string): Promise<ArtworkView> {
+    const artwork = await this.prisma.artwork.findFirst({ where: { id, organizationId: user.organizationId, deletedAt: { not: null } } });
+    if (!artwork) throw new NotFoundException('Artwork not found in trash');
+    await this.prisma.artwork.update({ where: { id }, data: { deletedAt: null } });
+    await this.audit.log({
+      organizationId: user.organizationId,
+      actorId: user.sub,
+      action: 'artwork.restore',
+      resource: 'artwork',
+      resourceId: id,
+      metadata: { inventoryNumber: artwork.inventoryNumber },
+    });
+    const final = await this.prisma.artwork.findUniqueOrThrow({ where: { id }, include: ARTWORK_INCLUDE });
+    return toArtworkView(final as never, { crypto: this.crypto, canViewValuation: this.canViewValuation(user) });
+  }
+
+  /** Hard delete — only reachable from the trash. Permanent, intentionally one more step away than remove(). */
+  async purge(user: AuthUser, id: string): Promise<void> {
+    const artwork = await this.prisma.artwork.findFirst({ where: { id, organizationId: user.organizationId, deletedAt: { not: null } } });
+    if (!artwork) throw new NotFoundException('Artwork not found in trash');
+    await this.prisma.artwork.delete({ where: { id } });
+    await this.audit.log({
+      organizationId: user.organizationId,
+      actorId: user.sub,
+      action: 'artwork.purge',
+      resource: 'artwork',
+      resourceId: id,
+      metadata: { inventoryNumber: artwork.inventoryNumber },
+    });
   }
 
   /** Moves an artwork to a new location, keeping a MovementRecord of where it came from. */
