@@ -13,6 +13,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { randomBytes } from 'node:crypto';
@@ -35,6 +36,7 @@ export class ArtistController {
   constructor(private readonly artists: ArtistService) {}
 
   @Get()
+  @SkipThrottle()
   @RequirePermissions(PERMISSIONS.ARTWORK_READ)
   @ApiOperation({ summary: 'List artists' })
   list(@CurrentUser() user: AuthUser, @Query() q: ListArtistsQueryDto) {
@@ -49,6 +51,7 @@ export class ArtistController {
   }
 
   @Post()
+  @SkipThrottle()
   @RequirePermissions(PERMISSIONS.ARTWORK_CREATE)
   @ApiOperation({ summary: 'Create artist — auto-enriches from Wikipedia/Wikidata' })
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateArtistDto) {

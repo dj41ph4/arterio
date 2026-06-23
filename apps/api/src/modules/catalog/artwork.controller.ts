@@ -17,6 +17,7 @@ import { diskStorage } from 'multer';
 import { randomBytes } from 'node:crypto';
 import { extname } from 'node:path';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { PERMISSIONS, type ArtworkQuery } from '@arterio/shared';
 import { ArtworkService } from './artwork.service';
 import { ListArtworksQueryDto } from './dto';
@@ -84,6 +85,7 @@ export class ArtworkController {
   }
 
   @Post()
+  @SkipThrottle()
   @RequirePermissions(PERMISSIONS.ARTWORK_CREATE)
   @ApiOperation({ summary: 'Create an artwork' })
   create(@CurrentUser() user: AuthUser, @Body() body: Record<string, unknown>) {
