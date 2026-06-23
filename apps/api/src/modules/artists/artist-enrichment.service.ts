@@ -37,7 +37,7 @@ export interface WikidataArtist {
   influencedByLabels?: string[];
 }
 
-export type FallbackSource = 'met' | 'aic' | 'europeana' | 'rijksmuseum' | 'harvard' | 'smithsonian' | 'web';
+export type FallbackSource = 'met' | 'aic' | 'europeana' | 'rijksmuseum' | 'harvard' | 'smithsonian';
 
 /** A hit from a museum collection API — used when Wikidata has no match. */
 export interface FallbackHit {
@@ -48,7 +48,6 @@ export interface FallbackHit {
   deathDate?: string;
   imageUrl?: string;
   sourceUrl?: string;
-  /** Only set by the 'web' source — raw scraped text, not from a curated authority. */
   biography?: string;
 }
 
@@ -495,7 +494,6 @@ WHERE {
       () => this.fetchFromRijksmuseum(name, keys.rijksmuseum),
       () => this.fetchFromHarvard(name, keys.harvard),
       () => this.fetchFromSmithsonian(name, keys.smithsonian),
-      () => this.fetchFromWebSearch(name),
     ];
     for (const provider of providers) {
       try {
@@ -708,67 +706,4 @@ WHERE {
     };
   }
 
-  /**
-   * Last resort: a free, keyless web search for artists too obscure for
-   * Wikidata, museum APIs, or any curated authority — a working artist with
-   * just a personal site or gallery page. Uses DuckDuckGo's HTML results
-   * page (no official API, no key, but no terms-of-service auth wall either)
-   * rather than a paid search API. The bio quality is rougher (a raw meta
-   * description or opening paragraph, not an AI summary) and this is the
-   * highest homonym risk of any source here, so the result is required to
-   * pass the same all-tokens-must-match guard as everything else, and is
-   * tagged 'web' in externalIds so it's visibly the least authoritative hit.
-   */
-  private async fetchFromWebSearch(name: string): Promise<FallbackHit | null> {
-    // Unlike the dedicated museum APIs above, this hits an arbitrary,
-    // unaccountable third-party site with no SLA. Enrichment runs
-    // synchronously per artist during spreadsheet import (see
-    // HttpArtistRepository.add()) — an unresponsive site without a timeout
-    // would stall the whole import, not just fail this one lookup.
-    const searchRes = await fetch(`https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(`"${name}" artist`)}`, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Arterio/1.0)' },
-      signal: AbortSignal.timeout(5_000),
-    }).catch(() => null);
-    if (!searchRes?.ok) return null;
-    const html = await searchRes.text();
-
-    // Lite results are plain `<a rel="nofollow" href="...">Title</a>` links —
-    // no JS, no nested markup, regex is enough.
-    const linkRe = /<a rel="nofollow" href="([^"]+)">([^<]+)<\/a>/g;
-    let m: RegExpExecArray | null;
-    let pageUrl: string | null = null;
-    while ((m = linkRe.exec(html))) {
-      const [, href, title] = m;
-      if (!href || !title) continue;
-      if (/wikipedia\.org|wikidata\.org|facebook\.com|instagram\.com|linkedin\.com|pinterest\.com/.test(href)) continue;
-      if (this.matchesAllTokens(name, title)) {
-        pageUrl = href;
-        break;
-      }
-    }
-    if (!pageUrl) return null;
-
-    const pageRes = await fetch(pageUrl, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Arterio/1.0)' },
-      signal: AbortSignal.timeout(5_000),
-    }).catch(() => null);
-    if (!pageRes?.ok) return null;
-    const pageHtml = await pageRes.text();
-
-    const meta =
-      /<meta[^>]+(?:name|property)=["'](?:description|og:description)["'][^>]+content=["']([^"']+)["']/i.exec(pageHtml)?.[1];
-    const firstParagraph = /<p[^>]*>([^<]{60,})<\/p>/i.exec(pageHtml)?.[1];
-    // The page itself was already required to pass matchesAllTokens via its
-    // title before we fetched it; no further name check on the snippet text,
-    // since a short meta description legitimately may not repeat the name.
-    const biography = (meta ?? firstParagraph)?.trim();
-    if (!biography) return null;
-
-    return {
-      source: 'web',
-      matchedName: name,
-      biography,
-      sourceUrl: pageUrl,
-    };
-  }
 }
