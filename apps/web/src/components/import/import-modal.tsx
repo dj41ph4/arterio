@@ -11,6 +11,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { artworkRepository } from '@/lib/data';
 import { artistRepository, type ArtistView } from '@/lib/data/artist-repository';
+import { ApiError } from '@/lib/api/client';
 import {
   parseSpreadsheetFile,
   SUPPORTED_IMPORT_EXTENSIONS,
@@ -37,6 +38,31 @@ type Step = 'upload' | 'mapping' | 'importing' | 'done';
 interface ImportModalProps {
   open: boolean;
   onClose: () => void;
+}
+
+interface ImportLogEntry {
+  row: number;
+  title: string;
+  artist: string;
+  status: 'created' | 'skipped';
+  reason: string;
+}
+
+/** Downloads the per-row import log as CSV so issues can be diagnosed without server log access. */
+function downloadImportLog(entries: ImportLogEntry[]) {
+  const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
+  const header = ['ligne', 'titre', 'artiste', 'statut', 'raison'].join(';');
+  const lines = entries.map((e) =>
+    [e.row, escape(e.title), escape(e.artist), e.status, escape(e.reason)].join(';'),
+  );
+  const csv = [header, ...lines].join('\n');
+  const blob = new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `import-log-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function confidenceColor(pct: number): string {
@@ -149,6 +175,7 @@ export function ImportModal({ open, onClose }: ImportModalProps) {
   const [mappings, setMappings] = React.useState<ColumnMapping[]>([]);
   const [progress, setProgress] = React.useState({ done: 0, total: 0 });
   const [summary, setSummary] = React.useState({ created: 0, skipped: 0, artistsCreated: 0, inventoryGenerated: 0 });
+  const [importLog, setImportLog] = React.useState<ImportLogEntry[]>([]);
 
   const reset = () => {
     setStep('upload');
@@ -156,6 +183,7 @@ export function ImportModal({ open, onClose }: ImportModalProps) {
     setSheet({ headers: [], rows: [] });
     setMappings([]);
     setProgress({ done: 0, total: 0 });
+    setImportLog([]);
   };
 
   const fieldCol = (field: ArtworkFieldKey): number | undefined =>
@@ -216,6 +244,7 @@ export function ImportModal({ open, onClose }: ImportModalProps) {
     let created = 0;
     let skipped = 0;
     let artistsCreated = 0;
+    const log: ImportLogEntry[] = [];
 
     const resolveArtist = async (raw: string): Promise<{ id: string | null; name: string | null }> => {
       const normalized = normalizeArtistName(raw);
@@ -260,6 +289,7 @@ export function ImportModal({ open, onClose }: ImportModalProps) {
 
       if (!titleRaw.trim() && !artistRaw.trim()) {
         skipped++;
+        log.push({ row: i + 2, title: titleRaw, artist: artistRaw, status: 'skipped', reason: 'Sans titre ni artiste' });
         setProgress({ done: i + 1, total });
         continue;
       }
@@ -301,14 +331,18 @@ export function ImportModal({ open, onClose }: ImportModalProps) {
           condition: 'unknown',
         } as never);
         created++;
-      } catch {
+        log.push({ row: i + 2, title, artist: artistName ?? '', status: 'created', reason: '' });
+      } catch (err) {
         skipped++;
+        const reason = err instanceof ApiError ? `${err.status} ${err.message}` : String(err);
+        log.push({ row: i + 2, title, artist: artistName ?? '', status: 'skipped', reason });
       }
 
       setProgress({ done: i + 1, total });
     }
 
     setSummary({ created, skipped, artistsCreated, inventoryGenerated: inventoryPlan.generatedCount });
+    setImportLog(log);
     setStep('done');
     qc.invalidateQueries({ queryKey: ['artworks'] });
     qc.invalidateQueries({ queryKey: ['artist-artworks'] });
@@ -515,6 +549,13 @@ export function ImportModal({ open, onClose }: ImportModalProps) {
                     <p className="mt-1 text-xs text-muted-foreground">{summary.skipped} ligne{summary.skipped > 1 ? 's' : ''} ignorée{summary.skipped > 1 ? 's' : ''} (sans titre ni artiste, ou erreur).</p>
                   )}
                 </div>
+                <button
+                  type="button"
+                  onClick={() => downloadImportLog(importLog)}
+                  className="text-sm font-medium text-primary underline-offset-2 hover:underline"
+                >
+                  Télécharger le rapport d'import (CSV)
+                </button>
               </motion.div>
             )}
           </AnimatePresence>
