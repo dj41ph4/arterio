@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import type { ArtworkQuery, ArtworkView, Paginated, PermissionKey } from '@arterio/shared';
 import { DEFAULT_LOCALE, PERMISSIONS, resolveLocalized } from '@arterio/shared';
 import { PrismaService } from '../../core/prisma/prisma.service';
@@ -140,6 +141,15 @@ export class ArtworkService {
       artist: [],
     };
   }
+  /** Next candidate after a unique-constraint clash: bump the numeric suffix of a "PREFIX-00001"-style number, or fall back to "INV-NNNN". */
+  private bumpInventoryNumber(requested: string | undefined, count: number, attempt: number): string {
+    const match = requested?.match(/^(.*?)(\d+)$/);
+    if (match) {
+      const [, prefix, seq] = match;
+      return `${prefix}${String(Number(seq) + attempt).padStart(seq!.length, '0')}`;
+    }
+    return `INV-${String(count + 1 + attempt).padStart(4, '0')}`;
+  }
 
   async create(user: AuthUser, body: Record<string, unknown>): Promise<ArtworkView> {
     const count = await this.prisma.artwork.count({ where: { organizationId: user.organizationId } });
@@ -155,39 +165,62 @@ export class ArtworkService {
       techniqueId = technique.id;
     }
 
-    const row = await this.prisma.artwork.create({
-      data: {
-        organizationId: user.organizationId,
-        inventoryNumber: (body.inventoryNumber as string) ?? `INV-${String(count + 1).padStart(4, '0')}`,
-        techniqueId,
-        title: (body.title as object) ?? {},
-        description: (body.description as object) ?? {},
-        analysis: {},
-        notes: (body.notes as object) ?? {},
-        conditionNote: {},
-        provenance: {},
-        bibliography: {},
-        references: {},
-        externalLinks: {},
-        aiMeta: {},
-        dominantColors: [],
-        artistId: (body.artistId as string) || null,
-        attribution: (body.artistName as string) ?? null,
-        dateText: (body.dateText as string) ?? null,
-        yearFrom: (body.yearFrom as number) ?? null,
-        status: (body.status as never) ?? 'draft',
-        condition: (body.condition as never) ?? 'unknown',
-        collectionId: (body.collectionId as string) || null,
-        dimensionsNote: (body.dimensionsNote as string) ?? null,
-        framed: (body.framed as boolean) ?? false,
-        acquisitionMethod: (body.acquisitionMethod as never) ?? 'unknown',
-        acquisitionDate: body.acquisitionDate ? new Date(body.acquisitionDate as string) : null,
-        paymentMethod: (body.paymentMethod as string) ?? null,
-        hasCertificate: (body.hasCertificate as boolean) ?? false,
-        hasInvoice: (body.hasInvoice as boolean) ?? false,
-      },
-      include: ARTWORK_INCLUDE,
-    });
+    const requestedInventoryNumber = body.inventoryNumber as string | undefined;
+    // A spreadsheet import plans inventory numbers client-side from the file
+    // alone, with no visibility into numbers already used by previous rows/
+    // imports in this organization — every collision used to bubble up as a
+    // raw 500 and silently kill that row. Retry with the next free number
+    // instead of failing outright; a manually-typed duplicate from the UI
+    // form will resolve to the same place after at most a few bumps.
+    let row;
+    for (let attempt = 0; ; attempt++) {
+      const inventoryNumber =
+        attempt === 0 && requestedInventoryNumber
+          ? requestedInventoryNumber
+          : this.bumpInventoryNumber(requestedInventoryNumber, count, attempt);
+      try {
+        row = await this.prisma.artwork.create({
+          data: {
+            organizationId: user.organizationId,
+            inventoryNumber,
+            techniqueId,
+            title: (body.title as object) ?? {},
+            description: (body.description as object) ?? {},
+            analysis: {},
+            notes: (body.notes as object) ?? {},
+            conditionNote: {},
+            provenance: {},
+            bibliography: {},
+            references: {},
+            externalLinks: {},
+            aiMeta: {},
+            dominantColors: [],
+            artistId: (body.artistId as string) || null,
+            attribution: (body.artistName as string) ?? null,
+            dateText: (body.dateText as string) ?? null,
+            yearFrom: (body.yearFrom as number) ?? null,
+            status: (body.status as never) ?? 'draft',
+            condition: (body.condition as never) ?? 'unknown',
+            collectionId: (body.collectionId as string) || null,
+            dimensionsNote: (body.dimensionsNote as string) ?? null,
+            framed: (body.framed as boolean) ?? false,
+            acquisitionMethod: (body.acquisitionMethod as never) ?? 'unknown',
+            acquisitionDate: body.acquisitionDate ? new Date(body.acquisitionDate as string) : null,
+            paymentMethod: (body.paymentMethod as string) ?? null,
+            hasCertificate: (body.hasCertificate as boolean) ?? false,
+            hasInvoice: (body.hasInvoice as boolean) ?? false,
+          },
+          include: ARTWORK_INCLUDE,
+        });
+        break;
+      } catch (err) {
+        const isInventoryClash =
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === 'P2002' &&
+          (err.meta?.target as string[] | undefined)?.includes('inventoryNumber');
+        if (!isInventoryClash || attempt > 200) throw err;
+      }
+    }
 
     const purchasePrice = body.purchasePrice as number | undefined;
     if (purchasePrice != null) {
