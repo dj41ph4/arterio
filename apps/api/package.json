@@ -19,7 +19,6 @@
     "@nestjs/jwt": "^10.2.0",
     "@nestjs/platform-express": "^10.4.15",
     "@nestjs/swagger": "^8.1.0",
-    "@nestjs/throttler": "^6.3.0",
     "@node-rs/argon2": "^2.0.2",
     "adm-zip": "^0.5.17",
     "archiver": "^7.0.1",
