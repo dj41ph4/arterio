@@ -1,9 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { LOCALES, Locale } from '@arterio/shared';
 import type { Env } from '../../core/config/configuration';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { CryptoService } from '../../core/crypto/crypto.service';
+import { AI_PROVIDER, type AiProvider } from '../ai/ai.types';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -139,6 +140,7 @@ export class ArtistEnrichmentService {
     private readonly config: ConfigService<Env, true>,
     private readonly prisma: PrismaService,
     private readonly crypto: CryptoService,
+    @Inject(AI_PROVIDER) private readonly aiProvider: AiProvider,
   ) {}
 
   /**
@@ -152,7 +154,28 @@ export class ArtistEnrichmentService {
   async enrich(fullName: string, organizationId?: string): Promise<ArtistEnrichmentResult> {
     await acquireEnrichmentSlot();
     try {
-      return await this.doEnrich(fullName, organizationId);
+    const result = await this.doEnrich(fullName, organizationId);
+
+    // If AI is enabled and provides a description, use it to fill missing biography.
+    // This is a best‑effort enrichment; failures are logged but do not abort the flow.
+    if (result && this.aiProvider && this.aiProvider.enabled) {
+      try {
+        // Prefer using the thumbnail image if available; otherwise omit imageUrl.
+        const aiInput = {
+          imageUrl: result.thumbnail,
+          locale: 'en', // default to English for AI‑generated text
+        } as const;
+        const aiResult = await this.aiProvider.describe(aiInput);
+        if (aiResult?.description) {
+          // Merge AI‑generated description into biographies if not already present.
+          if (!result.biographies['en']) {
+            result.biographies['en'] = aiResult.description;
+          }
+        }
+      } catch (e) {
+        this.logger.warn(`AI enrichment failed for "${fullName}": ${String(e)}`);
+      }
+    }
     } finally {
       releaseEnrichmentSlot();
     }

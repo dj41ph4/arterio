@@ -33,9 +33,12 @@ export const envSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
-  AI_PROVIDER: z.enum(['anthropic', 'openai', 'local', 'none']).default('none'),
+  AI_PROVIDER: z.enum(['anthropic', 'openrouter', 'openai', 'local', 'none']).default('none'),
   AI_MODEL: z.string().default('claude-opus-4-8'),
   ANTHROPIC_API_KEY: z.string().optional(),
+  // OpenRouter integration (optional)
+  OPENROUTER_API_KEY: z.string().optional(),
+  OPENROUTER_MODEL: z.string().default('openrouter/auto'),
 
   // Artist enrichment fallback sources — used when Wikidata has no unambiguous
   // art-world match. The Met and AIC APIs are keyless; the rest are free but
