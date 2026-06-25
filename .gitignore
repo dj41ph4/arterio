@@ -1,0 +1,79 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+.yarn/
+
+# Builds
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# Turbo
+.turbo/
+
+# Prisma
+packages/database/prisma/migrations/dev.db*
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+!**/keys/.gitkeep
+secrets/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# Editors / OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.DS_Store
+Thumbs.db
+
+# Docker / infra runtime volumes
+infra/volumes/
+infra/data/
+
+# Let's Encrypt — account keys, issued certs, ACME challenge tokens (regenerated per host)
+infra/nginx/letsencrypt/*
+!infra/nginx/letsencrypt/.gitkeep
+infra/nginx/www/*
+!infra/nginx/www/.gitkeep
+infra/nginx/certs/*.pem
+infra/synology/nginx/letsencrypt/*
+!infra/synology/nginx/letsencrypt/.gitkeep
+infra/synology/nginx/www/*
+!infra/synology/nginx/www/.gitkeep
+infra/synology/nginx/certs/*.pem
+
+# Windows installer runtime state (reboot markers, renewal log)
+infra/windows/.state/
+
+# Database backups (contain real data - never commit these)
+infra/windows/backups/*
+!infra/windows/backups/.gitkeep
+
+# Uploads (local dev storage)
+storage/
+uploads/
+
+# SQLite databases (created at runtime in mapped volume)
+*.db
+*.db-journal

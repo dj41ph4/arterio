@@ -1,0 +1,39 @@
+# Keeps the Docker build context small and prevents a host-built node_modules
+# (possibly containing Windows/macOS-compiled native bindings — argon2,
+# better-sqlite3, etc.) from ever being copied into a Linux image. Each
+# Dockerfile installs its own dependencies fresh inside the build.
+node_modules
+**/node_modules
+
+# VCS / editor
+.git
+.gitignore
+.vscode
+.idea
+
+# Build output (rebuilt inside the image)
+**/dist
+**/.next
+**/.turbo
+**/build
+
+# Env / secrets — never bake these into an image layer
+.env
+.env.*
+!.env.example
+
+# Local dev databases / uploads / runtime data
+**/*.db
+**/*.db-journal
+storage
+uploads
+
+# Infra runtime state (certs, ACME challenge tokens, installer markers)
+infra/nginx/certs
+infra/nginx/letsencrypt
+infra/nginx/www
+infra/windows/.state
+
+# Docs / misc — not needed at build time
+**/*.md
+.claude

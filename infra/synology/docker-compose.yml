@@ -1,0 +1,55 @@
+# =============================================================================
+#  Arterio — déploiement Synology (simple)
+#
+#  Deux images pré-construites (API + Web) publiées sur Docker Hub par GitHub
+#  Actions à chaque `git push`. La base de données est un fichier SQLite dans le
+#  dossier mappé ./data — AUCUN serveur PostgreSQL/Redis à installer à côté.
+#
+#  Pour déployer : Container Manager → Projet → coller ce fichier → Lancer.
+#  Premier lancement : ouvrez http://IP-DU-NAS:3000 → assistant de configuration.
+#  À sauvegarder : le seul dossier ./data (base + photos/documents).
+# =============================================================================
+
+name: arterio
+
+services:
+  api:
+    image: docker.io/dj41ph4/arterio-api:latest
+    restart: unless-stopped
+    ports:
+      - '4000:4000'
+    volumes:
+      # Tout le persistant : base SQLite + médias. Le seul dossier à sauvegarder.
+      - ./data:/data
+    # environment:
+    #   # Sécurité (recommandé en production) — sinon des valeurs de dev sont
+    #   # utilisées. Générez des secrets aléatoires longs et une clé 32 octets base64 :
+    #   JWT_ACCESS_SECRET: change-me-long-random-string
+    #   JWT_REFRESH_SECRET: change-me-another-long-random-string
+    #   DATA_ENCRYPTION_KEY: change-me-32-bytes-base64
+    labels:
+      com.centurylinklabs.watchtower.enable: 'true'
+
+  web:
+    image: docker.io/dj41ph4/arterio-web:latest
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    depends_on: [api]
+    labels:
+      com.centurylinklabs.watchtower.enable: 'true'
+
+  # Mises à jour automatiques : surveille Docker Hub et re-déploie api/web dès
+  # qu'une nouvelle image :latest est publiée. Rien à faire sur le NAS après un
+  # `git push`. Dépôt Docker Hub privé : ajoutez REPO_USER / REPO_PASS ci-dessous.
+  watchtower:
+    image: containrrr/watchtower:latest
+    restart: unless-stopped
+    environment:
+      WATCHTOWER_CLEANUP: 'true'
+      WATCHTOWER_LABEL_ENABLE: 'true'
+      WATCHTOWER_POLL_INTERVAL: '120'
+      # REPO_USER: dj41ph4
+      # REPO_PASS: <token Docker Hub>
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

@@ -1,0 +1,1014 @@
+// ============================================================================
+//  Arterio — Prisma schema
+//  PostgreSQL · multi-tenant · multilingual · audit-grade
+//
+//  Conventions
+//   - Every tenant-scoped table carries `organizationId`.
+//   - Translatable long-form content is stored as Json keyed by locale
+//     (e.g. { "en": "...", "fr": "..." }) and resolved with a fallback chain.
+//   - Monetary/sensitive values live in dedicated rows so they can be
+//     encrypted (AES-256-GCM) and access-controlled independently.
+//   - `AuditLog` is append-only and hash-chained (tamper-evident).
+// ============================================================================
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  // SQLite: zero-config, single file in a mapped volume. The app is a
+  // self-hosted appliance — no separate database server to deploy.
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------------------
+//  Enums
+// ----------------------------------------------------------------------------
+
+// ----------------------------------------------------------------------------
+//  Tenancy & identity
+// ----------------------------------------------------------------------------
+
+model Organization {
+  id            String   @id @default(cuid())
+  slug          String   @unique
+  name          String
+  legalName     String?
+  defaultLocale String   @default("en")
+  // Branding + per-tenant settings (theme accent, logo url, workflow config…)
+  settings      Json
+  logoKey       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  members      Membership[]
+  users        User[]
+  roles        Role[]
+  invitations  Invitation[]
+  artworks     Artwork[]
+  artists      Artist[]
+  collections  Collection[]
+  categories   Category[]
+  techniques   Technique[]
+  supports     Support[]
+  movements    ArtMovement[]
+  tags         Tag[]
+  media        MediaAsset[]
+  documents    Document[]
+  locations    Location[]
+  loans        Loan[]
+  exhibitions  Exhibition[]
+  restorations Restoration[]
+  workflows    WorkflowDefinition[]
+  savedViews   SavedView[]
+  apiKeys      ApiKey[]
+  webhooks     Webhook[]
+  alerts       Alert[]
+  auditLogs    AuditLog[]
+
+  @@map("organizations")
+}
+
+model User {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  email         String
+  emailVerified DateTime?
+  passwordHash  String? // Argon2id; null when SSO-only
+  fullName      String
+  displayName   String?
+  avatarKey     String?
+  locale        String       @default("en")
+  status        String @default("active")
+
+  mfaEnabled    Boolean @default(false)
+  lastLoginAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships     Membership[]
+  userRoles       UserRole[]
+  refreshTokens   RefreshToken[]
+  sessions        Session[]
+  mfaCredentials  MfaCredential[]
+  webauthn        WebAuthnCredential[]
+  oauthAccounts   OAuthAccount[]
+  loginEvents     LoginEvent[]
+  auditLogs       AuditLog[]
+  notifications   Notification[]
+  signedDocuments DocumentSignature[]
+  invitationsSent Invitation[]         @relation("InvitedBy")
+
+  @@unique([organizationId, email])
+  @@index([organizationId])
+  @@map("users")
+}
+
+model Membership {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status         String @default("active")
+  createdAt      DateTime     @default(now())
+
+  @@unique([organizationId, userId])
+  @@map("memberships")
+}
+
+model Role {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  key            String // e.g. admin, curator, registrar, conservator, finance, viewer
+  name           String
+  description    String?
+  isSystem       Boolean      @default(false)
+  // ABAC policy document (JSON Logic-style conditions)
+  policy         Json
+  createdAt      DateTime     @default(now())
+
+  permissions RolePermission[]
+  userRoles   UserRole[]
+
+  @@unique([organizationId, key])
+  @@map("roles")
+}
+
+model Permission {
+  id          String  @id @default(cuid())
+  key         String  @unique // e.g. artwork:read, artwork:update, loan:approve
+  resource    String
+  action      String
+  description String?
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleId String
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model Invitation {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String
+  roleKey        String
+  token          String       @unique
+  invitedById    String?
+  invitedBy      User?        @relation("InvitedBy", fields: [invitedById], references: [id])
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
+  @@map("invitations")
+}
+
+// ----------------------------------------------------------------------------
+//  Auth credentials & sessions
+// ----------------------------------------------------------------------------
+
+model RefreshToken {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String   @unique // sha-256 of the token; raw token never stored
+  familyId   String // rotation family — reuse detection revokes the family
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  replacedBy String?
+  userAgent  String?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_tokens")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userAgent    String?
+  ip           String?
+  lastSeenAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+  revokedAt    DateTime?
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model MfaCredential {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // TOTP secret stored encrypted (AES-256-GCM)
+  secretEnc     String
+  label         String?
+  recoveryCodes Json // hashed recovery codes
+  confirmedAt   DateTime?
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+  @@map("mfa_credentials")
+}
+
+model WebAuthnCredential {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credentialId String   @unique
+  publicKey    Bytes
+  counter      BigInt   @default(0)
+  deviceType   String?
+  transports   Json
+  label        String?
+  createdAt    DateTime @default(now())
+  lastUsedAt   DateTime?
+
+  @@index([userId])
+  @@map("webauthn_credentials")
+}
+
+model OAuthAccount {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider       String // google | microsoft
+  providerUserId String
+  createdAt      DateTime @default(now())
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+  @@map("oauth_accounts")
+}
+
+model LoginEvent {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  email     String?
+  success   Boolean
+  reason    String?
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([email])
+  @@map("login_events")
+}
+
+// ----------------------------------------------------------------------------
+//  Catalog taxonomies
+// ----------------------------------------------------------------------------
+
+model Artist {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  fullName    String
+  sortName    String? // "Picasso, Pablo"
+  nationality String?
+  birthDate   String? // partial dates allowed ("c. 1881")
+  deathDate   String?
+  // Translatable biography: { "en": "...", "fr": "..." }
+  biography   Json
+  movementId  String?
+  movement    ArtMovement? @relation(fields: [movementId], references: [id])
+  externalIds Json // ULAN, VIAF, Wikidata…
+  thumbnail     String? // Wikimedia portrait image URL
+  notableWorks  Json @default("[]") // string[] — notable work labels from Wikidata
+  influencedBy  Json @default("[]") // string[] — influence labels from Wikidata
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  artworks Artwork[]
+
+  @@index([organizationId])
+  @@index([organizationId, sortName])
+  @@map("artists")
+}
+
+model ArtMovement {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  label          Json // translatable label
+
+  artists  Artist[]
+  artworks Artwork[]
+
+  @@unique([organizationId, name])
+  @@map("art_movements")
+}
+
+model Collection {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  label          Json
+  description    Json
+  color          String? // hex used for grid color coding
+  parentId       String?
+  parent         Collection?  @relation("CollectionTree", fields: [parentId], references: [id])
+  children       Collection[] @relation("CollectionTree")
+  createdAt      DateTime     @default(now())
+
+  artworks Artwork[]
+
+  @@index([organizationId])
+  @@map("collections")
+}
+
+model Category {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  label          Json
+  color          String?
+
+  artworks Artwork[]
+
+  @@unique([organizationId, name])
+  @@map("categories")
+}
+
+model Technique {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  label          Json
+
+  artworks Artwork[]
+
+  @@unique([organizationId, name])
+  @@map("techniques")
+}
+
+model Support {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  label          Json
+
+  artworks Artwork[]
+
+  @@unique([organizationId, name])
+  @@map("supports")
+}
+
+model Tag {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  color          String?
+  // true when produced by AI enrichment (kept distinct from curator tags)
+  aiGenerated    Boolean      @default(false)
+
+  artworks ArtworkTag[]
+
+  @@unique([organizationId, name])
+  @@map("tags")
+}
+
+model ArtworkTag {
+  artworkId String
+  artwork   Artwork @relation(fields: [artworkId], references: [id], onDelete: Cascade)
+  tagId     String
+  tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([artworkId, tagId])
+  @@map("artwork_tags")
+}
+
+// ----------------------------------------------------------------------------
+//  Artwork — central entity
+// ----------------------------------------------------------------------------
+
+model Artwork {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // Identity
+  inventoryNumber String
+  accessionNumber String?
+  // Translatable title + descriptive long-form content
+  title           Json // { en, fr, … }
+  description     Json
+  analysis        Json
+  notes           Json
+
+  // Attribution
+  artistId             String?
+  artist               Artist?              @relation(fields: [artistId], references: [id])
+  attribution          String? // free-text when no artist record
+  authentication       String @default("unverified")
+  signature            String?
+  signatureDescription String?
+
+  // Classification
+  movementId  String?
+  movement    ArtMovement? @relation(fields: [movementId], references: [id])
+  categoryId  String?
+  category    Category?    @relation(fields: [categoryId], references: [id])
+  techniqueId String?
+  technique   Technique?   @relation(fields: [techniqueId], references: [id])
+  supportId   String?
+  support     Support?     @relation(fields: [supportId], references: [id])
+
+  // Dating
+  dateText    String? // "c. 1503–1519"
+  yearFrom    Int?
+  yearTo      Int?
+
+  // Physical
+  heightCm     Float?
+  widthCm      Float?
+  depthCm      Float?
+  diameterCm   Float?
+  weightKg     Float?
+  dimensionsNote String?
+  framed       Boolean @default(false)
+  frameNote    String?
+  // Dominant colors (hex[]) — feeds color search; AI-populated when enabled
+  dominantColors Json
+
+  // Condition & status
+  status      String   @default("draft")
+  condition   String @default("unknown")
+  conditionNote Json
+
+  // Acquisition & ownership
+  acquisitionMethod String @default("unknown")
+  acquisitionDate   DateTime?
+  // Free-text payment method (CASH, VIREMENT, LEASING…) — kept separate from
+  // acquisitionMethod, which is a coarse 3-state enum and would lose detail.
+  paymentMethod     String?
+  ownerName         String?
+  collectionId      String?
+  collection        Collection?       @relation(fields: [collectionId], references: [id])
+
+  // Current location (denormalised pointer; history in MovementRecord)
+  currentLocationId String?
+  currentLocation   Location?   @relation("CurrentLocation", fields: [currentLocationId], references: [id])
+
+  hasCertificate Boolean @default(false)
+  hasInvoice     Boolean @default(false)
+
+  // Codes
+  qrSlug   String? @unique
+  barcode  String?
+  rfidTag  String?
+  nfcTag   String?
+
+  // Structured provenance / bibliography / references / external links
+  provenance   Json
+  bibliography Json
+  references   Json
+  externalLinks Json
+
+  // AI enrichment cache (only written when AI enabled)
+  aiMeta Json
+
+  isFavorite Boolean @default(false)
+  // Soft delete — never hard-removed by the app; the trash view restores or
+  // a separate "empty trash" action purges for good.
+  deletedAt  DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdById String?
+
+  media          MediaAsset[]
+  documents      Document[]
+  valuation      ArtworkValuation?
+  tags           ArtworkTag[]
+  movementRecords MovementRecord[]
+  loanItems      LoanItem[]
+  exhibitionItems ExhibitionArtwork[]
+  restorations   Restoration[]
+  workflowInstances WorkflowInstance[]
+  alerts         Alert[]
+
+  @@unique([organizationId, inventoryNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, artistId])
+  @@index([organizationId, collectionId])
+  @@index([organizationId, updatedAt])
+  @@map("artworks")
+}
+
+// Sensitive monetary data isolated → encrypted + access-controlled separately.
+model ArtworkValuation {
+  id        String  @id @default(cuid())
+  artworkId String  @unique
+  artwork   Artwork @relation(fields: [artworkId], references: [id], onDelete: Cascade)
+
+  currency        String @default("EUR")
+  // Stored AES-256-GCM encrypted (string ciphertext). Decrypted only for
+  // authorized roles; never serialized to logs/exports in clear.
+  purchasePriceEnc  String?
+  currentValueEnc   String?
+  insuranceValueEnc String?
+  vatRate           Float?
+  valuationDate     DateTime?
+  valuationSource   String?
+  updatedAt         DateTime @updatedAt
+
+  @@map("artwork_valuations")
+}
+
+// ----------------------------------------------------------------------------
+//  Media & documents
+// ----------------------------------------------------------------------------
+
+model MediaAsset {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  artworkId      String?
+  artwork        Artwork?     @relation(fields: [artworkId], references: [id], onDelete: Cascade)
+
+  type      String @default("image")
+  role      String @default("gallery")
+  // S3 keys for original + generated derivatives (webp/avif/thumbnails/IIIF)
+  storageKey   String
+  derivatives  Json // { thumb, medium, large, webp, avif, iiif }
+  fileName     String?
+  mimeType     String?
+  sizeBytes    Int?
+  width        Int?
+  height       Int?
+  checksum     String? // sha-256 for dedup / integrity
+  exif         Json
+  // perceptual hash for duplicate detection (AI/CV, populated later)
+  phash        String?
+  caption      Json
+  sortOrder    Int     @default(0)
+  encrypted    Boolean @default(false)
+  createdAt    DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([artworkId])
+  @@index([checksum])
+  @@map("media_assets")
+}
+
+model Document {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  artworkId      String?
+  artwork        Artwork?     @relation(fields: [artworkId], references: [id], onDelete: SetNull)
+
+  type      String @default("other")
+  title     String
+  // OCR-extracted text (searchable); populated by import/OCR pipeline
+  ocrText   String?
+  encrypted Boolean      @default(true)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  versions   DocumentVersion[]
+  signatures DocumentSignature[]
+
+  @@index([organizationId])
+  @@index([artworkId])
+  @@map("documents")
+}
+
+model DocumentVersion {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  version    Int
+  storageKey String
+  mimeType   String?
+  sizeBytes  Int?
+  checksum   String?
+  note       String?
+  createdById String?
+  createdAt  DateTime @default(now())
+
+  @@unique([documentId, version])
+  @@map("document_versions")
+}
+
+model DocumentSignature {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  signerId   String
+  signer     User     @relation(fields: [signerId], references: [id])
+  // cryptographic signature payload + signed digest (e-signature of reports)
+  signature  String
+  digest     String
+  reason     String?
+  signedAt   DateTime @default(now())
+
+  @@index([documentId])
+  @@map("document_signatures")
+}
+
+// ----------------------------------------------------------------------------
+//  Locations & movement
+// ----------------------------------------------------------------------------
+
+model Location {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  kind     String @default("room")
+  name     String
+  code     String?
+  parentId String?
+  parent   Location?    @relation("LocationTree", fields: [parentId], references: [id])
+  children Location[]   @relation("LocationTree")
+  // 2D/3D coordinates for the interactive building map
+  mapMeta  Json
+  createdAt DateTime    @default(now())
+
+  currentArtworks Artwork[]        @relation("CurrentLocation")
+  movementsFrom   MovementRecord[] @relation("FromLocation")
+  movementsTo     MovementRecord[] @relation("ToLocation")
+
+  @@index([organizationId])
+  @@map("locations")
+}
+
+model MovementRecord {
+  id        String   @id @default(cuid())
+  artworkId String
+  artwork   Artwork  @relation(fields: [artworkId], references: [id], onDelete: Cascade)
+  fromId    String?
+  from      Location? @relation("FromLocation", fields: [fromId], references: [id])
+  toId      String?
+  to        Location? @relation("ToLocation", fields: [toId], references: [id])
+  reason    String?
+  movedById String?
+  movedAt   DateTime @default(now())
+
+  @@index([artworkId])
+  @@map("movement_records")
+}
+
+// ----------------------------------------------------------------------------
+//  Loans, transport, insurance
+// ----------------------------------------------------------------------------
+
+model Loan {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  reference     String
+  direction     String @default("outgoing")
+  status        String    @default("requested")
+  counterparty  String // borrowing/lending institution
+  contactInfo   Json
+  startDate     DateTime?
+  endDate       DateTime?
+  returnedAt    DateTime?
+  conditions    Json
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  items     LoanItem[]
+  transports Transport[]
+  insurances InsurancePolicy[]
+
+  @@unique([organizationId, reference])
+  @@index([organizationId, status])
+  @@map("loans")
+}
+
+model LoanItem {
+  id        String  @id @default(cuid())
+  loanId    String
+  loan      Loan    @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  artworkId String
+  artwork   Artwork @relation(fields: [artworkId], references: [id], onDelete: Cascade)
+  conditionOut Json
+  conditionIn  Json
+
+  @@unique([loanId, artworkId])
+  @@map("loan_items")
+}
+
+model Transport {
+  id        String   @id @default(cuid())
+  loanId    String?
+  loan      Loan?    @relation(fields: [loanId], references: [id], onDelete: SetNull)
+  carrier   String?
+  method    String?
+  trackingNumber String?
+  departureAt DateTime?
+  arrivalAt   DateTime?
+  cost        Float?
+  currency    String @default("EUR")
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  @@index([loanId])
+  @@map("transports")
+}
+
+model InsurancePolicy {
+  id         String   @id @default(cuid())
+  loanId     String?
+  loan       Loan?    @relation(fields: [loanId], references: [id], onDelete: SetNull)
+  insurer    String
+  policyNumber String?
+  coverageEnc String? // insured value, encrypted
+  currency   String @default("EUR")
+  startDate  DateTime?
+  endDate    DateTime?
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  @@index([loanId])
+  @@index([endDate])
+  @@map("insurance_policies")
+}
+
+// ----------------------------------------------------------------------------
+//  Exhibitions
+// ----------------------------------------------------------------------------
+
+model Exhibition {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  title       Json
+  kind        String   @default("temporary")
+  status      String @default("planned")
+  description Json
+  venue       String?
+  startDate   DateTime?
+  endDate     DateTime?
+  curator     String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  items ExhibitionArtwork[]
+
+  @@index([organizationId, status])
+  @@map("exhibitions")
+}
+
+model ExhibitionArtwork {
+  exhibitionId String
+  exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
+  artworkId    String
+  artwork      Artwork    @relation(fields: [artworkId], references: [id], onDelete: Cascade)
+  wallLabel    Json
+  sortOrder    Int        @default(0)
+
+  @@id([exhibitionId, artworkId])
+  @@map("exhibition_artworks")
+}
+
+// ----------------------------------------------------------------------------
+//  Conservation / restoration
+// ----------------------------------------------------------------------------
+
+model Restoration {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  artworkId      String
+  artwork        Artwork      @relation(fields: [artworkId], references: [id], onDelete: Cascade)
+
+  status      String @default("proposed")
+  title       String
+  diagnosis   Json
+  treatment   Json
+  conservator String?
+  costEnc     String? // encrypted cost
+  currency    String          @default("EUR")
+  startDate   DateTime?
+  endDate     DateTime?
+  // media ids used for before/after comparison
+  beforeMediaIds Json
+  afterMediaIds  Json
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([organizationId])
+  @@index([artworkId])
+  @@map("restorations")
+}
+
+// ----------------------------------------------------------------------------
+//  Configurable workflow engine
+// ----------------------------------------------------------------------------
+
+model WorkflowDefinition {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  kind           String @default("custom")
+  name           String
+  // States, transitions, guards, roles — declarative state machine
+  definition     Json
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+
+  instances WorkflowInstance[]
+
+  @@map("workflow_definitions")
+}
+
+model WorkflowInstance {
+  id           String             @id @default(cuid())
+  definitionId String
+  definition   WorkflowDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  artworkId    String?
+  artwork      Artwork?           @relation(fields: [artworkId], references: [id], onDelete: SetNull)
+  currentState String
+  data         Json
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  transitions WorkflowTransition[]
+
+  @@index([definitionId])
+  @@index([artworkId])
+  @@map("workflow_instances")
+}
+
+model WorkflowTransition {
+  id         String           @id @default(cuid())
+  instanceId String
+  instance   WorkflowInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  fromState  String
+  toState    String
+  actorId    String?
+  note       String?
+  createdAt  DateTime         @default(now())
+
+  @@index([instanceId])
+  @@map("workflow_transitions")
+}
+
+// ----------------------------------------------------------------------------
+//  Alerts & notifications
+// ----------------------------------------------------------------------------
+
+model Alert {
+  id             String        @id @default(cuid())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  artworkId      String?
+  artwork        Artwork?      @relation(fields: [artworkId], references: [id], onDelete: Cascade)
+  type           String
+  severity       String @default("warning")
+  title          String
+  message        String?
+  dueAt          DateTime?
+  resolvedAt     DateTime?
+  createdAt      DateTime      @default(now())
+
+  @@index([organizationId, resolvedAt])
+  @@map("alerts")
+}
+
+model Notification {
+  id        String              @id @default(cuid())
+  userId    String
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel   String @default("push")
+  title     String
+  body      String?
+  data      Json
+  readAt    DateTime?
+  createdAt DateTime            @default(now())
+
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+// ----------------------------------------------------------------------------
+//  API & integrations
+// ----------------------------------------------------------------------------
+
+model ApiKey {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  // Only the hash is stored; the secret is shown once at creation.
+  keyHash        String       @unique
+  prefix         String // shown in UI, e.g. "ak_live_8fz…"
+  scopes         Json
+  isPublic       Boolean      @default(false)
+  rateLimit      Int          @default(1000) // requests / minute
+  lastUsedAt     DateTime?
+  expiresAt      DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
+  @@map("api_keys")
+}
+
+model Webhook {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  url            String
+  events         Json // artwork.created, loan.approved, document.signed…
+  secret         String // HMAC signing secret
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
+  @@map("webhooks")
+}
+
+// ----------------------------------------------------------------------------
+//  Saved grid views (UI personalisation)
+// ----------------------------------------------------------------------------
+
+model SavedView {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ownerId        String?
+  name           String
+  // Column order/visibility/width, filters, sort, grouping, color rules
+  config         Json
+  isShared       Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+  @@map("saved_views")
+}
+
+// ----------------------------------------------------------------------------
+//  Audit — append-only, hash-chained (tamper-evident, certifiable)
+// ----------------------------------------------------------------------------
+
+model AuditLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actorId        String?
+  actor          User?        @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  action    String
+  resource  String // e.g. "artwork", "loan"
+  resourceId String?
+  // before/after diff (sensitive values redacted/encrypted)
+  metadata  Json
+  ip        String?
+  userAgent String?
+
+  // Hash chain: hash = H(prevHash || canonical(payload))
+  prevHash  String?
+  hash      String
+  createdAt DateTime    @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([resource, resourceId])
+  @@map("audit_logs")
+}
