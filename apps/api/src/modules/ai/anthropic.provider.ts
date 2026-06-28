@@ -9,6 +9,10 @@ export class AnthropicAiProvider implements AiProvider {
   readonly id = 'anthropic';
   readonly enabled = true;
 
+  async isEnabled(): Promise<boolean> {
+    return true;
+  }
+
   private readonly model: string;
   private client: unknown = null;
 

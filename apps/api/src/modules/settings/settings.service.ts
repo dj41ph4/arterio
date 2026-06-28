@@ -57,22 +57,39 @@ export class SettingsService {
     return this.getOrganization(user);
   }
 
-  /** Up to 3 OpenRouter model IDs the org has chosen, tried in order; empty means fall back to the env-configured default. */
-  async getAiModels(user: AuthUser) {
+/** Org-level OpenRouter setup: on/off switch + (optional) API key + up to 3 model IDs, tried in order. */
+  async getAiSettings(user: AuthUser) {
     const org = await this.prisma.organization.findUniqueOrThrow({ where: { id: user.organizationId } });
     const settings = (org.settings as Record<string, unknown>) ?? {};
-    return { models: (settings.aiModels as string[] | undefined) ?? [] };
+    const ai = (settings.ai as { enabled?: boolean; openrouterApiKeyEnc?: string; models?: string[] }) ?? {};
+    return {
+      enabled: ai.enabled ?? false,
+      hasApiKey: Boolean(ai.openrouterApiKeyEnc),
+      models: ai.models ?? [],
+    };
   }
 
-  async updateAiModels(user: AuthUser, models: string[]) {
-    const trimmed = models.map((m) => m.trim()).filter(Boolean).slice(0, 3);
+  /** apiKey: omit to keep unchanged, send "" to clear it (falls back to the env OPENROUTER_API_KEY, if any). */
+  async updateAiSettings(user: AuthUser, input: { enabled?: boolean; apiKey?: string; models?: string[] }) {
     const org = await this.prisma.organization.findUniqueOrThrow({ where: { id: user.organizationId } });
     const settings = (org.settings as Record<string, unknown>) ?? {};
+    const existing = (settings.ai as { enabled?: boolean; openrouterApiKeyEnc?: string; models?: string[] }) ?? {};
+
+    const next = { ...existing };
+    if (input.enabled !== undefined) next.enabled = input.enabled;
+    if (input.apiKey !== undefined) {
+      if (input.apiKey === '') delete next.openrouterApiKeyEnc;
+      else next.openrouterApiKeyEnc = this.crypto.encrypt(input.apiKey);
+    }
+    if (input.models !== undefined) {
+      next.models = input.models.map((m) => m.trim()).filter(Boolean).slice(0, 3);
+    }
+
     await this.prisma.organization.update({
       where: { id: user.organizationId },
-      data: { settings: { ...settings, aiModels: trimmed } },
+      data: { settings: { ...settings, ai: next } },
     });
-    return { models: trimmed };
+    return this.getAiSettings(user);
   }
 
   /** Whether each OAuth provider has a client id + secret configured (no secrets returned). */

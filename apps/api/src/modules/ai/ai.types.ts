@@ -33,7 +33,10 @@ export const AI_PROVIDER = Symbol('AI_PROVIDER');
 
 export interface AiProvider {
   readonly id: string;
+  /** Static "is this provider configured at all" flag — for org-aware providers, prefer isEnabled(). */
   readonly enabled: boolean;
+  /** Whether AI is actually usable right now for this organization (checks org-level settings, falling back to env config). */
+  isEnabled(organizationId?: string): Promise<boolean>;
   capabilities(): AiCapabilities;
   describe(input: DescribeInput): Promise<DescribeResult>;
   ocr(imageUrl: string): Promise<string>;

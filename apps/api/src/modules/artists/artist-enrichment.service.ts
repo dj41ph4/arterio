@@ -38,7 +38,7 @@ export interface WikidataArtist {
   influencedByLabels?: string[];
 }
 
-export type FallbackSource = 'met' | 'aic' | 'europeana' | 'rijksmuseum' | 'harvard' | 'smithsonian';
+export type FallbackSource = 'met' | 'aic' | 'wikiart' | 'europeana' | 'rijksmuseum' | 'harvard' | 'smithsonian';
 
 /** A hit from a museum collection API — used when Wikidata has no match. */
 export interface FallbackHit {
@@ -158,7 +158,7 @@ export class ArtistEnrichmentService {
 
     // If AI is enabled and provides a description, use it to fill missing biography.
     // This is a best‑effort enrichment; failures are logged but do not abort the flow.
-    if (result && this.aiProvider && this.aiProvider.enabled) {
+    if (result && this.aiProvider && (await this.aiProvider.isEnabled(organizationId))) {
       try {
         // Prefer using the thumbnail image if available; otherwise omit imageUrl.
         const aiInput = {
@@ -515,6 +515,7 @@ WHERE {
     const providers: Array<() => Promise<FallbackHit | null>> = [
       () => this.fetchFromAic(name),
       () => this.fetchFromMet(name),
+      () => this.fetchFromWikiArt(name),
       () => this.fetchFromEuropeana(name, keys.europeana),
       () => this.fetchFromRijksmuseum(name, keys.rijksmuseum),
       () => this.fetchFromHarvard(name, keys.harvard),
@@ -642,6 +643,31 @@ WHERE {
       };
     }
     return null;
+  }
+
+  /**
+   * WikiArt — keyless artist autocomplete; large coverage of working/modern
+   * artists that museum collection APIs above (Met, AIC) don't hold objects
+   * by. Uses the same site's public autocomplete endpoint, no official docs
+   * or key required, so it's treated as best-effort like the other keyless
+   * sources: timeout + silent skip on any failure shape.
+   */
+  private async fetchFromWikiArt(name: string): Promise<FallbackHit | null> {
+    const res = await fetch(
+      `https://www.wikiart.org/en/api/2/SearchArtists?term=${encodeURIComponent(name)}`,
+      { signal: AbortSignal.timeout(8_000) },
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as Array<{ artistName?: string; url?: string; image?: string }> | null;
+    const hit = data?.find((d) => this.matchesAllTokens(name, d.artistName ?? ''));
+    if (!hit?.artistName) return null;
+
+    return {
+      source: 'wikiart',
+      matchedName: hit.artistName,
+      imageUrl: hit.image && !hit.image.includes('artist-default') ? hit.image : undefined,
+      sourceUrl: hit.url ? `https://www.wikiart.org/en/${hit.url}` : undefined,
+    };
   }
 
   /** Europeana — 50M+ objects aggregated from European institutions. Requires a free API key. */

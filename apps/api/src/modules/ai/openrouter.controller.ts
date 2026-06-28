@@ -1,25 +1,20 @@
 import { Controller, Get, Query, BadRequestException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import type { Env } from '../../core/config/configuration';
 
 /**
  * Exposes a minimal OpenRouter API for the frontend.
  * Currently provides an endpoint to list available models.
  * The optional `free` query parameter can be set to `true` to filter only free models.
+ *
+ * OpenRouter's model catalog is a public, keyless endpoint — no API key is
+ * needed just to browse what's available, only to actually call a model
+ * (handled separately by OpenRouterAiProvider with the org's configured key).
  */
 @Controller('openrouter')
 export class OpenRouterController {
-  constructor(private readonly config: ConfigService<Env, true>) {}
-
   @Get('models')
   async listModels(@Query('free') free?: string) {
-    const apiKey = this.config.get('OPENROUTER_API_KEY', { infer: true });
-    if (!apiKey) {
-      throw new BadRequestException('OpenRouter API key not configured');
-    }
-
     const res = await fetch('https://openrouter.ai/api/v1/models', {
-      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(8_000),
     });
     if (!res.ok) {
       throw new BadRequestException(`Failed to fetch models: ${res.status}`);

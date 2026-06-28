@@ -10,6 +10,10 @@ export class NullAiProvider implements AiProvider {
   readonly id = 'null';
   readonly enabled = false;
 
+  async isEnabled(): Promise<boolean> {
+    return false;
+  }
+
   capabilities(): AiCapabilities {
     return {
       describe: false,

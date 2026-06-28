@@ -65,12 +65,23 @@ export class WipeDataDto {
   categories!: WipeCategory[];
 }
 
-export class UpdateAiModelsDto {
+export class UpdateAiSettingsDto {
+  @ApiPropertyOptional({ description: 'Turn OpenRouter-backed AI enrichment on/off for this organization' })
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+
+  @ApiPropertyOptional({ description: 'Leave out to keep unchanged, or send "" to clear (falls back to the server\'s OPENROUTER_API_KEY env var, if set)' })
+  @IsOptional()
+  @IsString()
+  apiKey?: string;
+
   @ApiPropertyOptional({ type: [String], maxItems: 3, description: 'Up to 3 OpenRouter model IDs, tried in order — the next is used automatically if one fails.' })
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   @MaxLength(200, { each: true })
-  models!: string[];
+  models?: string[];
 }
 
 export class UpdateOAuthProviderDto {
