@@ -63,6 +63,13 @@ export interface ArtistAutofillResult {
   imageUrl?: string;
 }
 
+export interface TranslateInput {
+  text: string;
+  targetLocale: Locale;
+  sourceLocale?: Locale;
+  organizationId?: string;
+}
+
 /** One model attempt, in human terms — surfaced to both server logs and the UI so a failure is never a silent/raw JSON blob. */
 export interface AiAttemptLog {
   model: string;
@@ -100,4 +107,6 @@ export interface AiProvider {
   tags(input: DescribeInput): Promise<string[]>;
   autofillArtwork(input: ArtworkAutofillInput): Promise<AiAutofillResponse<ArtworkAutofillResult>>;
   autofillArtist(input: ArtistAutofillInput): Promise<AiAutofillResponse<ArtistAutofillResult>>;
+  /** Best-effort — returns null (never throws) on any failure, so a translation gap never blocks enrichment. */
+  translate(input: TranslateInput): Promise<string | null>;
 }

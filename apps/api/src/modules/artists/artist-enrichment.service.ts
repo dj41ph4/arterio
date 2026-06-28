@@ -1,6 +1,6 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { LOCALES, Locale } from '@arterio/shared';
+import { LOCALES, type Locale } from '@arterio/shared';
 import type { Env } from '../../core/config/configuration';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { CryptoService } from '../../core/crypto/crypto.service';
@@ -176,11 +176,63 @@ export class ArtistEnrichmentService {
       } catch (e) {
         this.logger.warn(`AI enrichment failed for "${fullName}": ${String(e)}`);
       }
+
+      // Wikipedia/AI only ever yields a biography in the languages it happens to
+      // have a page/response for — most non-English artists end up with just
+      // one or two locales filled and the rest blank in the UI. Once any
+      // biography text exists, translate it into every other supported locale
+      // that's still missing, instead of leaving those tabs empty.
+      await this.translateMissingBiographies(result, fullName, organizationId);
     }
     return result;
     } finally {
       releaseEnrichmentSlot();
     }
+  }
+
+  /**
+   * Fills every supported locale that still has no biography text by
+   * translating the best available one (preferring English, then whichever
+   * locale has the longest text — a longer source bio loses less in
+   * translation). Runs the per-locale calls in parallel; any locale whose
+   * translation fails just stays blank, it never blocks the others or the
+   * rest of enrichment.
+   */
+  private async translateMissingBiographies(
+    result: ArtistEnrichmentResult,
+    fullName: string,
+    organizationId?: string,
+  ): Promise<void> {
+    if (!this.aiProvider || !(await this.aiProvider.isEnabled(organizationId))) return;
+
+    const available = Object.entries(result.biographies).filter(([, text]) => Boolean(text)) as Array<[Locale, string]>;
+    if (!available.length) return;
+
+    const missing = LOCALES.filter((l) => !result.biographies[l]);
+    if (!missing.length) return;
+
+    const [sourceLocale, sourceText] =
+      available.find(([lang]) => lang === 'en') ??
+      available.reduce((longest, current) => (current[1].length > longest[1].length ? current : longest));
+
+    await Promise.allSettled(
+      missing.map(async (targetLocale) => {
+        try {
+          const translated = await this.aiProvider.translate({
+            text: sourceText,
+            targetLocale,
+            sourceLocale,
+            organizationId,
+          });
+          if (translated) {
+            result.biographies[targetLocale] = translated;
+            this.logger.log(`Biographie de "${fullName}" traduite ${sourceLocale} → ${targetLocale} via IA.`);
+          }
+        } catch (e) {
+          this.logger.warn(`Traduction de la biographie de "${fullName}" (${sourceLocale} → ${targetLocale}) échouée : ${String(e)}`);
+        }
+      }),
+    );
   }
 
   private async doEnrich(fullName: string, organizationId?: string): Promise<ArtistEnrichmentResult> {

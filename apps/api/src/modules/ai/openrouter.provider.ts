@@ -10,6 +10,7 @@ import type {
   ArtworkAutofillResult,
   DescribeInput,
   DescribeResult,
+  TranslateInput,
 } from './ai.types';
 import { Logger, ServiceUnavailableException } from '@nestjs/common';
 import type { PrismaService } from '../../core/prisma/prisma.service';
@@ -259,6 +260,22 @@ Return ONLY a JSON object with any of: biography, nationality, birthDate, deathD
     const { text, meta } = await this.completeWithFailover(input.organizationId, systemPrompt, `Artist: ${input.fullName}`);
     const data = this.parseJsonResult<ArtistAutofillResult>(text, meta);
     return { data, meta };
+  }
+
+  /** Best-effort text translation — never throws, returns null so the caller (enrichment) just skips that locale on failure. */
+  async translate(input: TranslateInput): Promise<string | null> {
+    const systemPrompt =
+      `You are a professional translator. Translate the user's text into language code "${input.targetLocale}"` +
+      (input.sourceLocale ? ` (source language code: "${input.sourceLocale}").` : '.') +
+      ' Return ONLY the translated text — no quotes, no explanation, no markdown, no preamble.';
+    try {
+      const { text } = await this.completeWithFailover(input.organizationId, systemPrompt, input.text);
+      const trimmed = text.trim();
+      return trimmed || null;
+    } catch (e) {
+      this.logger.warn(`Traduction vers "${input.targetLocale}" échouée : ${describeError(e)}`);
+      return null;
+    }
   }
 
   // The other AI capabilities are not implemented for OpenRouter.

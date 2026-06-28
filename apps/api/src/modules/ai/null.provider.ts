@@ -9,6 +9,7 @@ import type {
   ArtworkAutofillResult,
   DescribeInput,
   DescribeResult,
+  TranslateInput,
 } from './ai.types';
 
 /**
@@ -54,5 +55,9 @@ export class NullAiProvider implements AiProvider {
   }
   autofillArtist(_input: ArtistAutofillInput): Promise<AiAutofillResponse<ArtistAutofillResult>> {
     return this.unavailable();
+  }
+  /** Translation is best-effort enrichment, not a user-facing action — return null rather than throwing when AI is off. */
+  async translate(_input: TranslateInput): Promise<string | null> {
+    return null;
   }
 }

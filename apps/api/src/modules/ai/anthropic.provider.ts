@@ -9,6 +9,7 @@ import type {
   ArtworkAutofillResult,
   DescribeInput,
   DescribeResult,
+  TranslateInput,
 } from './ai.types';
 import { Logger } from '@nestjs/common';
 
@@ -140,5 +141,21 @@ Only state facts you are confident about for this specific person — leave a fi
 Return ONLY a JSON object with any of: biography, nationality, birthDate, deathDate, movement.`;
     const text = await this.complete(systemPrompt, `Artist: ${input.fullName}`);
     return this.parseAutofillResult<ArtistAutofillResult>(text, this.model);
+  }
+
+  /** Best-effort text translation — never throws, returns null so the caller (enrichment) just skips that locale on failure. */
+  async translate(input: TranslateInput): Promise<string | null> {
+    const systemPrompt =
+      `You are a professional translator. Translate the user's text into language code "${input.targetLocale}"` +
+      (input.sourceLocale ? ` (source language code: "${input.sourceLocale}").` : '.') +
+      ' Return ONLY the translated text — no quotes, no explanation, no markdown, no preamble.';
+    try {
+      const text = await this.complete(systemPrompt, input.text);
+      const trimmed = text.trim();
+      return trimmed || null;
+    } catch (e) {
+      this.logger.warn(`Traduction vers "${input.targetLocale}" échouée : ${String(e)}`);
+      return null;
+    }
   }
 }
