@@ -102,6 +102,15 @@ export const settingsApi = {
     }),
   listOpenRouterFreeModels: () => apiFetch<Array<{ id: string; name: string }>>('/openrouter/models?free=true'),
 
+  getCertificate: () =>
+    apiFetch<{ hasCustomCertificate: boolean; subject?: string; validFrom?: string; validTo?: string }>('/settings/certificate'),
+  uploadCertificate: (certificate: string, privateKey: string) =>
+    apiFetch<{ hasCustomCertificate: boolean }>('/settings/certificate', {
+      method: 'POST',
+      body: JSON.stringify({ certificate, privateKey }),
+    }),
+  removeCertificate: () => apiFetch<{ hasCustomCertificate: boolean }>('/settings/certificate', { method: 'DELETE' }),
+
   getOAuthProviders: () => apiFetch<Record<OAuthProviderKey, boolean>>('/settings/oauth'),
   updateOAuthProvider: (provider: OAuthProviderKey, patch: { clientId?: string; clientSecret?: string }) =>
     apiFetch<Record<OAuthProviderKey, boolean>>(`/settings/oauth/${provider}`, {

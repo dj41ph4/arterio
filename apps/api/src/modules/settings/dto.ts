@@ -84,6 +84,16 @@ export class UpdateAiSettingsDto {
   models?: string[];
 }
 
+export class UploadCertificateDto {
+  @ApiPropertyOptional({ description: 'PEM-encoded certificate (and intermediate chain, if any)' })
+  @IsString()
+  certificate!: string;
+
+  @ApiPropertyOptional({ description: 'PEM-encoded private key, unencrypted' })
+  @IsString()
+  privateKey!: string;
+}
+
 export class UpdateOAuthProviderDto {
   @ApiPropertyOptional({ description: 'Leave out to keep unchanged, or send "" to clear' })
   @IsOptional()

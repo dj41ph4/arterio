@@ -22,7 +22,7 @@ import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagg
 import { PERMISSIONS } from '@arterio/shared';
 import { SettingsService } from './settings.service';
 import { MigrationService } from './migration.service';
-import { CreateApiKeyDto, UpdateAiSettingsDto, UpdateExternalSourcesDto, UpdateOAuthProviderDto, UpdateOrganizationDto, WipeDataDto } from './dto';
+import { CreateApiKeyDto, UpdateAiSettingsDto, UpdateExternalSourcesDto, UpdateOAuthProviderDto, UpdateOrganizationDto, UploadCertificateDto, WipeDataDto } from './dto';
 import type { OAuthProviderKey } from './settings.service';
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
@@ -67,6 +67,27 @@ export class SettingsController {
   @ApiOperation({ summary: 'Configure OpenRouter AI enrichment: enable/disable, API key, and up to 3 models' })
   updateAiSettings(@CurrentUser() user: AuthUser, @Body() dto: UpdateAiSettingsDto) {
     return this.settings.updateAiSettings(user, dto);
+  }
+
+  @Get('certificate')
+  @ApiOperation({ summary: 'Whether a custom HTTPS certificate is installed (replacing the self-signed default)' })
+  getCertificate() {
+    return this.settings.getCertificateInfo();
+  }
+
+  @Post('certificate')
+  @ApiOperation({
+    summary: 'Upload a custom TLS certificate + private key to replace the self-signed HTTPS default',
+    description: 'Validated immediately, but only takes effect after the API container restarts. Requires HTTPS_ENABLED=true to have any effect.',
+  })
+  uploadCertificate(@Body() dto: UploadCertificateDto) {
+    return this.settings.uploadCertificate(dto.certificate, dto.privateKey);
+  }
+
+  @Delete('certificate')
+  @ApiOperation({ summary: 'Remove the custom certificate — reverts to the self-signed default on next restart' })
+  removeCertificate() {
+    return this.settings.removeCertificate();
   }
 
   @Get('oauth')

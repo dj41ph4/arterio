@@ -1,5 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { createHash, randomBytes } from 'node:crypto';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { createHash, randomBytes, X509Certificate } from 'node:crypto';
+import { createSecureContext } from 'node:tls';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { CERTS_DIR, CUSTOM_CERT_PATH, CUSTOM_KEY_PATH } from '../../core/config/paths';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { CryptoService } from '../../core/crypto/crypto.service';
 import { AuditService } from '../../core/audit/audit.service';
@@ -90,6 +93,43 @@ export class SettingsService {
       data: { settings: { ...settings, ai: next } },
     });
     return this.getAiSettings(user);
+  }
+
+  /** Instance-wide (not per-org — TLS is per-server, not per-tenant) HTTPS certificate, manually uploaded to replace the self-signed default. Takes effect on next restart. */
+  async getCertificateInfo() {
+    try {
+      const pem = await readFile(CUSTOM_CERT_PATH, 'utf8');
+      const cert = new X509Certificate(pem);
+      return {
+        hasCustomCertificate: true,
+        subject: cert.subject,
+        validFrom: cert.validFrom,
+        validTo: cert.validTo,
+      };
+    } catch {
+      return { hasCustomCertificate: false };
+    }
+  }
+
+  /** Validates the PEM pair forms a working TLS context before writing it — a broken cert would otherwise only surface as a crash on the next restart. */
+  async uploadCertificate(certificate: string, privateKey: string) {
+    try {
+      createSecureContext({ cert: certificate, key: privateKey });
+      new X509Certificate(certificate); // throws on malformed PEM
+    } catch (err) {
+      throw new BadRequestException(`Invalid certificate or key: ${(err as Error).message}`);
+    }
+
+    await mkdir(CERTS_DIR, { recursive: true });
+    await writeFile(CUSTOM_CERT_PATH, certificate, { mode: 0o600 });
+    await writeFile(CUSTOM_KEY_PATH, privateKey, { mode: 0o600 });
+    return this.getCertificateInfo();
+  }
+
+  async removeCertificate() {
+    await rm(CUSTOM_CERT_PATH, { force: true });
+    await rm(CUSTOM_KEY_PATH, { force: true });
+    return { hasCustomCertificate: false };
   }
 
   /** Whether each OAuth provider has a client id + secret configured (no secrets returned). */

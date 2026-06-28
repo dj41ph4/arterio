@@ -6,9 +6,10 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { mkdirSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import selfsigned from 'selfsigned';
 import { AppModule } from './app.module';
-import { UPLOAD_DIR } from './core/config/paths';
+import { UPLOAD_DIR, CUSTOM_CERT_PATH, CUSTOM_KEY_PATH } from './core/config/paths';
 import type { Env } from './core/config/configuration';
 
 /**
@@ -30,11 +31,22 @@ async function generateSelfSignedCert(): Promise<{ key: string; cert: string }> 
   return { key: pems.private, cert: pems.cert };
 }
 
+/** A cert uploaded via Settings → HTTPS (see settings.service.ts) always wins over the self-signed default. */
+async function loadHttpsOptions(): Promise<{ key: string; cert: string; custom: boolean }> {
+  try {
+    const [cert, key] = await Promise.all([readFile(CUSTOM_CERT_PATH, 'utf8'), readFile(CUSTOM_KEY_PATH, 'utf8')]);
+    return { cert, key, custom: true };
+  } catch {
+    return { ...(await generateSelfSignedCert()), custom: false };
+  }
+}
+
 async function bootstrap() {
   const httpsEnabled = process.env.HTTPS_ENABLED === 'true';
+  const httpsOptions = httpsEnabled ? await loadHttpsOptions() : null;
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bufferLogs: true,
-    ...(httpsEnabled ? { httpsOptions: await generateSelfSignedCert() } : {}),
+    ...(httpsOptions ? { httpsOptions } : {}),
   });
 
   // ---------------------------------------------------------------------------
@@ -151,7 +163,8 @@ async function bootstrap() {
 
   await app.listen(port, '0.0.0.0');
   const scheme = httpsEnabled ? 'https' : 'http';
-  console.log(`\n🎨 Arterio API running on ${scheme}://localhost:${port}/api${httpsEnabled ? ' (self-signed cert)' : ''}`);
+  const certLabel = httpsOptions ? (httpsOptions.custom ? ' (custom certificate)' : ' (self-signed cert)') : '';
+  console.log(`\n🎨 Arterio API running on ${scheme}://localhost:${port}/api${certLabel}`);
   console.log(`📖 Swagger docs:     ${scheme}://localhost:${port}/api/docs`);
   console.log(`🏥 Health check:     ${scheme}://localhost:${port}/api/v1/health\n`);
 }

@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { ShieldCheck, Sparkles, Layers } from 'lucide-react';
 import { Logo, Wordmark } from '@/components/app-shell/logo';
 import { LoginForm } from '@/components/auth/login-form';
+import { ArtisticBackground } from '@/components/auth/artistic-background';
 
 export async function generateMetadata({
   params,
@@ -28,8 +29,7 @@ export default async function LoginPage({
       {/* Brand / marketing panel */}
       <div className="relative hidden flex-col justify-between overflow-hidden bg-[hsl(224_28%_8%)] p-12 text-white lg:flex">
         <div className="absolute inset-0">
-          <div className="absolute -left-24 top-1/4 size-[28rem] rounded-full bg-primary/30 blur-[120px]" />
-          <div className="absolute -right-16 bottom-0 size-[24rem] rounded-full bg-violet-500/20 blur-[120px]" />
+          <ArtisticBackground />
           <div className="absolute inset-0 bg-[radial-gradient(hsl(0_0%_100%/0.06)_1px,transparent_1px)] [background-size:24px_24px]" />
         </div>
 

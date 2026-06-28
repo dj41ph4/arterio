@@ -34,6 +34,7 @@ import { NotificationsPanel } from './notifications-panel';
 import { ApiKeysPanel } from './api-keys-panel';
 import { ExternalSourcesPanel } from './external-sources-panel';
 import { AiModelsPanel } from './ai-models-panel';
+import { CertificatePanel } from './certificate-panel';
 import { OAuthPanel } from './oauth-panel';
 import { AuditLogPanel } from './audit-log-panel';
 import { TrashPanel } from './trash-panel';
@@ -420,6 +421,7 @@ export function SettingsView() {
               </Card>
               <AuditLogPanel />
               <OAuthPanel />
+              <CertificatePanel />
             </>
           )}
 
