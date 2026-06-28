@@ -169,7 +169,11 @@
       "tagsPlaceholder": "kommagescheiden",
       "createSuccess": "Kunstwerk succesvol aangemaakt",
       "updateSuccess": "Kunstwerk succesvol bijgewerkt",
-      "error": "Er is iets misgegaan"
+      "error": "Er is iets misgegaan",
+      "aiAutofill": "Aanvullen met AI",
+      "aiSuccess": "AI-suggesties toegepast",
+      "aiError": "AI-autovulling mislukt",
+      "aiImageError": "Kon de door AI gevonden afbeelding niet toevoegen"
     },
     "detail": {
       "addedOn": "Toegevoegd op {date}",

@@ -1,4 +1,13 @@
-import type { AiCapabilities, AiProvider, DescribeInput, DescribeResult } from './ai.types';
+import type {
+  AiCapabilities,
+  AiProvider,
+  ArtistAutofillInput,
+  ArtistAutofillResult,
+  ArtworkAutofillInput,
+  ArtworkAutofillResult,
+  DescribeInput,
+  DescribeResult,
+} from './ai.types';
 import { ServiceUnavailableException } from '@nestjs/common';
 import type { PrismaService } from '../../core/prisma/prisma.service';
 import type { CryptoService } from '../../core/crypto/crypto.service';
@@ -83,11 +92,7 @@ export class OpenRouterAiProvider implements AiProvider {
     };
   }
 
-  private async callModel(model: string, apiKey: string, input: DescribeInput): Promise<DescribeResult> {
-    const systemPrompt = `You are an expert art cataloguer. Respond in language code: ${input.locale}.
-Return ONLY a JSON object: {"description": "...", "keywords": [...], "suggestedCategory": "..."}`;
-    const userMessage = 'Describe this artwork for cataloguing purposes.';
-
+  private async callModel(model: string, apiKey: string, systemPrompt: string, userMessage: string): Promise<string> {
     const body = {
       model,
       messages: [
@@ -104,12 +109,37 @@ Return ONLY a JSON object: {"description": "...", "keywords": [...], "suggestedC
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30_000),
     });
     if (!res.ok) {
       throw new ServiceUnavailableException(`OpenRouter request failed with ${res.status}`);
     }
     const data = (await res.json()) as any;
-    const text = data?.choices?.[0]?.message?.content ?? '{}';
+    return data?.choices?.[0]?.message?.content ?? '{}';
+  }
+
+  /** Tries each org/env-configured model in order, returning the first one that responds — the "switch to the next AI" failover. */
+  private async completeWithFailover(organizationId: string | undefined, systemPrompt: string, userMessage: string): Promise<string> {
+    const org = await this.resolveOrgSettings(organizationId);
+    const apiKey = await this.resolveApiKey(org);
+    if (!apiKey) throw new ServiceUnavailableException('No OpenRouter API key configured');
+
+    const models = this.resolveModels(org);
+    const errors: string[] = [];
+    for (const model of models) {
+      try {
+        return await this.callModel(model, apiKey, systemPrompt, userMessage);
+      } catch (e) {
+        errors.push(`${model}: ${String(e)}`);
+      }
+    }
+    throw new ServiceUnavailableException(`All OpenRouter models failed: ${errors.join(' | ')}`);
+  }
+
+  async describe(input: DescribeInput): Promise<DescribeResult> {
+    const systemPrompt = `You are an expert art cataloguer. Respond in language code: ${input.locale}.
+Return ONLY a JSON object: {"description": "...", "keywords": [...], "suggestedCategory": "..."}`;
+    const text = await this.completeWithFailover(input.organizationId, systemPrompt, 'Describe this artwork for cataloguing purposes.');
     try {
       return JSON.parse(text) as DescribeResult;
     } catch {
@@ -118,24 +148,27 @@ Return ONLY a JSON object: {"description": "...", "keywords": [...], "suggestedC
     }
   }
 
-  async describe(input: DescribeInput): Promise<DescribeResult> {
-    const org = await this.resolveOrgSettings(input.organizationId);
-    const apiKey = await this.resolveApiKey(org);
-    if (!apiKey) throw new ServiceUnavailableException('No OpenRouter API key configured');
-
-    // Try each configured model until one succeeds.
-    const models = this.resolveModels(org);
-    const errors: string[] = [];
-    for (const model of models) {
-      try {
-        return await this.callModel(model, apiKey, input);
-      } catch (e) {
-        errors.push(`${model}: ${String(e)}`);
-        // continue to next model
-      }
+  async autofillArtwork(input: ArtworkAutofillInput): Promise<ArtworkAutofillResult> {
+    const systemPrompt = `You are an expert art cataloguer. Respond in language code: ${input.locale}.
+Only state facts you are confident about for this specific, named work — leave a field out entirely rather than guessing.
+Return ONLY a JSON object with any of: description, techniqueName, dateText, yearFrom (number), dimensionsNote, condition, tags (string array), imageUrl (a real public URL only if you know one).`;
+    const userMessage = `Title: ${input.title ?? '(unknown)'}\nArtist: ${input.artistName ?? '(unknown)'}`;
+    try {
+      return JSON.parse(await this.completeWithFailover(input.organizationId, systemPrompt, userMessage)) as ArtworkAutofillResult;
+    } catch {
+      return {};
     }
-    // If all models failed, surface the aggregated errors.
-    throw new ServiceUnavailableException(`All OpenRouter models failed: ${errors.join(' | ')}`);
+  }
+
+  async autofillArtist(input: ArtistAutofillInput): Promise<ArtistAutofillResult> {
+    const systemPrompt = `You are an art historian. Respond in language code: ${input.locale}.
+Only state facts you are confident about for this specific person — leave a field out entirely rather than guessing.
+Return ONLY a JSON object with any of: biography, nationality, birthDate, deathDate, movement, imageUrl (a real public URL only if you know one).`;
+    try {
+      return JSON.parse(await this.completeWithFailover(input.organizationId, systemPrompt, `Artist: ${input.fullName}`)) as ArtistAutofillResult;
+    } catch {
+      return {};
+    }
   }
 
   // The other AI capabilities are not implemented for OpenRouter.

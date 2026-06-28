@@ -169,7 +169,11 @@
       "tagsPlaceholder": "kommagetrennt",
       "createSuccess": "Werk erfolgreich erstellt",
       "updateSuccess": "Werk erfolgreich aktualisiert",
-      "error": "Etwas ist schiefgelaufen"
+      "error": "Etwas ist schiefgelaufen",
+      "aiAutofill": "Mit KI ausfüllen",
+      "aiSuccess": "KI-Vorschläge übernommen",
+      "aiError": "KI-Autovervollständigung fehlgeschlagen",
+      "aiImageError": "Das von der KI gefundene Bild konnte nicht angehängt werden"
     },
     "detail": {
       "addedOn": "Hinzugefügt am {date}",

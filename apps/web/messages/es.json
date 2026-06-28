@@ -169,7 +169,11 @@
       "tagsPlaceholder": "separadas por comas",
       "createSuccess": "Obra creada con éxito",
       "updateSuccess": "Obra actualizada con éxito",
-      "error": "Se ha producido un error"
+      "error": "Se ha producido un error",
+      "aiAutofill": "Completar con IA",
+      "aiSuccess": "Sugerencias de IA aplicadas",
+      "aiError": "El autocompletado con IA falló",
+      "aiImageError": "No se pudo adjuntar la imagen encontrada por la IA"
     },
     "detail": {
       "addedOn": "Añadido el {date}",

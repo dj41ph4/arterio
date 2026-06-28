@@ -168,6 +168,14 @@ export class ArtworkController {
     return this.artworks.attachMedia(user, id, file);
   }
 
+  @Post(':id/media/from-url')
+  @RequirePermissions(PERMISSIONS.ARTWORK_UPDATE)
+  @ApiOperation({ summary: 'Download an image found by AI autofill and attach it as artwork media' })
+  attachMediaFromUrl(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body('url') url: string) {
+    if (!url) throw new BadRequestException('Missing url');
+    return this.artworks.attachMediaFromUrl(user, id, url);
+  }
+
   @Delete(':id/media/:mediaId')
   @RequirePermissions(PERMISSIONS.ARTWORK_UPDATE)
   @ApiOperation({ summary: 'Remove an uploaded image from an artwork' })

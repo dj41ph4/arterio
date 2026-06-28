@@ -4,6 +4,7 @@ import { AI_PROVIDER } from './ai.types';
 import { AnthropicAiProvider } from './anthropic.provider';
 import { OpenRouterAiProvider } from './openrouter.provider';
 import { OpenRouterController } from './openrouter.controller';
+import { AiController } from './ai.controller';
 import { PrismaModule } from '../../core/prisma/prisma.module';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { CryptoModule } from '../../core/crypto/crypto.module';
@@ -12,7 +13,7 @@ import type { Env } from '../../core/config/configuration';
 
 @Module({
   imports: [PrismaModule, CryptoModule],
-  controllers: [OpenRouterController],
+  controllers: [OpenRouterController, AiController],
   providers: [
     {
       provide: AI_PROVIDER,

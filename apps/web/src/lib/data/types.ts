@@ -51,5 +51,7 @@ export interface ArtworkRepository {
   create(input: Partial<ArtworkView>): Promise<ArtworkView>;
   remove(id: string): Promise<void>;
   uploadMedia(id: string, file: File): Promise<ArtworkView>;
+  /** Server downloads the (AI-suggested) URL itself — the browser never fetches an arbitrary third-party URL directly. */
+  attachMediaFromUrl(id: string, url: string): Promise<ArtworkView>;
   removeMedia(id: string, mediaId: string): Promise<ArtworkView>;
 }

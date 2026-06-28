@@ -276,6 +276,17 @@ export class MockArtworkRepository implements ArtworkRepository {
     return artwork;
   }
 
+  async attachMediaFromUrl(id: string, url: string): Promise<ArtworkView> {
+    await delay(200);
+    const artwork = DATA.find((a) => a.id === id);
+    if (!artwork) throw new Error('Artwork not found');
+    artwork.primaryImageUrl = url;
+    artwork.thumbnailUrl = url;
+    artwork.imageCount += 1;
+    artwork.media = [...artwork.media, { id: `m${artwork.media.length + 1}`, url }];
+    return artwork;
+  }
+
   async removeMedia(id: string, mediaId: string): Promise<ArtworkView> {
     await delay(150);
     const artwork = DATA.find((a) => a.id === id);

@@ -169,7 +169,11 @@
       "tagsPlaceholder": "comma-separated",
       "createSuccess": "Artwork created successfully",
       "updateSuccess": "Artwork updated successfully",
-      "error": "Something went wrong"
+      "error": "Something went wrong",
+      "aiAutofill": "Autofill with AI",
+      "aiSuccess": "AI suggestions applied",
+      "aiError": "AI autofill failed",
+      "aiImageError": "Could not attach the AI-found image"
     },
     "detail": {
       "addedOn": "Added {date}",

@@ -133,6 +133,14 @@ export class HttpArtworkRepository implements ArtworkRepository {
     return fixMedia(await res.json());
   }
 
+  async attachMediaFromUrl(id: string, url: string): Promise<ArtworkView> {
+    const a = await apiFetch<ArtworkView>(`/artworks/${id}/media/from-url`, {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    });
+    return fixMedia(a);
+  }
+
   async removeMedia(id: string, mediaId: string): Promise<ArtworkView> {
     const a = await apiFetch<ArtworkView>(`/artworks/${id}/media/${mediaId}`, { method: 'DELETE' });
     return fixMedia(a);

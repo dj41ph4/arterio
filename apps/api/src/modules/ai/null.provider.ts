@@ -1,5 +1,14 @@
 import { ServiceUnavailableException } from '@nestjs/common';
-import type { AiCapabilities, AiProvider, DescribeInput, DescribeResult } from './ai.types';
+import type {
+  AiCapabilities,
+  AiProvider,
+  ArtistAutofillInput,
+  ArtistAutofillResult,
+  ArtworkAutofillInput,
+  ArtworkAutofillResult,
+  DescribeInput,
+  DescribeResult,
+} from './ai.types';
 
 /**
  * Active when AI is disabled. Reports no capabilities and politely refuses
@@ -37,6 +46,12 @@ export class NullAiProvider implements AiProvider {
     return this.unavailable();
   }
   tags(_input: DescribeInput): Promise<string[]> {
+    return this.unavailable();
+  }
+  autofillArtwork(_input: ArtworkAutofillInput): Promise<ArtworkAutofillResult> {
+    return this.unavailable();
+  }
+  autofillArtist(_input: ArtistAutofillInput): Promise<ArtistAutofillResult> {
     return this.unavailable();
   }
 }

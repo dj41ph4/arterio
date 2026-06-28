@@ -169,7 +169,11 @@
       "tagsPlaceholder": "séparés par des virgules",
       "createSuccess": "Œuvre créée avec succès",
       "updateSuccess": "Œuvre mise à jour avec succès",
-      "error": "Une erreur est survenue"
+      "error": "Une erreur est survenue",
+      "aiAutofill": "Compléter avec l'IA",
+      "aiSuccess": "Suggestions IA appliquées",
+      "aiError": "L'autocomplétion IA a échoué",
+      "aiImageError": "Impossible d'attacher l'image trouvée par l'IA"
     },
     "detail": {
       "addedOn": "Ajouté le {date}",

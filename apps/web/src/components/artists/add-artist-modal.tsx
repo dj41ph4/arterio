@@ -6,6 +6,9 @@ import { X, Sparkles, RefreshCw, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { enrichArtistLive } from '@/lib/wikipedia-enrichment';
 import { artistRepository, type ArtistView } from '@/lib/data/artist-repository';
+import { useAiAvailable } from '@/hooks/use-ai-available';
+import { aiApi } from '@/lib/data/ai';
+import { useLocale } from 'next-intl';
 import type { Locale } from '@arterio/shared';
 
 interface AddArtistModalProps {
@@ -17,6 +20,8 @@ interface AddArtistModalProps {
 type Status = 'idle' | 'loading' | 'done' | 'notfound';
 
 export function AddArtistModal({ open, onClose, onAdded }: AddArtistModalProps) {
+  const locale = useLocale() as Locale;
+  const aiAvailable = useAiAvailable();
   const [name, setName] = React.useState('');
   const [status, setStatus] = React.useState<Status>('idle');
   const [log, setLog] = React.useState<string[]>([]);
@@ -91,6 +96,45 @@ export function AddArtistModal({ open, onClose, onAdded }: AddArtistModalProps) 
     }
   };
 
+  const handleAiEnrich = async () => {
+    if (!name.trim()) return;
+    setStatus('loading');
+    setLog([]);
+    addLog(`Recherche IA de "${name}"…`);
+    try {
+      const data = await aiApi.autofillArtist({ fullName: name.trim(), locale });
+      if (!data.biography && !data.nationality && !data.birthDate) {
+        setStatus('notfound');
+        addLog("L'IA n'a rien trouvé de fiable pour ce nom.");
+        return;
+      }
+      const artist: ArtistView = {
+        id: `artist-ai-${Date.now()}`,
+        fullName: name.trim(),
+        sortName: name.trim(),
+        nationality: data.nationality,
+        birthDate: data.birthDate,
+        deathDate: data.deathDate,
+        biography: data.biography ? { [locale]: data.biography } : {},
+        movement: data.movement ? { id: data.movement.toLowerCase().replace(/\s+/g, '-'), name: data.movement } : undefined,
+        externalIds: {},
+        externalUrls: {},
+        thumbnail: data.imageUrl,
+        artworkCount: 0,
+        artworkIds: [],
+      };
+      addLog('Réponse IA reçue.');
+      await artistRepository.add(artist);
+      setResult(artist);
+      setStatus('done');
+      addLog('Fiche artiste créée avec succès.');
+      toast.success(`${artist.fullName} ajouté avec les suggestions IA`);
+    } catch (err) {
+      setStatus('notfound');
+      addLog(`Erreur : ${String(err)}`);
+    }
+  };
+
   if (!open) return null;
 
   return (
@@ -138,6 +182,16 @@ export function AddArtistModal({ open, onClose, onAdded }: AddArtistModalProps) 
                 {status === 'loading' ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 Rechercher
               </button>
+              {aiAvailable && (
+                <button
+                  onClick={handleAiEnrich}
+                  disabled={status === 'loading' || !name.trim()}
+                  title="Recherche IA (si Wikidata ne trouve rien)"
+                  className="flex shrink-0 items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
+                >
+                  IA
+                </button>
+              )}
             </div>
           </div>
 

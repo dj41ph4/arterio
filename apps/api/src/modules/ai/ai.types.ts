@@ -29,6 +29,40 @@ export interface DescribeResult {
   suggestedCategory?: string;
 }
 
+export interface ArtworkAutofillInput {
+  title?: string;
+  artistName?: string;
+  locale: Locale;
+  organizationId?: string;
+}
+
+export interface ArtworkAutofillResult {
+  description?: string;
+  techniqueName?: string;
+  dateText?: string;
+  yearFrom?: number;
+  dimensionsNote?: string;
+  condition?: string;
+  tags?: string[];
+  /** Best-effort — only set when the model recalls an actual public image URL for this work; never fabricated. */
+  imageUrl?: string;
+}
+
+export interface ArtistAutofillInput {
+  fullName: string;
+  locale: Locale;
+  organizationId?: string;
+}
+
+export interface ArtistAutofillResult {
+  biography?: string;
+  nationality?: string;
+  birthDate?: string;
+  deathDate?: string;
+  movement?: string;
+  imageUrl?: string;
+}
+
 export const AI_PROVIDER = Symbol('AI_PROVIDER');
 
 export interface AiProvider {
@@ -41,4 +75,6 @@ export interface AiProvider {
   describe(input: DescribeInput): Promise<DescribeResult>;
   ocr(imageUrl: string): Promise<string>;
   tags(input: DescribeInput): Promise<string[]>;
+  autofillArtwork(input: ArtworkAutofillInput): Promise<ArtworkAutofillResult>;
+  autofillArtist(input: ArtistAutofillInput): Promise<ArtistAutofillResult>;
 }

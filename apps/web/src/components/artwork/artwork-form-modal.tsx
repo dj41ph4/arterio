@@ -3,12 +3,15 @@
 import * as React from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ImagePlus, RefreshCw } from 'lucide-react';
+import { X, ImagePlus, RefreshCw, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { ARTWORK_STATUS, CONDITION_RATING, CURRENCY, type ArtworkView, type Currency, type Locale } from '@arterio/shared';
 import { resolveLocalized } from '@arterio/shared';
 import { useCreateArtwork, useUpdateArtwork } from '@/hooks/use-artworks';
 import { useCollections } from '@/hooks/use-collections';
+import { useAiAvailable } from '@/hooks/use-ai-available';
+import { aiApi } from '@/lib/data/ai';
+import { artworkRepository } from '@/lib/data';
 
 interface ArtworkFormModalProps {
   open: boolean;
@@ -78,17 +81,47 @@ export function ArtworkFormModal({ open, onClose, artwork, defaultArtistId, defa
   const { data: collections = [] } = useCollections();
 
   const [form, setForm] = React.useState<FormState>(emptyForm());
+  const [aiImageUrl, setAiImageUrl] = React.useState<string | null>(null);
+  const [aiLoading, setAiLoading] = React.useState(false);
+  const aiAvailable = useAiAvailable();
 
   React.useEffect(() => {
     if (!open) return;
     if (artwork) setForm(fromArtwork(artwork, locale));
     else setForm({ ...emptyForm(), artistName: defaultArtistName ?? '' });
+    setAiImageUrl(null);
   }, [open, artwork, locale, defaultArtistName]);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
   const saving = create.isPending || update.isPending;
+
+  const handleAiAutofill = async () => {
+    if (!form.title.trim() && !form.artistName.trim()) return;
+    setAiLoading(true);
+    try {
+      const result = await aiApi.autofillArtwork({
+        title: form.title.trim() || undefined,
+        artistName: form.artistName.trim() || undefined,
+        locale,
+      });
+      setForm((f) => ({
+        ...f,
+        description: f.description || result.description || f.description,
+        techniqueName: f.techniqueName || result.techniqueName || f.techniqueName,
+        year: f.year || (result.yearFrom ? String(result.yearFrom) : f.year),
+        condition: result.condition && CONDITION_RATING.includes(result.condition as never) ? result.condition : f.condition,
+        tags: f.tags || (result.tags?.length ? result.tags.join(', ') : f.tags),
+      }));
+      if (result.imageUrl) setAiImageUrl(result.imageUrl);
+      toast.success(t('artwork.form.aiSuccess'));
+    } catch {
+      toast.error(t('artwork.form.aiError'));
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!form.title.trim()) {
@@ -121,12 +154,18 @@ export function ArtworkFormModal({ open, onClose, artwork, defaultArtistId, defa
     };
 
     try {
+      let saved: ArtworkView;
       if (isEdit && artwork) {
-        await update.mutateAsync({ id: artwork.id, patch: payload });
+        saved = await update.mutateAsync({ id: artwork.id, patch: payload });
         toast.success(t('artwork.form.updateSuccess'));
       } else {
-        await create.mutateAsync(payload);
+        saved = await create.mutateAsync(payload);
         toast.success(t('artwork.form.createSuccess'));
+      }
+      if (aiImageUrl) {
+        artworkRepository.attachMediaFromUrl(saved.id, aiImageUrl).catch(() => {
+          toast.error(t('artwork.form.aiImageError'));
+        });
       }
       onClose();
     } catch {
@@ -172,7 +211,20 @@ export function ArtworkFormModal({ open, onClose, artwork, defaultArtistId, defa
 
             <div>
               <FieldLabel>{t('artwork.fields.artist')}</FieldLabel>
-              <input type="text" value={form.artistName} onChange={(e) => set('artistName', e.target.value)} className={inputClass} />
+              <div className="mt-1.5 flex gap-2">
+                <input type="text" value={form.artistName} onChange={(e) => set('artistName', e.target.value)} className={`${inputClass} mt-0`} />
+                {aiAvailable && (
+                  <button
+                    type="button"
+                    title={t('artwork.form.aiAutofill')}
+                    disabled={aiLoading || (!form.title.trim() && !form.artistName.trim())}
+                    onClick={handleAiAutofill}
+                    className="flex shrink-0 items-center justify-center rounded-lg border border-primary/30 bg-primary/10 px-3 text-primary transition-colors hover:bg-primary/20 disabled:opacity-40"
+                  >
+                    {aiLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  </button>
+                )}
+              </div>
             </div>
             <div>
               <FieldLabel>{t('artwork.fields.date')}</FieldLabel>

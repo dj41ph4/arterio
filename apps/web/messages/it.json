@@ -169,7 +169,11 @@
       "tagsPlaceholder": "separati da virgola",
       "createSuccess": "Opera creata con successo",
       "updateSuccess": "Opera aggiornata con successo",
-      "error": "Si è verificato un errore"
+      "error": "Si è verificato un errore",
+      "aiAutofill": "Completa con l'IA",
+      "aiSuccess": "Suggerimenti IA applicati",
+      "aiError": "Il completamento IA non è riuscito",
+      "aiImageError": "Impossibile collegare l'immagine trovata dall'IA"
     },
     "detail": {
       "addedOn": "Aggiunto il {date}",

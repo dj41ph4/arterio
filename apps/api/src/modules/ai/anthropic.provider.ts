@@ -1,4 +1,13 @@
-import type { AiCapabilities, AiProvider, DescribeInput, DescribeResult } from './ai.types';
+import type {
+  AiCapabilities,
+  AiProvider,
+  ArtistAutofillInput,
+  ArtistAutofillResult,
+  ArtworkAutofillInput,
+  ArtworkAutofillResult,
+  DescribeInput,
+  DescribeResult,
+} from './ai.types';
 
 /**
  * Claude-backed provider. Only instantiated when AI_ENABLED=true and
@@ -72,5 +81,39 @@ Return ONLY a JSON object: {"description": "...", "keywords": [...], "suggestedC
   async tags(input: DescribeInput): Promise<string[]> {
     const result = await this.describe(input);
     return result.keywords;
+  }
+
+  private async complete(systemPrompt: string, userMessage: string): Promise<string> {
+    const sdk = this.client as import('@anthropic-ai/sdk').Anthropic;
+    const msg = await sdk.messages.create({
+      model: this.model,
+      max_tokens: 512,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: [{ type: 'text', text: userMessage }] }],
+    });
+    return msg.content.find((b) => b.type === 'text')?.text ?? '{}';
+  }
+
+  async autofillArtwork(input: ArtworkAutofillInput): Promise<ArtworkAutofillResult> {
+    const systemPrompt = `You are an expert art cataloguer. Respond in language code: ${input.locale}.
+Only state facts you are confident about for this specific, named work — leave a field out entirely rather than guessing.
+Return ONLY a JSON object with any of: description, techniqueName, dateText, yearFrom (number), dimensionsNote, condition, tags (string array), imageUrl (a real public URL only if you know one).`;
+    const userMessage = `Title: ${input.title ?? '(unknown)'}\nArtist: ${input.artistName ?? '(unknown)'}`;
+    try {
+      return JSON.parse(await this.complete(systemPrompt, userMessage)) as ArtworkAutofillResult;
+    } catch {
+      return {};
+    }
+  }
+
+  async autofillArtist(input: ArtistAutofillInput): Promise<ArtistAutofillResult> {
+    const systemPrompt = `You are an art historian. Respond in language code: ${input.locale}.
+Only state facts you are confident about for this specific person — leave a field out entirely rather than guessing.
+Return ONLY a JSON object with any of: biography, nationality, birthDate, deathDate, movement, imageUrl (a real public URL only if you know one).`;
+    try {
+      return JSON.parse(await this.complete(systemPrompt, `Artist: ${input.fullName}`)) as ArtistAutofillResult;
+    } catch {
+      return {};
+    }
   }
 }
