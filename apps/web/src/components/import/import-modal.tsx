@@ -26,6 +26,7 @@ import {
 import {
   normalizeArtistName,
   artistDedupKey,
+  artworkDedupKey,
   normalizeDate,
   normalizePaymentMethod,
   normalizeBoolean,
@@ -75,6 +76,24 @@ function cell(rows: (string | number | null)[][], rowIdx: number, colIdx: number
   if (colIdx === undefined) return '';
   const v = rows[rowIdx]?.[colIdx];
   return v == null ? '' : String(v);
+}
+
+/** Loads every existing artwork's (title, artist) dedup key so re-importing the same spreadsheet — or a
+ *  file that overlaps the existing collection — skips rows instead of creating duplicates. Paginates up to
+ *  the same 5000-row safety cap the catalog list endpoint itself uses (single-tenant appliance). */
+async function loadExistingArtworkKeys(): Promise<Set<string>> {
+  const keys = new Set<string>();
+  let cursor: string | null = null;
+  for (let page = 0; page < 25; page++) {
+    const result = await artworkRepository.list({ limit: 200, cursor });
+    for (const item of result.items) {
+      const title = item.title?.fr || Object.values(item.title ?? {}).find((v) => v) || '';
+      keys.add(artworkDedupKey(String(title), item.artistName ?? ''));
+    }
+    if (!result.nextCursor || result.items.length === 0) break;
+    cursor = result.nextCursor;
+  }
+  return keys;
 }
 
 function DropZone({ onFile, loading }: { onFile: (file: File) => void; loading: boolean }) {
@@ -174,7 +193,7 @@ export function ImportModal({ open, onClose }: ImportModalProps) {
   const [sheet, setSheet] = React.useState<ParsedSpreadsheet>({ headers: [], rows: [] });
   const [mappings, setMappings] = React.useState<ColumnMapping[]>([]);
   const [progress, setProgress] = React.useState({ done: 0, total: 0 });
-  const [summary, setSummary] = React.useState({ created: 0, skipped: 0, artistsCreated: 0, inventoryGenerated: 0 });
+  const [summary, setSummary] = React.useState({ created: 0, skipped: 0, duplicates: 0, artistsCreated: 0, inventoryGenerated: 0 });
   const [importLog, setImportLog] = React.useState<ImportLogEntry[]>([]);
 
   const reset = () => {
@@ -243,8 +262,17 @@ export function ImportModal({ open, onClose }: ImportModalProps) {
     const artistCache = new Map<string, ArtistView>();
     let created = 0;
     let skipped = 0;
+    let duplicates = 0;
     let artistsCreated = 0;
     const log: ImportLogEntry[] = [];
+
+    let existingKeys: Set<string>;
+    try {
+      existingKeys = await loadExistingArtworkKeys();
+    } catch {
+      existingKeys = new Set();
+    }
+    const seenInFile = new Set<string>();
 
     const resolveArtist = async (raw: string): Promise<{ id: string | null; name: string | null }> => {
       const normalized = normalizeArtistName(raw);
@@ -294,6 +322,22 @@ export function ImportModal({ open, onClose }: ImportModalProps) {
         continue;
       }
 
+      const dedupKey = artworkDedupKey(titleRaw, artistRaw);
+      if (existingKeys.has(dedupKey) || seenInFile.has(dedupKey)) {
+        skipped++;
+        duplicates++;
+        log.push({
+          row: i + 2,
+          title: titleRaw,
+          artist: artistRaw,
+          status: 'skipped',
+          reason: existingKeys.has(dedupKey) ? 'Doublon — déjà présent dans la collection' : 'Doublon — déjà importé dans ce fichier',
+        });
+        setProgress({ done: i + 1, total });
+        continue;
+      }
+      seenInFile.add(dedupKey);
+
       const { id: artistId, name: artistName } = await resolveArtist(artistRaw);
       const dateInfo = normalizeDate(cell(sheet.rows, i, fieldCol('year')));
       const purchaseDateInfo = normalizeDate(cell(sheet.rows, i, fieldCol('purchaseDate')));
@@ -341,7 +385,7 @@ export function ImportModal({ open, onClose }: ImportModalProps) {
       setProgress({ done: i + 1, total });
     }
 
-    setSummary({ created, skipped, artistsCreated, inventoryGenerated: inventoryPlan.generatedCount });
+    setSummary({ created, skipped, duplicates, artistsCreated, inventoryGenerated: inventoryPlan.generatedCount });
     setImportLog(log);
     setStep('done');
     qc.invalidateQueries({ queryKey: ['artworks'] });
@@ -423,8 +467,9 @@ export function ImportModal({ open, onClose }: ImportModalProps) {
                   <p className="text-xs text-muted-foreground">
                     Chaque colonne est analysée (intitulé + contenu) pour deviner le champ correspondant,
                     avec un pourcentage de confiance que vous pouvez ajuster avant l'import. Les artistes
-                    en double sont fusionnés automatiquement, et les numéros d'inventaire manquants sont
-                    générés à la suite des existants.
+                    en double sont fusionnés automatiquement, les numéros d'inventaire manquants sont
+                    générés à la suite des existants, et les œuvres déjà présentes dans la collection (ou
+                    répétées dans le fichier) sont détectées et ignorées plutôt que recréées.
                   </p>
                 </div>
               </motion.div>
@@ -546,7 +591,11 @@ export function ImportModal({ open, onClose }: ImportModalProps) {
                     <span className="font-semibold text-foreground">{summary.inventoryGenerated}</span> n° d'inventaire généré{summary.inventoryGenerated > 1 ? 's' : ''}.
                   </p>
                   {summary.skipped > 0 && (
-                    <p className="mt-1 text-xs text-muted-foreground">{summary.skipped} ligne{summary.skipped > 1 ? 's' : ''} ignorée{summary.skipped > 1 ? 's' : ''} (sans titre ni artiste, ou erreur).</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {summary.skipped} ligne{summary.skipped > 1 ? 's' : ''} ignorée{summary.skipped > 1 ? 's' : ''}
+                      {summary.duplicates > 0 && <> (dont <span className="font-medium text-foreground">{summary.duplicates}</span> doublon{summary.duplicates > 1 ? 's' : ''})</>}
+                      .
+                    </p>
                   )}
                 </div>
                 <button
