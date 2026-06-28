@@ -15,6 +15,7 @@ import type {
 import { Logger, ServiceUnavailableException } from '@nestjs/common';
 import type { PrismaService } from '../../core/prisma/prisma.service';
 import type { CryptoService } from '../../core/crypto/crypto.service';
+import { stripFillerFields } from '../../common/ai-filler.util';
 
 interface OrgAiSettings {
   enabled?: boolean;
@@ -312,7 +313,7 @@ export class OpenRouterAiProvider implements AiProvider {
         return;
       }
       try {
-        const parsed = JSON.parse(block) as Record<string, unknown>;
+        const parsed = stripFillerFields(JSON.parse(block) as Record<string, unknown>);
         const fieldCount = Object.values(parsed).filter(
           (v) => v !== undefined && v !== null && v !== '' && !(Array.isArray(v) && v.length === 0),
         ).length;
@@ -322,7 +323,7 @@ export class OpenRouterAiProvider implements AiProvider {
           message:
             fieldCount > 0
               ? `Réponse reçue avec succès du modèle "${model}" (${fieldCount} champ${fieldCount > 1 ? 's' : ''}).`
-              : `Réponse reçue du modèle "${model}" mais entièrement vide.`,
+              : `Réponse reçue du modèle "${model}" mais sans information exploitable (aucun résultat trouvé pour cette recherche).`,
         });
         if (fieldCount > 0) parsedByModel.push({ model, data: parsed });
       } catch (e) {
@@ -387,6 +388,7 @@ The most reliable sources for a specific, named work are: (1) the artist's own o
 If a catalogue raisonné number or its author is found, append it to the description as "Catalogue raisonné n° X (établi par Y)".
 If a real, working image URL for this exact work is found in a search result (e.g. an auction lot photo, the artist's own site, a museum page) — not a generic stock photo or a different work — include it as imageUrl. Never invent or guess a URL you didn't actually see in a source.
 Only state facts you are actually confident about for this specific, named work — leave a field out entirely rather than guessing or inventing a number you didn't see in a source.
+CRITICAL: if the search results contain nothing useful for a field, OMIT that key from the JSON entirely. Never write a sentence ABOUT not finding something (e.g. "The artwork was not found in the search results", "Aucune information disponible pour ce titre") as the VALUE of a field — that is not a real description and must never appear in description, techniqueName, dateText, dimensionsNote, or signatureDescription. An omitted key is the correct way to say "I found nothing".
 Return ONLY a JSON object with any of: description, techniqueName, dateText, yearFrom (number), dimensionsNote (e.g. "46x38 cm"), signatureDescription (e.g. "signé en bas à droite"), condition, tags (string array), imageUrl.`;
     const userMessage =
       `Artist: ${input.artistName ?? '(unknown)'}\n` +
@@ -401,6 +403,7 @@ Respond in language code: ${input.locale}.
 Search results may include Wikipedia, museum biographies, auction house artist pages, or the artist's official site — use them to ground your answer in actual sourced facts rather than a generic guess.
 If a real photo/portrait of this specific person is found in a search result, include it as imageUrl — never invent or guess a URL you didn't actually see in a source.
 Only state facts you are actually confident about for this specific person — leave a field out entirely rather than guessing.
+CRITICAL: if the search results contain nothing useful, OMIT the key entirely. Never write a sentence ABOUT not finding something (e.g. "No information was found for this person") as the VALUE of biography or any other field — an omitted key is the correct way to say "I found nothing".
 Return ONLY a JSON object with any of: biography, nationality, birthDate, deathDate, movement, imageUrl.`;
     const userMessage = `Artist: ${input.fullName}\nSearch query to run: ${input.fullName} biography portrait photo`;
     return this.completeAndMergeJson<ArtistAutofillResult>(input.organizationId, systemPrompt, userMessage, { webSearch: true });

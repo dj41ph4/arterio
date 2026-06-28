@@ -12,6 +12,7 @@ import type {
   TranslateInput,
 } from './ai.types';
 import { Logger } from '@nestjs/common';
+import { stripFillerFields } from '../../common/ai-filler.util';
 
 /**
  * Claude-backed provider. Only instantiated when AI_ENABLED=true and
@@ -110,7 +111,7 @@ Return ONLY a JSON object: {"description": "...", "keywords": [...], "suggestedC
       hasUsableData: false,
     };
     try {
-      const data = JSON.parse(text) as T;
+      const data = stripFillerFields(JSON.parse(text) as Record<string, unknown>) as T;
       const fieldCount = Object.values(data).filter((v) => v !== undefined && v !== null && v !== '').length;
       if (fieldCount === 0) {
         meta.message += ' — Réponse extraite mais entièrement vide.';
@@ -129,6 +130,7 @@ Return ONLY a JSON object: {"description": "...", "keywords": [...], "suggestedC
   async autofillArtwork(input: ArtworkAutofillInput): Promise<AiAutofillResponse<ArtworkAutofillResult>> {
     const systemPrompt = `You are an expert art cataloguer. Respond in language code: ${input.locale}.
 Only state facts you are confident about for this specific, named work — leave a field out entirely rather than guessing.
+CRITICAL: if you have nothing useful for a field, OMIT that key entirely. Never write a sentence ABOUT not knowing something (e.g. "No information is available for this work") as the VALUE of a field.
 Return ONLY a JSON object with any of: description, techniqueName, dateText, yearFrom (number), dimensionsNote, signatureDescription (e.g. "signé en bas à droite"), condition, tags (string array).`;
     const userMessage = `Title: ${input.title ?? '(unknown)'}\nArtist: ${input.artistName ?? '(unknown)'}`;
     const text = await this.complete(systemPrompt, userMessage);
@@ -138,6 +140,7 @@ Return ONLY a JSON object with any of: description, techniqueName, dateText, yea
   async autofillArtist(input: ArtistAutofillInput): Promise<AiAutofillResponse<ArtistAutofillResult>> {
     const systemPrompt = `You are an art historian. Respond in language code: ${input.locale}.
 Only state facts you are confident about for this specific person — leave a field out entirely rather than guessing.
+CRITICAL: if you have nothing useful, OMIT the key entirely. Never write a sentence ABOUT not knowing something as the VALUE of a field.
 Return ONLY a JSON object with any of: biography, nationality, birthDate, deathDate, movement.`;
     const text = await this.complete(systemPrompt, `Artist: ${input.fullName}`);
     return this.parseAutofillResult<ArtistAutofillResult>(text, this.model);
