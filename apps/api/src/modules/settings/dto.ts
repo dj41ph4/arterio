@@ -82,6 +82,11 @@ export class UpdateAiSettingsDto {
   @IsString({ each: true })
   @MaxLength(200, { each: true })
   models?: string[];
+
+  @ApiPropertyOptional({ description: 'Leave out to keep unchanged, or send "" to clear. Format "accessCode:secretCode". Takes priority over Wikimedia Commons for artwork/artist photos when set.' })
+  @IsOptional()
+  @IsString()
+  wikiartApiKey?: string;
 }
 
 export class UploadCertificateDto {

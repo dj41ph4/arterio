@@ -245,7 +245,7 @@ Return ONLY a JSON object: {"description": "...", "keywords": [...], "suggestedC
   async autofillArtwork(input: ArtworkAutofillInput): Promise<AiAutofillResponse<ArtworkAutofillResult>> {
     const systemPrompt = `You are an expert art cataloguer. Respond in language code: ${input.locale}.
 Only state facts you are confident about for this specific, named work — leave a field out entirely rather than guessing.
-Return ONLY a JSON object with any of: description, techniqueName, dateText, yearFrom (number), dimensionsNote, condition, tags (string array), imageUrl (a real public URL only if you know one).`;
+Return ONLY a JSON object with any of: description, techniqueName, dateText, yearFrom (number), dimensionsNote, condition, tags (string array).`;
     const userMessage = `Title: ${input.title ?? '(unknown)'}\nArtist: ${input.artistName ?? '(unknown)'}`;
     const { text, meta } = await this.completeWithFailover(input.organizationId, systemPrompt, userMessage);
     const data = this.parseJsonResult<ArtworkAutofillResult>(text, meta);
@@ -255,7 +255,7 @@ Return ONLY a JSON object with any of: description, techniqueName, dateText, yea
   async autofillArtist(input: ArtistAutofillInput): Promise<AiAutofillResponse<ArtistAutofillResult>> {
     const systemPrompt = `You are an art historian. Respond in language code: ${input.locale}.
 Only state facts you are confident about for this specific person — leave a field out entirely rather than guessing.
-Return ONLY a JSON object with any of: biography, nationality, birthDate, deathDate, movement, imageUrl (a real public URL only if you know one).`;
+Return ONLY a JSON object with any of: biography, nationality, birthDate, deathDate, movement.`;
     const { text, meta } = await this.completeWithFailover(input.organizationId, systemPrompt, `Artist: ${input.fullName}`);
     const data = this.parseJsonResult<ArtistAutofillResult>(text, meta);
     return { data, meta };

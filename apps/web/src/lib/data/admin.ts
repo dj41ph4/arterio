@@ -93,14 +93,16 @@ export const settingsApi = {
   updateExternalSources: (patch: Partial<Record<'europeana' | 'rijksmuseum' | 'harvard' | 'smithsonian', string>>) =>
     apiFetch<OrganizationSettings>('/settings/external-sources', { method: 'PATCH', body: JSON.stringify(patch) }),
 
-  getAiSettings: () => apiFetch<{ enabled: boolean; hasApiKey: boolean; models: string[] }>('/settings/ai'),
-  /** apiKey: omit to keep unchanged, send "" to clear it. */
-  updateAiSettings: (patch: { enabled?: boolean; apiKey?: string; models?: string[] }) =>
-    apiFetch<{ enabled: boolean; hasApiKey: boolean; models: string[] }>('/settings/ai', {
+  getAiSettings: () =>
+    apiFetch<{ enabled: boolean; hasApiKey: boolean; models: string[]; hasWikiArtKey: boolean }>('/settings/ai'),
+  /** apiKey/wikiartApiKey: omit to keep unchanged, send "" to clear it. */
+  updateAiSettings: (patch: { enabled?: boolean; apiKey?: string; models?: string[]; wikiartApiKey?: string }) =>
+    apiFetch<{ enabled: boolean; hasApiKey: boolean; models: string[]; hasWikiArtKey: boolean }>('/settings/ai', {
       method: 'PATCH',
       body: JSON.stringify(patch),
     }),
-  listOpenRouterFreeModels: () => apiFetch<Array<{ id: string; name: string }>>('/openrouter/models?free=true'),
+  /** Unfiltered — the UI does its own search + "free only" filtering over the full catalog. */
+  listOpenRouterModels: () => apiFetch<Array<{ id: string; name: string }>>('/openrouter/models'),
 
   getCertificate: () =>
     apiFetch<{ hasCustomCertificate: boolean; subject?: string; validFrom?: string; validTo?: string }>('/settings/certificate'),

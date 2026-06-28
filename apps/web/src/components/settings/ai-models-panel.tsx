@@ -3,36 +3,46 @@
 import * as React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Save, X, Sparkles, Check } from 'lucide-react';
+import { Save, X, Sparkles, Check, Search, Image as ImageIcon } from 'lucide-react';
 import { settingsApi } from '@/lib/data/admin';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
 const MAX_MODELS = 3;
 
+/** OpenRouter marks free models with a 🆓 emoji or a "(free)" suffix in the name, and/or a ":free" id suffix. */
+function isFreeModel(m: { id: string; name: string }): boolean {
+  return m.name.includes('🆓') || /\(free\)/i.test(m.name) || m.id.endsWith(':free');
+}
+
 export function AiModelsPanel() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ['ai-settings'], queryFn: settingsApi.getAiSettings });
-  const { data: freeModels } = useQuery({
-    queryKey: ['openrouter-free-models'],
-    queryFn: settingsApi.listOpenRouterFreeModels,
+  const { data: allModels } = useQuery({
+    queryKey: ['openrouter-models'],
+    queryFn: settingsApi.listOpenRouterModels,
     staleTime: 5 * 60 * 1000,
   });
 
   const [enabled, setEnabled] = React.useState<boolean | null>(null);
   const [apiKey, setApiKey] = React.useState<string | undefined>(undefined);
+  const [wikiartApiKey, setWikiartApiKey] = React.useState<string | undefined>(undefined);
   const [models, setModels] = React.useState<string[] | null>(null);
+  const [search, setSearch] = React.useState('');
+  const [freeOnly, setFreeOnly] = React.useState(true);
 
   const effectiveEnabled = enabled ?? data?.enabled ?? false;
   const effectiveModels = models ?? data?.models ?? [];
-  const hasChanges = enabled !== null || apiKey !== undefined || models !== null;
+  const hasChanges = enabled !== null || apiKey !== undefined || wikiartApiKey !== undefined || models !== null;
 
   const mutation = useMutation({
-    mutationFn: () => settingsApi.updateAiSettings({ enabled: enabled ?? undefined, apiKey, models: models ?? undefined }),
+    mutationFn: () =>
+      settingsApi.updateAiSettings({ enabled: enabled ?? undefined, apiKey, wikiartApiKey, models: models ?? undefined }),
     onSuccess: () => {
       toast.success('Réglages IA enregistrés');
       setEnabled(null);
       setApiKey(undefined);
+      setWikiartApiKey(undefined);
       setModels(null);
       qc.invalidateQueries({ queryKey: ['ai-settings'] });
     },
@@ -47,6 +57,16 @@ export function AiModelsPanel() {
   };
   const removeModel = (id: string) => setModels(effectiveModels.filter((m) => m !== id));
 
+  const filteredModels = (allModels ?? [])
+    .filter((m) => !effectiveModels.includes(m.id))
+    .filter((m) => !freeOnly || isFreeModel(m))
+    .filter((m) => {
+      if (!search.trim()) return true;
+      const q = search.trim().toLowerCase();
+      return m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q);
+    })
+    .slice(0, 50);
+
   return (
     <Card>
       <CardHeader>
@@ -54,9 +74,9 @@ export function AiModelsPanel() {
           <Sparkles className="h-4 w-4 text-primary" /> Intelligence artificielle (OpenRouter)
         </CardTitle>
         <CardDescription>
-          Activez l'enrichissement IA et choisissez jusqu'à {MAX_MODELS} modèles gratuits, par ordre de priorité —
-          si le premier ne répond pas, l'application bascule automatiquement sur le suivant. Désactivé (ou aucun
-          modèle accessible), le mode normal (Wikidata + musées en ligne) reste utilisé tel quel.
+          Activez l'enrichissement IA et choisissez jusqu'à {MAX_MODELS} modèles, par ordre de priorité — si le
+          premier ne répond pas, l'application bascule automatiquement sur le suivant. Désactivé (ou aucun modèle
+          accessible), le mode normal (Wikidata + musées en ligne) reste utilisé tel quel.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -91,7 +111,7 @@ export function AiModelsPanel() {
             <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" className="text-primary hover:underline">
               openrouter.ai/keys
             </a>
-            . Les modèles marqués « free » ci-dessous n'ont aucun coût.
+            .
           </p>
         </div>
 
@@ -117,23 +137,76 @@ export function AiModelsPanel() {
           </ol>
 
           {effectiveModels.length < MAX_MODELS && (
-            <select
-              value=""
-              onChange={(e) => addModel(e.target.value)}
-              className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-            >
-              <option value="" disabled>
-                Ajouter un modèle gratuit…
-              </option>
-              {(freeModels ?? [])
-                .filter((m) => !effectiveModels.includes(m.id))
-                .map((m) => (
+            <div className="mt-2 space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Rechercher un modèle…"
+                    className="w-full rounded-lg border border-border bg-background pl-8 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+                <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={freeOnly}
+                    onChange={(e) => setFreeOnly(e.target.checked)}
+                    className="h-3.5 w-3.5 accent-primary"
+                  />
+                  Gratuits 🆓 seulement
+                </label>
+              </div>
+              <select
+                value=""
+                onChange={(e) => addModel(e.target.value)}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="" disabled>
+                  {filteredModels.length} modèle{filteredModels.length > 1 ? 's' : ''} — choisir…
+                </option>
+                {filteredModels.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.name} ({m.id})
                   </option>
                 ))}
-            </select>
+              </select>
+            </div>
           )}
+        </div>
+
+        <div>
+          <label className="mb-1 flex items-center gap-2 text-sm font-medium text-foreground">
+            <ImageIcon className="h-3.5 w-3.5 text-primary" /> Clé API WikiArt (optionnel)
+            {data.hasWikiArtKey && (
+              <span className="flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400">
+                <Check className="h-3 w-3" /> Configurée
+              </span>
+            )}
+          </label>
+          <input
+            type="password"
+            value={wikiartApiKey ?? ''}
+            onChange={(e) => setWikiartApiKey(e.target.value)}
+            placeholder={data.hasWikiArtKey ? '••••••••••••••••' : 'accessCode:secretCode'}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            Si renseignée, WikiArt est utilisé en priorité pour trouver une vraie photo d'œuvre/portrait
+            d'artiste (sinon : Wikimedia Commons). Clé gratuite à demander sur{' '}
+            <a
+              href="https://www.wikiart.org/fr/App/GetApi/GetKeys"
+              target="_blank"
+              rel="noreferrer"
+              className="text-primary hover:underline"
+            >
+              wikiart.org/fr/App/GetApi/GetKeys
+            </a>{' '}
+            — collez le code d'accès et le code secret séparés par <code>:</code> (ex.{' '}
+            <code>abc123:xyz789</code>).
+          </p>
         </div>
 
         <button

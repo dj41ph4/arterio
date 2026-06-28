@@ -60,29 +60,34 @@ export class SettingsService {
     return this.getOrganization(user);
   }
 
-/** Org-level OpenRouter setup: on/off switch + (optional) API key + up to 3 model IDs, tried in order. */
+/** Org-level OpenRouter setup: on/off switch + (optional) API key + up to 3 model IDs, tried in order. Also an optional WikiArt key, which takes priority over Wikimedia Commons for artwork/artist photos when set. */
   async getAiSettings(user: AuthUser) {
     const org = await this.prisma.organization.findUniqueOrThrow({ where: { id: user.organizationId } });
     const settings = (org.settings as Record<string, unknown>) ?? {};
-    const ai = (settings.ai as { enabled?: boolean; openrouterApiKeyEnc?: string; models?: string[] }) ?? {};
+    const ai = (settings.ai as { enabled?: boolean; openrouterApiKeyEnc?: string; models?: string[]; wikiartApiKeyEnc?: string }) ?? {};
     return {
       enabled: ai.enabled ?? false,
       hasApiKey: Boolean(ai.openrouterApiKeyEnc),
       models: ai.models ?? [],
+      hasWikiArtKey: Boolean(ai.wikiartApiKeyEnc),
     };
   }
 
-  /** apiKey: omit to keep unchanged, send "" to clear it (falls back to the env OPENROUTER_API_KEY, if any). */
-  async updateAiSettings(user: AuthUser, input: { enabled?: boolean; apiKey?: string; models?: string[] }) {
+  /** apiKey/wikiartApiKey: omit to keep unchanged, send "" to clear (falls back to the env OPENROUTER_API_KEY / to Wikimedia Commons, respectively). */
+  async updateAiSettings(user: AuthUser, input: { enabled?: boolean; apiKey?: string; models?: string[]; wikiartApiKey?: string }) {
     const org = await this.prisma.organization.findUniqueOrThrow({ where: { id: user.organizationId } });
     const settings = (org.settings as Record<string, unknown>) ?? {};
-    const existing = (settings.ai as { enabled?: boolean; openrouterApiKeyEnc?: string; models?: string[] }) ?? {};
+    const existing = (settings.ai as { enabled?: boolean; openrouterApiKeyEnc?: string; models?: string[]; wikiartApiKeyEnc?: string }) ?? {};
 
     const next = { ...existing };
     if (input.enabled !== undefined) next.enabled = input.enabled;
     if (input.apiKey !== undefined) {
       if (input.apiKey === '') delete next.openrouterApiKeyEnc;
       else next.openrouterApiKeyEnc = this.crypto.encrypt(input.apiKey);
+    }
+    if (input.wikiartApiKey !== undefined) {
+      if (input.wikiartApiKey === '') delete next.wikiartApiKeyEnc;
+      else next.wikiartApiKeyEnc = this.crypto.encrypt(input.wikiartApiKey);
     }
     if (input.models !== undefined) {
       next.models = input.models.map((m) => m.trim()).filter(Boolean).slice(0, 3);
