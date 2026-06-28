@@ -4,6 +4,7 @@ import { ShieldCheck, Sparkles, Layers } from 'lucide-react';
 import { Logo, Wordmark } from '@/components/app-shell/logo';
 import { LoginForm } from '@/components/auth/login-form';
 import { ArtisticBackground } from '@/components/auth/artistic-background';
+import { ApiHostLink } from '@/components/auth/api-host-link';
 
 export async function generateMetadata({
   params,
@@ -87,6 +88,7 @@ export default async function LoginPage({
         <p className="mt-8 flex items-center gap-1.5 text-xs text-muted-foreground">
           <ShieldCheck className="size-3.5" /> {t('secured')}
         </p>
+        <ApiHostLink />
       </div>
     </div>
   );

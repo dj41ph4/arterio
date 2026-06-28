@@ -13,6 +13,22 @@ export function buildApiBaseFromHost(host: string): string {
   return `${protocol}//${trimmed}${hasPort ? '' : ':4000'}/api/v1`;
 }
 
+/**
+ * Same idea as buildApiBaseFromHost, but for an operator pasting a full URL
+ * after the fact (e.g. from the login screen's "Modifier l'URL de l'API"),
+ * not a bare host typed during first-run setup — so it must NOT force a
+ * protocol or :4000 port onto something the operator already fully typed
+ * out (a split-domain reverse-proxy setup is often on 443, not :4000).
+ */
+export function normalizeApiUrl(input: string): string {
+  let url = input.trim().replace(/\/+$/, '');
+  if (!/^https?:\/\//.test(url)) {
+    const protocol = typeof window !== 'undefined' ? window.location.protocol : 'https:';
+    url = `${protocol}//${url}`;
+  }
+  return /\/api\/v1$/.test(url) ? url : `${url}/api/v1`;
+}
+
 /** Persists a manual API host override so every subsequent page load uses it — see client.ts. */
 export function saveApiHostOverride(apiBaseUrl: string): void {
   if (typeof window === 'undefined') return;
