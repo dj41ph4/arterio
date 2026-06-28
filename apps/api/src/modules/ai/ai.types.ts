@@ -63,6 +63,29 @@ export interface ArtistAutofillResult {
   imageUrl?: string;
 }
 
+/** One model attempt, in human terms — surfaced to both server logs and the UI so a failure is never a silent/raw JSON blob. */
+export interface AiAttemptLog {
+  model: string;
+  success: boolean;
+  /** Human-readable, e.g. "Clé API invalide ou refusée (401)" or "Réponse reçue avec succès". */
+  message: string;
+}
+
+export interface AiAutofillMeta {
+  modelUsed?: string;
+  fallbackUsed: boolean;
+  attempts: AiAttemptLog[];
+  /** One-sentence, human-readable summary of what happened overall — always present, success or failure. */
+  message: string;
+  /** True only when at least one real field was extracted from the model's response. */
+  hasUsableData: boolean;
+}
+
+export interface AiAutofillResponse<T> {
+  data: T;
+  meta: AiAutofillMeta;
+}
+
 export const AI_PROVIDER = Symbol('AI_PROVIDER');
 
 export interface AiProvider {
@@ -75,6 +98,6 @@ export interface AiProvider {
   describe(input: DescribeInput): Promise<DescribeResult>;
   ocr(imageUrl: string): Promise<string>;
   tags(input: DescribeInput): Promise<string[]>;
-  autofillArtwork(input: ArtworkAutofillInput): Promise<ArtworkAutofillResult>;
-  autofillArtist(input: ArtistAutofillInput): Promise<ArtistAutofillResult>;
+  autofillArtwork(input: ArtworkAutofillInput): Promise<AiAutofillResponse<ArtworkAutofillResult>>;
+  autofillArtist(input: ArtistAutofillInput): Promise<AiAutofillResponse<ArtistAutofillResult>>;
 }

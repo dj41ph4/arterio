@@ -1,5 +1,6 @@
 import { ServiceUnavailableException } from '@nestjs/common';
 import type {
+  AiAutofillResponse,
   AiCapabilities,
   AiProvider,
   ArtistAutofillInput,
@@ -48,10 +49,10 @@ export class NullAiProvider implements AiProvider {
   tags(_input: DescribeInput): Promise<string[]> {
     return this.unavailable();
   }
-  autofillArtwork(_input: ArtworkAutofillInput): Promise<ArtworkAutofillResult> {
+  autofillArtwork(_input: ArtworkAutofillInput): Promise<AiAutofillResponse<ArtworkAutofillResult>> {
     return this.unavailable();
   }
-  autofillArtist(_input: ArtistAutofillInput): Promise<ArtistAutofillResult> {
+  autofillArtist(_input: ArtistAutofillInput): Promise<AiAutofillResponse<ArtistAutofillResult>> {
     return this.unavailable();
   }
 }

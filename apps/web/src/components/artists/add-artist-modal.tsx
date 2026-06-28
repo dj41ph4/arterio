@@ -8,6 +8,7 @@ import { enrichArtistLive } from '@/lib/wikipedia-enrichment';
 import { artistRepository, type ArtistView } from '@/lib/data/artist-repository';
 import { useAiAvailable } from '@/hooks/use-ai-available';
 import { aiApi } from '@/lib/data/ai';
+import { ApiError } from '@/lib/api/client';
 import { useLocale } from 'next-intl';
 import type { Locale } from '@arterio/shared';
 
@@ -102,10 +103,11 @@ export function AddArtistModal({ open, onClose, onAdded }: AddArtistModalProps) 
     setLog([]);
     addLog(`Recherche IA de "${name}"…`);
     try {
-      const data = await aiApi.autofillArtist({ fullName: name.trim(), locale });
-      if (!data.biography && !data.nationality && !data.birthDate) {
+      const { data, meta } = await aiApi.autofillArtist({ fullName: name.trim(), locale });
+      addLog(meta.message);
+      if (!meta.hasUsableData) {
         setStatus('notfound');
-        addLog("L'IA n'a rien trouvé de fiable pour ce nom.");
+        toast.error(meta.message);
         return;
       }
       const artist: ArtistView = {
@@ -123,15 +125,16 @@ export function AddArtistModal({ open, onClose, onAdded }: AddArtistModalProps) 
         artworkCount: 0,
         artworkIds: [],
       };
-      addLog('Réponse IA reçue.');
       await artistRepository.add(artist);
       setResult(artist);
       setStatus('done');
       addLog('Fiche artiste créée avec succès.');
-      toast.success(`${artist.fullName} ajouté avec les suggestions IA`);
+      toast.success(meta.message);
     } catch (err) {
       setStatus('notfound');
-      addLog(`Erreur : ${String(err)}`);
+      const message = err instanceof ApiError ? err.message : String(err);
+      addLog(`Erreur : ${message}`);
+      toast.error(message);
     }
   };
 

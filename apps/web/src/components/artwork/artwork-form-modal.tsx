@@ -12,6 +12,7 @@ import { useCollections } from '@/hooks/use-collections';
 import { useAiAvailable } from '@/hooks/use-ai-available';
 import { aiApi } from '@/lib/data/ai';
 import { artworkRepository } from '@/lib/data';
+import { ApiError } from '@/lib/api/client';
 
 interface ArtworkFormModalProps {
   open: boolean;
@@ -101,23 +102,29 @@ export function ArtworkFormModal({ open, onClose, artwork, defaultArtistId, defa
     if (!form.title.trim() && !form.artistName.trim()) return;
     setAiLoading(true);
     try {
-      const result = await aiApi.autofillArtwork({
+      const { data, meta } = await aiApi.autofillArtwork({
         title: form.title.trim() || undefined,
         artistName: form.artistName.trim() || undefined,
         locale,
       });
+      // eslint-disable-next-line no-console -- intentional human-readable AI debug trail, see CLAUDE.md AI section
+      console.info('[AI autofill:artwork]', meta.message, meta.attempts);
+      if (data.imageUrl) setAiImageUrl(data.imageUrl);
+      if (!meta.hasUsableData) {
+        toast.error(meta.message);
+        return;
+      }
       setForm((f) => ({
         ...f,
-        description: f.description || result.description || f.description,
-        techniqueName: f.techniqueName || result.techniqueName || f.techniqueName,
-        year: f.year || (result.yearFrom ? String(result.yearFrom) : f.year),
-        condition: result.condition && CONDITION_RATING.includes(result.condition as never) ? result.condition : f.condition,
-        tags: f.tags || (result.tags?.length ? result.tags.join(', ') : f.tags),
+        description: f.description || data.description || f.description,
+        techniqueName: f.techniqueName || data.techniqueName || f.techniqueName,
+        year: f.year || (data.yearFrom ? String(data.yearFrom) : f.year),
+        condition: data.condition && CONDITION_RATING.includes(data.condition as never) ? data.condition : f.condition,
+        tags: f.tags || (data.tags?.length ? data.tags.join(', ') : f.tags),
       }));
-      if (result.imageUrl) setAiImageUrl(result.imageUrl);
-      toast.success(t('artwork.form.aiSuccess'));
-    } catch {
-      toast.error(t('artwork.form.aiError'));
+      toast.success(meta.message);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t('artwork.form.aiError'));
     } finally {
       setAiLoading(false);
     }

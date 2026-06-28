@@ -1,4 +1,4 @@
-import { Body, Controller, Inject, Post, ServiceUnavailableException, UseGuards } from '@nestjs/common';
+import { Body, Controller, Inject, Logger, Post, ServiceUnavailableException, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS, type Locale } from '@arterio/shared';
 import { AI_PROVIDER, type AiProvider } from './ai.types';
@@ -55,6 +55,8 @@ async function findWikiArtImage(title: string, artistName: string | undefined): 
 @UseGuards(PermissionsGuard)
 @Controller('ai')
 export class AiController {
+  private readonly logger = new Logger(AiController.name);
+
   constructor(@Inject(AI_PROVIDER) private readonly ai: AiProvider) {}
 
   @Post('autofill/artwork')
@@ -64,32 +66,47 @@ export class AiController {
     @CurrentUser() user: AuthUser,
     @Body() body: { title?: string; artistName?: string; locale?: Locale },
   ) {
+    this.logger.log(`Clic "IA" reçu pour une œuvre — titre="${body.title ?? ''}", artiste="${body.artistName ?? ''}"`);
     if (!(await this.ai.isEnabled(user.organizationId))) {
-      throw new ServiceUnavailableException('AI is not configured for this organization');
+      const message = "IA désactivée ou non configurée pour cette organisation (Réglages → IA).";
+      this.logger.warn(message);
+      throw new ServiceUnavailableException(message);
     }
-    const result = await this.ai.autofillArtwork({
+    const { data, meta } = await this.ai.autofillArtwork({
       title: body.title,
       artistName: body.artistName,
       locale: body.locale ?? 'en',
       organizationId: user.organizationId,
     });
-    if (!result.imageUrl && body.title) {
-      result.imageUrl = await findWikiArtImage(body.title, body.artistName);
+    if (!data.imageUrl && body.title) {
+      const found = await findWikiArtImage(body.title, body.artistName);
+      if (found) {
+        data.imageUrl = found;
+        meta.message += ' Photo trouvée via WikiArt.';
+      } else {
+        meta.message += ' Aucune photo trouvée (ni par le modèle, ni via WikiArt).';
+      }
     }
-    return result;
+    this.logger.log(meta.message);
+    return { data, meta };
   }
 
   @Post('autofill/artist')
   @RequirePermissions(PERMISSIONS.ARTWORK_CREATE)
   @ApiOperation({ summary: 'AI-suggested artist bio/dates/nationality from a full name (OpenRouter-backed)' })
   async autofillArtist(@CurrentUser() user: AuthUser, @Body() body: { fullName: string; locale?: Locale }) {
+    this.logger.log(`Clic "IA" reçu pour un artiste — nom="${body.fullName}"`);
     if (!(await this.ai.isEnabled(user.organizationId))) {
-      throw new ServiceUnavailableException('AI is not configured for this organization');
+      const message = "IA désactivée ou non configurée pour cette organisation (Réglages → IA).";
+      this.logger.warn(message);
+      throw new ServiceUnavailableException(message);
     }
-    return this.ai.autofillArtist({
+    const result = await this.ai.autofillArtist({
       fullName: body.fullName,
       locale: body.locale ?? 'en',
       organizationId: user.organizationId,
     });
+    this.logger.log(result.meta.message);
+    return result;
   }
 }

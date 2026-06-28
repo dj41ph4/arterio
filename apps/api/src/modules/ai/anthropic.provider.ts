@@ -1,4 +1,6 @@
 import type {
+  AiAutofillMeta,
+  AiAutofillResponse,
   AiCapabilities,
   AiProvider,
   ArtistAutofillInput,
@@ -8,6 +10,7 @@ import type {
   DescribeInput,
   DescribeResult,
 } from './ai.types';
+import { Logger } from '@nestjs/common';
 
 /**
  * Claude-backed provider. Only instantiated when AI_ENABLED=true and
@@ -17,6 +20,7 @@ import type {
 export class AnthropicAiProvider implements AiProvider {
   readonly id = 'anthropic';
   readonly enabled = true;
+  private readonly logger = new Logger(AnthropicAiProvider.name);
 
   async isEnabled(): Promise<boolean> {
     return true;
@@ -94,26 +98,47 @@ Return ONLY a JSON object: {"description": "...", "keywords": [...], "suggestedC
     return msg.content.find((b) => b.type === 'text')?.text ?? '{}';
   }
 
-  async autofillArtwork(input: ArtworkAutofillInput): Promise<ArtworkAutofillResult> {
+  /** Mirrors OpenRouterAiProvider's parsing/meta contract so the controller can treat both providers identically. */
+  private parseAutofillResult<T extends object>(text: string, model: string): { data: T; meta: AiAutofillMeta } {
+    const attempts = [{ model, success: true, message: `Réponse reçue avec succès du modèle "${model}"` }];
+    const meta: AiAutofillMeta = {
+      modelUsed: model,
+      fallbackUsed: false,
+      attempts,
+      message: `Réponse IA reçue correctement depuis Anthropic (modèle : ${model}).`,
+      hasUsableData: false,
+    };
+    try {
+      const data = JSON.parse(text) as T;
+      const fieldCount = Object.values(data).filter((v) => v !== undefined && v !== null && v !== '').length;
+      if (fieldCount === 0) {
+        meta.message += ' — Réponse extraite mais entièrement vide.';
+      } else {
+        meta.message += ` — Réponse extraite avec succès et envoyée à l'UI (${fieldCount} champ${fieldCount > 1 ? 's' : ''}).`;
+        meta.hasUsableData = true;
+      }
+      return { data, meta };
+    } catch (e) {
+      meta.message += ` — Réponse reçue mais JSON invalide (${(e as Error).message}).`;
+      this.logger.warn(`JSON.parse a échoué sur la réponse Anthropic (tronquée) : ${text.slice(0, 200)}`);
+      return { data: {} as T, meta };
+    }
+  }
+
+  async autofillArtwork(input: ArtworkAutofillInput): Promise<AiAutofillResponse<ArtworkAutofillResult>> {
     const systemPrompt = `You are an expert art cataloguer. Respond in language code: ${input.locale}.
 Only state facts you are confident about for this specific, named work — leave a field out entirely rather than guessing.
 Return ONLY a JSON object with any of: description, techniqueName, dateText, yearFrom (number), dimensionsNote, condition, tags (string array), imageUrl (a real public URL only if you know one).`;
     const userMessage = `Title: ${input.title ?? '(unknown)'}\nArtist: ${input.artistName ?? '(unknown)'}`;
-    try {
-      return JSON.parse(await this.complete(systemPrompt, userMessage)) as ArtworkAutofillResult;
-    } catch {
-      return {};
-    }
+    const text = await this.complete(systemPrompt, userMessage);
+    return this.parseAutofillResult<ArtworkAutofillResult>(text, this.model);
   }
 
-  async autofillArtist(input: ArtistAutofillInput): Promise<ArtistAutofillResult> {
+  async autofillArtist(input: ArtistAutofillInput): Promise<AiAutofillResponse<ArtistAutofillResult>> {
     const systemPrompt = `You are an art historian. Respond in language code: ${input.locale}.
 Only state facts you are confident about for this specific person — leave a field out entirely rather than guessing.
 Return ONLY a JSON object with any of: biography, nationality, birthDate, deathDate, movement, imageUrl (a real public URL only if you know one).`;
-    try {
-      return JSON.parse(await this.complete(systemPrompt, `Artist: ${input.fullName}`)) as ArtistAutofillResult;
-    } catch {
-      return {};
-    }
+    const text = await this.complete(systemPrompt, `Artist: ${input.fullName}`);
+    return this.parseAutofillResult<ArtistAutofillResult>(text, this.model);
   }
 }
