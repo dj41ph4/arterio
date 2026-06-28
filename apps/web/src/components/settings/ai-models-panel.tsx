@@ -74,9 +74,10 @@ export function AiModelsPanel() {
           <Sparkles className="h-4 w-4 text-primary" /> Intelligence artificielle (OpenRouter)
         </CardTitle>
         <CardDescription>
-          Activez l'enrichissement IA et choisissez jusqu'à {MAX_MODELS} modèles, par ordre de priorité — si le
-          premier ne répond pas, l'application bascule automatiquement sur le suivant. Désactivé (ou aucun modèle
-          accessible), le mode normal (Wikidata + musées en ligne) reste utilisé tel quel.
+          Activez l'enrichissement IA et choisissez jusqu'à {MAX_MODELS} modèles. Les modèles configurés sont
+          interrogés simultanément sur la même recherche, et leurs réponses sont fusionnées — le champ le plus
+          complet de chacun est conservé, sans répétition. Désactivé (ou aucun modèle accessible), le mode normal
+          (Wikidata + musées en ligne) reste utilisé tel quel.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">

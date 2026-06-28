@@ -23,6 +23,30 @@ function isPrivateAddress(address: string): boolean {
 }
 
 /**
+ * Cheaply checks whether a URL actually resolves to a real image, without
+ * downloading the full body — used to decide whether an AI-suggested
+ * imageUrl (found via grounded web search, not memorized) is worth offering
+ * to the user at all, instead of only finding out it's a 404 or an HTML
+ * page once the user clicks save.
+ */
+export async function isLikelyRealImage(url: string): Promise<boolean> {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false;
+    const resolved = await lookup(parsed.hostname).catch(() => null);
+    if (!resolved || isPrivateAddress(resolved.address)) return false;
+
+    const res = await fetch(url, { signal: AbortSignal.timeout(8_000) }).catch(() => null);
+    if (!res?.ok) return false;
+    const mimeType = res.headers.get('content-type')?.split(';')[0]?.trim() ?? '';
+    void res.body?.cancel().catch(() => {});
+    return Boolean(ALLOWED_IMAGE_MIME_EXT[mimeType]);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Downloads an (AI-suggested or otherwise externally-sourced) image URL
  * server-side and writes it into UPLOAD_DIR — the browser never fetches the
  * arbitrary third-party URL directly. Shared by artwork media-from-url and

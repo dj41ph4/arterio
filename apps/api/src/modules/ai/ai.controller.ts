@@ -4,6 +4,7 @@ import { PERMISSIONS, type Locale } from '@arterio/shared';
 import { AI_PROVIDER, type AiProvider } from './ai.types';
 import { searchCommonsImage } from '../../common/commons-image-search.util';
 import { searchWikiArtImage } from '../../common/wikiart-api.util';
+import { isLikelyRealImage } from '../../common/download-image.util';
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { PrismaService } from '../../core/prisma/prisma.service';
@@ -24,8 +25,21 @@ export class AiController {
     private readonly crypto: CryptoService,
   ) {}
 
-  /** WikiArt (with a registered key) takes priority — it's a curated art-only index, so a hit is higher-confidence than a general Commons search. Falls through silently on any failure. */
-  private async findPhoto(query: string, organizationId: string): Promise<{ url: string | null; source: 'wikiart' | 'commons' | null }> {
+  /**
+   * WikiArt (with a registered key) takes priority — it's a curated art-only
+   * index, so a hit is higher-confidence than a general Commons search.
+   * Falls through to Commons, and finally — now that autofill runs with a
+   * real OpenRouter web search behind it instead of pure model memory — to
+   * whatever imageUrl the AI itself found in a search result, but only once
+   * that URL is verified (HEAD-checked) to actually resolve to a real image.
+   * An unverified AI guess is worse than no photo at all, so it's never
+   * trusted without that check.
+   */
+  private async findPhoto(
+    query: string,
+    organizationId: string,
+    aiGuessedUrl?: string,
+  ): Promise<{ url: string | null; source: 'wikiart' | 'commons' | 'ai-search' | null }> {
     try {
       const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
       const wikiartApiKeyEnc = ((org?.settings as Record<string, unknown>)?.ai as { wikiartApiKeyEnc?: string } | undefined)?.wikiartApiKeyEnc;
@@ -38,7 +52,12 @@ export class AiController {
       // fall through to Commons
     }
     const fromCommons = await searchCommonsImage(query);
-    return { url: fromCommons, source: fromCommons ? 'commons' : null };
+    if (fromCommons) return { url: fromCommons, source: 'commons' };
+
+    if (aiGuessedUrl && (await isLikelyRealImage(aiGuessedUrl))) {
+      return { url: aiGuessedUrl, source: 'ai-search' };
+    }
+    return { url: null, source: null };
   }
 
   @Post('autofill/artwork')
@@ -60,23 +79,20 @@ export class AiController {
       locale: body.locale ?? 'en',
       organizationId: user.organizationId,
     });
-    // A chat model with no web-search tool can only ever hallucinate an
-    // imageUrl from memory — it looks plausible but routinely 404s or isn't
-    // an image at all, which is exactly what surfaced as "Impossible
-    // d'attacher l'image trouvée par l'IA". A real WikiArt/Commons search
-    // result always wins over the model's own guess.
+    // A WikiArt/Commons hit is always preferred (dedicated art/media
+    // indexes), but the AI's own imageUrl is no longer discarded outright —
+    // autofill now runs with a real web search behind it, so its guess is
+    // often an actual photo found in a search result (an auction lot, the
+    // artist's own site). It's still HEAD-checked in findPhoto() before
+    // being trusted, so a hallucinated/broken URL never reaches the UI.
     const aiGuessedUrl = data.imageUrl;
     if (body.title) {
-      const { url, source } = await this.findPhoto(`${body.artistName ?? ''} ${body.title}`.trim(), user.organizationId);
-      if (url) {
-        data.imageUrl = url;
-        meta.message += source === 'wikiart' ? ' Photo réelle trouvée via WikiArt.' : ' Photo réelle trouvée via Wikimedia Commons.';
-      } else if (aiGuessedUrl) {
-        meta.message += " Aucune photo trouvée (WikiArt/Commons) — l'URL fournie par le modèle n'est pas fiable et a été ignorée.";
-        data.imageUrl = undefined;
-      } else {
-        meta.message += ' Aucune photo trouvée.';
-      }
+      const { url, source } = await this.findPhoto(`${body.artistName ?? ''} ${body.title}`.trim(), user.organizationId, aiGuessedUrl);
+      data.imageUrl = url ?? undefined;
+      if (source === 'wikiart') meta.message += ' Photo réelle trouvée via WikiArt.';
+      else if (source === 'commons') meta.message += ' Photo réelle trouvée via Wikimedia Commons.';
+      else if (source === 'ai-search') meta.message += " Photo trouvée par l'IA via recherche web et vérifiée.";
+      else meta.message += ' Aucune photo trouvée.';
     }
     this.logger.log(meta.message);
     return { data, meta };
@@ -98,16 +114,12 @@ export class AiController {
       organizationId: user.organizationId,
     });
     const aiGuessedUrl = data.imageUrl;
-    const { url, source } = await this.findPhoto(`${body.fullName} portrait`, user.organizationId);
-    if (url) {
-      data.imageUrl = url;
-      meta.message += source === 'wikiart' ? ' Portrait trouvé via WikiArt.' : ' Portrait trouvé via Wikimedia Commons.';
-    } else if (aiGuessedUrl) {
-      meta.message += " Aucun portrait trouvé (WikiArt/Commons) — l'URL fournie par le modèle n'est pas fiable et a été ignorée.";
-      data.imageUrl = undefined;
-    } else {
-      meta.message += ' Aucun portrait trouvé.';
-    }
+    const { url, source } = await this.findPhoto(`${body.fullName} portrait`, user.organizationId, aiGuessedUrl);
+    data.imageUrl = url ?? undefined;
+    if (source === 'wikiart') meta.message += ' Portrait trouvé via WikiArt.';
+    else if (source === 'commons') meta.message += ' Portrait trouvé via Wikimedia Commons.';
+    else if (source === 'ai-search') meta.message += " Portrait trouvé par l'IA via recherche web et vérifié.";
+    else meta.message += ' Aucun portrait trouvé.';
     this.logger.log(meta.message);
     return { data, meta };
   }

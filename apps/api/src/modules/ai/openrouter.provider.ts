@@ -44,6 +44,49 @@ function extractJsonBlock(text: string): string | null {
   return null;
 }
 
+/**
+ * Merges several models' parsed JSON answers for the same query into one.
+ * "Most complete wins, gaps get filled in" — per field: arrays are unioned
+ * and de-duplicated (case-insensitive); imageUrl keeps the first model's
+ * answer in priority order (length tells us nothing about whether a URL is
+ * real); every other scalar/string field keeps whichever model's answer is
+ * longest, since a longer, more specific answer (an exact "huile et sable
+ * sur toile, 46x38 cm" vs. a vague "oil on canvas") is what "most complete"
+ * means here.
+ */
+function mergeAutofillResults(resultsInOrder: Record<string, unknown>[]): Record<string, unknown> {
+  const merged: Record<string, unknown> = {};
+  const keys = new Set<string>();
+  resultsInOrder.forEach((r) => Object.keys(r).forEach((k) => keys.add(k)));
+
+  for (const key of keys) {
+    const values = resultsInOrder
+      .map((r) => r[key])
+      .filter((v) => v !== undefined && v !== null && v !== '' && !(Array.isArray(v) && v.length === 0));
+    if (!values.length) continue;
+
+    if (Array.isArray(values[0])) {
+      const seen = new Set<string>();
+      const deduped: unknown[] = [];
+      for (const v of values.flat()) {
+        const k = String(v).toLowerCase().trim();
+        if (k && !seen.has(k)) {
+          seen.add(k);
+          deduped.push(v);
+        }
+      }
+      merged[key] = deduped;
+    } else if (key === 'imageUrl') {
+      merged[key] = values[0];
+    } else if (typeof values[0] === 'string') {
+      merged[key] = (values as string[]).reduce((longest, v) => (v.length > longest.length ? v : longest));
+    } else {
+      merged[key] = values[0];
+    }
+  }
+  return merged;
+}
+
 /** Human-readable reason for a failed model call — never a raw stack trace or JSON blob. */
 function describeError(err: unknown): string {
   if (err instanceof Error) {
@@ -225,29 +268,93 @@ export class OpenRouterAiProvider implements AiProvider {
     throw new ServiceUnavailableException(message);
   }
 
-  /** Parses the model's JSON response defensively, never silently swallowing a malformed reply. */
-  private parseJsonResult<T extends object>(text: string, meta: AiAutofillMeta): T {
-    const block = extractJsonBlock(text);
-    if (!block) {
-      meta.message += ' — Réponse reçue mais aucun JSON exploitable trouvé dans le texte renvoyé par le modèle.';
-      this.logger.warn(`Parsing JSON impossible — contenu brut reçu (tronqué) : ${text.slice(0, 200)}`);
-      return {} as T;
+  /**
+   * Calls every configured model with the SAME query simultaneously instead
+   * of trying one and only falling back on outright failure — this is the
+   * "let all 3 search and merge their findings" behavior: each model may
+   * find a different subset of facts (one nails the dimensions, another
+   * the signature), so instead of discarding 2 of 3 answers, every field is
+   * kept from whichever model returned the fullest answer, and array
+   * fields (tags) are unioned rather than overwritten.
+   */
+  private async completeAndMergeJson<T extends object>(
+    organizationId: string | undefined,
+    systemPrompt: string,
+    userMessage: string,
+    opts?: { webSearch?: boolean },
+  ): Promise<{ data: T; meta: AiAutofillMeta }> {
+    const org = await this.resolveOrgSettings(organizationId);
+    const apiKey = await this.resolveApiKey(org);
+    if (!apiKey) {
+      const message = "Aucune clé API OpenRouter configurée — impossible d'appeler l'IA.";
+      this.logger.warn(message);
+      throw new ServiceUnavailableException(message);
     }
-    try {
-      const parsed = JSON.parse(block) as T;
-      const fieldCount = Object.values(parsed).filter((v) => v !== undefined && v !== null && v !== '').length;
-      if (fieldCount === 0) {
-        meta.message += ' — Réponse extraite mais entièrement vide (le modèle ne connaît probablement pas ce sujet).';
-      } else {
-        meta.message += ` — Réponse extraite avec succès et envoyée à l'UI (${fieldCount} champ${fieldCount > 1 ? 's' : ''}).`;
-        meta.hasUsableData = true;
+
+    const models = this.resolveModels(org);
+    this.logger.log(`Appel IA — interrogation simultanée de ${models.length} modèle(s) sur la même recherche : ${models.join(', ')}`);
+
+    const attempts: AiAttemptLog[] = [];
+    const settled = await Promise.allSettled(models.map((model) => this.callModel(model, apiKey, systemPrompt, userMessage, opts)));
+
+    const parsedByModel: Array<{ model: string; data: Record<string, unknown> }> = [];
+    settled.forEach((outcome, i) => {
+      const model = models[i]!;
+      if (outcome.status === 'rejected') {
+        const reason = describeError(outcome.reason);
+        attempts.push({ model, success: false, message: `Échec appel modèle "${model}" : ${reason}` });
+        this.logger.warn(`Échec appel modèle "${model}" : ${reason}`);
+        return;
       }
-      return parsed;
-    } catch (e) {
-      meta.message += ` — Réponse reçue mais JSON invalide (${(e as Error).message}).`;
-      this.logger.warn(`JSON.parse a échoué sur le bloc extrait (tronqué) : ${block.slice(0, 200)}`);
-      return {} as T;
+      const block = extractJsonBlock(outcome.value);
+      if (!block) {
+        attempts.push({ model, success: false, message: `Réponse reçue de "${model}" mais aucun JSON exploitable.` });
+        return;
+      }
+      try {
+        const parsed = JSON.parse(block) as Record<string, unknown>;
+        const fieldCount = Object.values(parsed).filter(
+          (v) => v !== undefined && v !== null && v !== '' && !(Array.isArray(v) && v.length === 0),
+        ).length;
+        attempts.push({
+          model,
+          success: fieldCount > 0,
+          message:
+            fieldCount > 0
+              ? `Réponse reçue avec succès du modèle "${model}" (${fieldCount} champ${fieldCount > 1 ? 's' : ''}).`
+              : `Réponse reçue du modèle "${model}" mais entièrement vide.`,
+        });
+        if (fieldCount > 0) parsedByModel.push({ model, data: parsed });
+      } catch (e) {
+        attempts.push({ model, success: false, message: `Réponse reçue de "${model}" mais JSON invalide (${(e as Error).message}).` });
+      }
+    });
+
+    if (!parsedByModel.length) {
+      const message = `Tous les modèles ont échoué ou n'ont rien trouvé (${attempts.length}/${attempts.length}) : ${attempts.map((a) => a.message).join(' | ')}`;
+      this.logger.error(message);
+      return { data: {} as T, meta: { fallbackUsed: attempts.length > 1, attempts, message, hasUsableData: false } };
     }
+
+    const merged = mergeAutofillResults(parsedByModel.map((r) => r.data));
+    const fieldCount = Object.keys(merged).length;
+    const contributingModels = parsedByModel.map((r) => r.model);
+    const message =
+      parsedByModel.length > 1
+        ? `Réponses fusionnées de ${parsedByModel.length} modèles (${contributingModels.join(', ')}) — ${fieldCount} champ${fieldCount > 1 ? 's' : ''} au total, en gardant la donnée la plus complète pour chaque champ.`
+        : `Réponse IA reçue correctement depuis OpenRouter (modèle : ${contributingModels[0]}) — ${fieldCount} champ${fieldCount > 1 ? 's' : ''}.`;
+    this.logger.log(message);
+
+    return {
+      data: merged as T,
+      meta: {
+        modelUsed: contributingModels[0],
+        fallbackUsed: attempts.some((a) => !a.success),
+        attempts,
+        message,
+        hasUsableData: fieldCount > 0,
+      },
+    };
   }
 
   async describe(input: DescribeInput): Promise<DescribeResult> {
@@ -278,26 +385,25 @@ Return ONLY a JSON object: {"description": "...", "keywords": [...], "suggestedC
 Respond in language code: ${input.locale}.
 The most reliable sources for a specific, named work are: (1) the artist's own official website, which for many painters has a dedicated "œuvres"/"catalogue raisonné"/"works" page listing each piece with its number, technique, and dimensions; (2) auction house listings and lot PDFs (Artnet, Invaluable, regional auction houses), which routinely state the exact technique/medium, dimensions in cm, where and how the work is signed, and sometimes a catalogue raisonné number; (3) museum/gallery pages. Prefer these over your own memory — for a regional or private-collection work you likely have no reliable memory of it at all, and a generic guess (e.g. "female nude") is worse than leaving a field empty.
 If a catalogue raisonné number or its author is found, append it to the description as "Catalogue raisonné n° X (établi par Y)".
+If a real, working image URL for this exact work is found in a search result (e.g. an auction lot photo, the artist's own site, a museum page) — not a generic stock photo or a different work — include it as imageUrl. Never invent or guess a URL you didn't actually see in a source.
 Only state facts you are actually confident about for this specific, named work — leave a field out entirely rather than guessing or inventing a number you didn't see in a source.
-Return ONLY a JSON object with any of: description, techniqueName, dateText, yearFrom (number), dimensionsNote (e.g. "46x38 cm"), signatureDescription (e.g. "signé en bas à droite : B. DUBAIL"), condition, tags (string array).`;
+Return ONLY a JSON object with any of: description, techniqueName, dateText, yearFrom (number), dimensionsNote (e.g. "46x38 cm"), signatureDescription (e.g. "signé en bas à droite"), condition, tags (string array), imageUrl.`;
     const userMessage =
       `Artist: ${input.artistName ?? '(unknown)'}\n` +
       `Title: ${input.title ?? '(unknown)'}\n` +
-      `Search query to run: ${input.artistName ?? ''} "${input.title ?? ''}" catalogue raisonné dimensions technique signature`.trim();
-    const { text, meta } = await this.completeWithFailover(input.organizationId, systemPrompt, userMessage, { webSearch: true });
-    const data = this.parseJsonResult<ArtworkAutofillResult>(text, meta);
-    return { data, meta };
+      `Search query to run: ${input.artistName ?? ''} "${input.title ?? ''}" catalogue raisonné dimensions technique signature photo`.trim();
+    return this.completeAndMergeJson<ArtworkAutofillResult>(input.organizationId, systemPrompt, userMessage, { webSearch: true });
   }
 
   async autofillArtist(input: ArtistAutofillInput): Promise<AiAutofillResponse<ArtistAutofillResult>> {
     const systemPrompt = `You are an art historian with access to real-time web search results for this query.
 Respond in language code: ${input.locale}.
 Search results may include Wikipedia, museum biographies, auction house artist pages, or the artist's official site — use them to ground your answer in actual sourced facts rather than a generic guess.
+If a real photo/portrait of this specific person is found in a search result, include it as imageUrl — never invent or guess a URL you didn't actually see in a source.
 Only state facts you are actually confident about for this specific person — leave a field out entirely rather than guessing.
-Return ONLY a JSON object with any of: biography, nationality, birthDate, deathDate, movement.`;
-    const { text, meta } = await this.completeWithFailover(input.organizationId, systemPrompt, `Artist: ${input.fullName}`, { webSearch: true });
-    const data = this.parseJsonResult<ArtistAutofillResult>(text, meta);
-    return { data, meta };
+Return ONLY a JSON object with any of: biography, nationality, birthDate, deathDate, movement, imageUrl.`;
+    const userMessage = `Artist: ${input.fullName}\nSearch query to run: ${input.fullName} biography portrait photo`;
+    return this.completeAndMergeJson<ArtistAutofillResult>(input.organizationId, systemPrompt, userMessage, { webSearch: true });
   }
 
   /** Best-effort text translation — never throws, returns null so the caller (enrichment) just skips that locale on failure. */
