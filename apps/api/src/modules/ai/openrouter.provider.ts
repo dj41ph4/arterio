@@ -133,8 +133,14 @@ export class OpenRouterAiProvider implements AiProvider {
     };
   }
 
-  private async callModel(model: string, apiKey: string, systemPrompt: string, userMessage: string): Promise<string> {
-    const body = {
+  private async callModel(
+    model: string,
+    apiKey: string,
+    systemPrompt: string,
+    userMessage: string,
+    opts?: { webSearch?: boolean },
+  ): Promise<string> {
+    const body: Record<string, unknown> = {
       model,
       messages: [
         { role: 'system', content: systemPrompt },
@@ -142,6 +148,15 @@ export class OpenRouterAiProvider implements AiProvider {
       ],
       temperature: 0.0,
     };
+    // OpenRouter's "web" plugin runs a real search (via Exa) and injects the
+    // results into the prompt before the model answers — without this, the
+    // model only ever has whatever it memorized during training, which is
+    // nothing for most real-world/regional/private-collection artists and
+    // routinely produces a generic guess (e.g. "female nude") instead of the
+    // actual catalogue facts (technique, dimensions, catalogue raisonné #).
+    if (opts?.webSearch) {
+      body.plugins = [{ id: 'web', max_results: 5 }];
+    }
 
     const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -164,7 +179,12 @@ export class OpenRouterAiProvider implements AiProvider {
   }
 
   /** Tries each org/env-configured model in order — the "switch to the next AI" failover — logging every attempt in human terms. */
-  private async completeWithFailover(organizationId: string | undefined, systemPrompt: string, userMessage: string): Promise<CompletionOutcome> {
+  private async completeWithFailover(
+    organizationId: string | undefined,
+    systemPrompt: string,
+    userMessage: string,
+    opts?: { webSearch?: boolean },
+  ): Promise<CompletionOutcome> {
     const org = await this.resolveOrgSettings(organizationId);
     const apiKey = await this.resolveApiKey(org);
     const attempts: AiAttemptLog[] = [];
@@ -180,7 +200,7 @@ export class OpenRouterAiProvider implements AiProvider {
 
     for (const model of models) {
       try {
-        const text = await this.callModel(model, apiKey, systemPrompt, userMessage);
+        const text = await this.callModel(model, apiKey, systemPrompt, userMessage, opts);
         const successMessage = `Réponse reçue avec succès du modèle "${model}"`;
         attempts.push({ model, success: true, message: successMessage });
         this.logger.log(successMessage);
@@ -244,20 +264,24 @@ Return ONLY a JSON object: {"description": "...", "keywords": [...], "suggestedC
   }
 
   async autofillArtwork(input: ArtworkAutofillInput): Promise<AiAutofillResponse<ArtworkAutofillResult>> {
-    const systemPrompt = `You are an expert art cataloguer. Respond in language code: ${input.locale}.
-Only state facts you are confident about for this specific, named work — leave a field out entirely rather than guessing.
-Return ONLY a JSON object with any of: description, techniqueName, dateText, yearFrom (number), dimensionsNote, condition, tags (string array).`;
+    const systemPrompt = `You are an expert art cataloguer with access to real-time web search results for this query.
+Respond in language code: ${input.locale}.
+Search results may include the artist's official website, a catalogue raisonné, an auction house listing, or a museum/gallery page — use them to extract precise, sourced facts (technique/medium, exact dimensions, date, catalogue raisonné number) rather than a generic guess.
+Only state facts you are actually confident about for this specific, named work — leave a field out entirely rather than guessing or inventing a number you didn't see in a source.
+Return ONLY a JSON object with any of: description, techniqueName, dateText, yearFrom (number), dimensionsNote (e.g. "46x38 cm"), condition, tags (string array).`;
     const userMessage = `Title: ${input.title ?? '(unknown)'}\nArtist: ${input.artistName ?? '(unknown)'}`;
-    const { text, meta } = await this.completeWithFailover(input.organizationId, systemPrompt, userMessage);
+    const { text, meta } = await this.completeWithFailover(input.organizationId, systemPrompt, userMessage, { webSearch: true });
     const data = this.parseJsonResult<ArtworkAutofillResult>(text, meta);
     return { data, meta };
   }
 
   async autofillArtist(input: ArtistAutofillInput): Promise<AiAutofillResponse<ArtistAutofillResult>> {
-    const systemPrompt = `You are an art historian. Respond in language code: ${input.locale}.
-Only state facts you are confident about for this specific person — leave a field out entirely rather than guessing.
+    const systemPrompt = `You are an art historian with access to real-time web search results for this query.
+Respond in language code: ${input.locale}.
+Search results may include Wikipedia, museum biographies, auction house artist pages, or the artist's official site — use them to ground your answer in actual sourced facts rather than a generic guess.
+Only state facts you are actually confident about for this specific person — leave a field out entirely rather than guessing.
 Return ONLY a JSON object with any of: biography, nationality, birthDate, deathDate, movement.`;
-    const { text, meta } = await this.completeWithFailover(input.organizationId, systemPrompt, `Artist: ${input.fullName}`);
+    const { text, meta } = await this.completeWithFailover(input.organizationId, systemPrompt, `Artist: ${input.fullName}`, { webSearch: true });
     const data = this.parseJsonResult<ArtistAutofillResult>(text, meta);
     return { data, meta };
   }

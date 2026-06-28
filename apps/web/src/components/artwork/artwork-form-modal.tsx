@@ -28,6 +28,7 @@ interface FormState {
   artistName: string;
   year: string;
   techniqueName: string;
+  dimensionsNote: string;
   collectionId: string;
   status: string;
   condition: string;
@@ -40,7 +41,7 @@ interface FormState {
 
 function emptyForm(): FormState {
   return {
-    title: '', artistName: '', year: '', techniqueName: '', collectionId: '',
+    title: '', artistName: '', year: '', techniqueName: '', dimensionsNote: '', collectionId: '',
     status: 'draft', condition: 'unknown', currentValue: '', insuranceValue: '',
     currency: 'EUR', description: '', tags: '',
   };
@@ -52,6 +53,7 @@ function fromArtwork(art: ArtworkView, locale: Locale): FormState {
     artistName: art.artistName ?? '',
     year: art.yearFrom != null ? String(art.yearFrom) : '',
     techniqueName: art.techniqueName ?? '',
+    dimensionsNote: art.dimensionsNote ?? '',
     collectionId: art.collectionId ?? '',
     status: art.status,
     condition: art.condition,
@@ -118,6 +120,7 @@ export function ArtworkFormModal({ open, onClose, artwork, defaultArtistId, defa
         ...f,
         description: f.description || data.description || f.description,
         techniqueName: f.techniqueName || data.techniqueName || f.techniqueName,
+        dimensionsNote: f.dimensionsNote || data.dimensionsNote || f.dimensionsNote,
         year: f.year || (data.yearFrom ? String(data.yearFrom) : f.year),
         condition: data.condition && CONDITION_RATING.includes(data.condition as never) ? data.condition : f.condition,
         tags: f.tags || (data.tags?.length ? data.tags.join(', ') : f.tags),
@@ -144,6 +147,7 @@ export function ArtworkFormModal({ open, onClose, artwork, defaultArtistId, defa
       yearFrom: form.year ? Number(form.year) : null,
       dateText: form.year || null,
       techniqueName: form.techniqueName.trim() || null,
+      dimensionsNote: form.dimensionsNote.trim() || null,
       collectionId: form.collectionId || null,
       collectionName: collection?.name ?? null,
       collectionColor: collection?.color ?? null,
@@ -241,6 +245,10 @@ export function ArtworkFormModal({ open, onClose, artwork, defaultArtistId, defa
             <div>
               <FieldLabel>{t('artwork.fields.technique')}</FieldLabel>
               <input type="text" value={form.techniqueName} onChange={(e) => set('techniqueName', e.target.value)} className={inputClass} />
+            </div>
+            <div>
+              <FieldLabel>{t('artwork.fields.dimensions')}</FieldLabel>
+              <input type="text" placeholder="46x38 cm" value={form.dimensionsNote} onChange={(e) => set('dimensionsNote', e.target.value)} className={inputClass} />
             </div>
             <div>
               <FieldLabel>{t('artwork.fields.collection')}</FieldLabel>
