@@ -186,9 +186,13 @@ Copy `.env.example` → `.env` for local dev. Critical values are defaulted — 
 | `DATA_ENCRYPTION_KEY` | dev placeholder | **must change in prod** |
 | `APP_URL` | `http://localhost:3000` | canonical origin; also an allowed CORS origin |
 | `CORS_ORIGINS` | — | extra comma-separated CORS origins beyond `APP_URL` + auto-allowed LAN |
+| `HTTPS_ENABLED` | `false` | API serves HTTPS directly with a self-signed cert generated at every boot — for reverse proxies that connect to the upstream over HTTPS; never persisted, never meant to be trusted directly |
 | `AI_ENABLED` | `false` | set to `true` to enable AI features |
 | `ANTHROPIC_API_KEY` | — | required only when `AI_ENABLED=true` |
 | `AI_MODEL` | `claude-opus-4-8` | any Anthropic model ID |
+| `AI_PROVIDER` | `none` | `anthropic` or `openrouter` — OpenRouter's own on/off + key + models are normally set per-org from Settings → AI instead |
+| `OPENROUTER_API_KEY` | — | server-wide fallback if an org hasn't set its own key in Settings → AI |
+| `OPENROUTER_MODEL` | `openrouter/auto` | comma-separated fallback model list, used if an org hasn't chosen its own |
 
 ## Docker / deployment
 

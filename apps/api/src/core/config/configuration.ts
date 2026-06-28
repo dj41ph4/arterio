@@ -7,6 +7,14 @@ export const envSchema = z.object({
   APP_URL: z.string().default('http://localhost:3000'),
   // Extra CORS origins (comma-separated) on top of APP_URL + auto-allowed LAN.
   CORS_ORIGINS: z.string().optional(),
+  // Off by default — existing deployments keep talking plain HTTP behind
+  // their reverse proxy. When set, the API serves HTTPS directly using a
+  // self-signed certificate generated at boot (no real cert needed: the
+  // reverse proxy in front is what end users actually trust).
+  HTTPS_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
 
   // SQLite by default — a single file, no separate database server. In Docker
   // this points at a mapped volume (see infra/docker/api.Dockerfile).

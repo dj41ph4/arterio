@@ -6,13 +6,35 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { mkdirSync } from 'node:fs';
+import selfsigned from 'selfsigned';
 import { AppModule } from './app.module';
 import { UPLOAD_DIR } from './core/config/paths';
 import type { Env } from './core/config/configuration';
 
+/**
+ * Self-signed — generated fresh on every boot, never persisted. Nothing is
+ * meant to trust this certificate directly: it only exists so a reverse
+ * proxy in front (which presents its own real, trusted certificate to end
+ * users) can speak HTTPS to this upstream instead of plain HTTP. Off by
+ * default (HTTPS_ENABLED=false) so existing plain-HTTP deployments are
+ * unaffected.
+ */
+async function generateSelfSignedCert(): Promise<{ key: string; cert: string }> {
+  const notAfterDate = new Date();
+  notAfterDate.setFullYear(notAfterDate.getFullYear() + 10);
+  const pems = await selfsigned.generate([{ name: 'commonName', value: 'arterio' }], {
+    notAfterDate,
+    keySize: 2048,
+    algorithm: 'sha256',
+  });
+  return { key: pems.private, cert: pems.cert };
+}
+
 async function bootstrap() {
+  const httpsEnabled = process.env.HTTPS_ENABLED === 'true';
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bufferLogs: true,
+    ...(httpsEnabled ? { httpsOptions: await generateSelfSignedCert() } : {}),
   });
 
   // ---------------------------------------------------------------------------
@@ -112,7 +134,7 @@ async function bootstrap() {
     .setDescription('Art collection management platform — REST API v1')
     .setVersion('1.0')
     .addBearerAuth()
-    .addServer(`http://localhost:${port}`, 'Local development')
+    .addServer(`${httpsEnabled ? 'https' : 'http'}://localhost:${port}`, 'Local development')
     .addServer(appUrl, 'Production')
     .build();
 
@@ -128,9 +150,10 @@ async function bootstrap() {
   app.enableShutdownHooks();
 
   await app.listen(port, '0.0.0.0');
-  console.log(`\n🎨 Arterio API running on http://localhost:${port}/api`);
-  console.log(`📖 Swagger docs:     http://localhost:${port}/api/docs`);
-  console.log(`🏥 Health check:     http://localhost:${port}/api/v1/health\n`);
+  const scheme = httpsEnabled ? 'https' : 'http';
+  console.log(`\n🎨 Arterio API running on ${scheme}://localhost:${port}/api${httpsEnabled ? ' (self-signed cert)' : ''}`);
+  console.log(`📖 Swagger docs:     ${scheme}://localhost:${port}/api/docs`);
+  console.log(`🏥 Health check:     ${scheme}://localhost:${port}/api/v1/health\n`);
 }
 
 void bootstrap();
