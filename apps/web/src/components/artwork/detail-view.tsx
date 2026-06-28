@@ -223,6 +223,7 @@ export function ArtworkDetailView({ id }: { id: string }) {
                 <Field label={t('artwork.fields.dimensions')}>
                   {formatDimensions(art.heightCm, art.widthCm, art.depthCm)}
                 </Field>
+                <Field label={t('artwork.fields.signature')}>{art.signatureDescription}</Field>
                 <Field label={t('artwork.fields.collection')}>
                   <span className="inline-flex items-center gap-2">
                     <span className="size-2.5 rounded-full" style={{ background: art.collectionColor ?? undefined }} />

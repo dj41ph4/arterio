@@ -129,7 +129,7 @@ Return ONLY a JSON object: {"description": "...", "keywords": [...], "suggestedC
   async autofillArtwork(input: ArtworkAutofillInput): Promise<AiAutofillResponse<ArtworkAutofillResult>> {
     const systemPrompt = `You are an expert art cataloguer. Respond in language code: ${input.locale}.
 Only state facts you are confident about for this specific, named work — leave a field out entirely rather than guessing.
-Return ONLY a JSON object with any of: description, techniqueName, dateText, yearFrom (number), dimensionsNote, condition, tags (string array).`;
+Return ONLY a JSON object with any of: description, techniqueName, dateText, yearFrom (number), dimensionsNote, signatureDescription (where/how the work is signed), condition, tags (string array).`;
     const userMessage = `Title: ${input.title ?? '(unknown)'}\nArtist: ${input.artistName ?? '(unknown)'}`;
     const text = await this.complete(systemPrompt, userMessage);
     return this.parseAutofillResult<ArtworkAutofillResult>(text, this.model);

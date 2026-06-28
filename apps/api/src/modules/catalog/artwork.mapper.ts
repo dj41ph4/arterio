@@ -11,6 +11,7 @@ type ArtworkWithRelations = {
   artistId: string | null;
   attribution: string | null;
   authentication: string;
+  signatureDescription: string | null;
   dateText: string | null;
   yearFrom: number | null;
   yearTo: number | null;
@@ -73,6 +74,7 @@ export function toArtworkView(
     artistName: a.artist?.fullName ?? null,
     attribution: a.attribution,
     authentication: a.authentication as ArtworkView['authentication'],
+    signatureDescription: a.signatureDescription,
     movementName: a.movement?.name ?? null,
     categoryName: a.category?.name ?? null,
     techniqueName: a.technique?.name ?? null,

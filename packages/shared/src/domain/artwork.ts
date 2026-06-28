@@ -30,6 +30,8 @@ export interface ArtworkView {
   artistName?: string | null;
   attribution?: string | null;
   authentication: AuthenticationStatus;
+  /** Free text describing where/how the work is signed, e.g. "signé en bas à droite : B. DUBAIL". */
+  signatureDescription?: string | null;
 
   movementName?: string | null;
   categoryName?: string | null;

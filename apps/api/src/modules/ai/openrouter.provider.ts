@@ -266,9 +266,9 @@ Return ONLY a JSON object: {"description": "...", "keywords": [...], "suggestedC
   async autofillArtwork(input: ArtworkAutofillInput): Promise<AiAutofillResponse<ArtworkAutofillResult>> {
     const systemPrompt = `You are an expert art cataloguer with access to real-time web search results for this query.
 Respond in language code: ${input.locale}.
-Search results may include the artist's official website, a catalogue raisonné, an auction house listing, or a museum/gallery page — use them to extract precise, sourced facts (technique/medium, exact dimensions, date, catalogue raisonné number) rather than a generic guess.
+Search results may include the artist's official website, a catalogue raisonné, an auction house listing, or a museum/gallery page — use them to extract precise, sourced facts (technique/medium, exact dimensions, date, catalogue raisonné number, where and how the work is signed) rather than a generic guess.
 Only state facts you are actually confident about for this specific, named work — leave a field out entirely rather than guessing or inventing a number you didn't see in a source.
-Return ONLY a JSON object with any of: description, techniqueName, dateText, yearFrom (number), dimensionsNote (e.g. "46x38 cm"), condition, tags (string array).`;
+Return ONLY a JSON object with any of: description, techniqueName, dateText, yearFrom (number), dimensionsNote (e.g. "46x38 cm"), signatureDescription (e.g. "signé en bas à droite : B. DUBAIL"), condition, tags (string array).`;
     const userMessage = `Title: ${input.title ?? '(unknown)'}\nArtist: ${input.artistName ?? '(unknown)'}`;
     const { text, meta } = await this.completeWithFailover(input.organizationId, systemPrompt, userMessage, { webSearch: true });
     const data = this.parseJsonResult<ArtworkAutofillResult>(text, meta);

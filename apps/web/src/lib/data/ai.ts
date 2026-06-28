@@ -7,6 +7,7 @@ export interface ArtworkAutofillResult {
   dateText?: string;
   yearFrom?: number;
   dimensionsNote?: string;
+  signatureDescription?: string;
   condition?: string;
   tags?: string[];
   imageUrl?: string;

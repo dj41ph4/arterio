@@ -42,6 +42,8 @@ export interface ArtworkAutofillResult {
   dateText?: string;
   yearFrom?: number;
   dimensionsNote?: string;
+  /** Where/how the work is signed, e.g. "signé en bas à droite : B. DUBAIL" — important for authentication. */
+  signatureDescription?: string;
   condition?: string;
   tags?: string[];
   /** Best-effort — only set when the model recalls an actual public image URL for this work; never fabricated. */

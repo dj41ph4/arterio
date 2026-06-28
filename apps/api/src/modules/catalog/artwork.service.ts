@@ -198,6 +198,7 @@ export class ArtworkService {
             dominantColors: [],
             artistId: (body.artistId as string) || null,
             attribution: (body.artistName as string) ?? null,
+            signatureDescription: (body.signatureDescription as string) ?? null,
             dateText: (body.dateText as string) ?? null,
             yearFrom: (body.yearFrom as number) ?? null,
             status: (body.status as never) ?? 'draft',
@@ -253,6 +254,7 @@ export class ArtworkService {
       data.title = { ...(existing.title as Record<string, string>), ...(body.title as Record<string, string>) };
     }
     if (body.description !== undefined) data.description = body.description;
+    if (body.artistId !== undefined) data.artistId = body.artistId || null;
     if (body.artistName !== undefined) data.attribution = body.artistName;
     if (body.inventoryNumber !== undefined) data.inventoryNumber = body.inventoryNumber;
     if (body.dateText !== undefined) data.dateText = body.dateText;
@@ -260,10 +262,34 @@ export class ArtworkService {
     if (body.heightCm !== undefined) data.heightCm = body.heightCm;
     if (body.widthCm !== undefined) data.widthCm = body.widthCm;
     if (body.depthCm !== undefined) data.depthCm = body.depthCm;
+    if (body.dimensionsNote !== undefined) data.dimensionsNote = body.dimensionsNote || null;
+    if (body.signatureDescription !== undefined) data.signatureDescription = body.signatureDescription || null;
+    if (body.framed !== undefined) data.framed = body.framed;
     if (body.status !== undefined) data.status = body.status;
     if (body.condition !== undefined) data.condition = body.condition;
+    if (body.acquisitionMethod !== undefined) data.acquisitionMethod = body.acquisitionMethod;
+    if (body.acquisitionDate !== undefined) {
+      data.acquisitionDate = body.acquisitionDate ? new Date(body.acquisitionDate as string) : null;
+    }
+    if (body.paymentMethod !== undefined) data.paymentMethod = body.paymentMethod || null;
+    if (body.hasCertificate !== undefined) data.hasCertificate = body.hasCertificate;
+    if (body.hasInvoice !== undefined) data.hasInvoice = body.hasInvoice;
     if (body.collectionId !== undefined) data.collectionId = body.collectionId || null;
     if (body.isFavorite !== undefined) data.isFavorite = body.isFavorite;
+
+    const techniqueName = (body.techniqueName as string | undefined)?.trim();
+    if (techniqueName !== undefined) {
+      if (!techniqueName) {
+        data.techniqueId = null;
+      } else {
+        const technique = await this.prisma.technique.upsert({
+          where: { organizationId_name: { organizationId: user.organizationId, name: techniqueName } },
+          create: { organizationId: user.organizationId, name: techniqueName, label: { fr: techniqueName } },
+          update: {},
+        });
+        data.techniqueId = technique.id;
+      }
+    }
 
     const valuationPatch = body.valuation as Record<string, unknown> | undefined;
 
