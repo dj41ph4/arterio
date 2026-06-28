@@ -22,7 +22,7 @@ import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagg
 import { PERMISSIONS } from '@arterio/shared';
 import { SettingsService } from './settings.service';
 import { MigrationService } from './migration.service';
-import { CreateApiKeyDto, UpdateExternalSourcesDto, UpdateOAuthProviderDto, UpdateOrganizationDto, WipeDataDto } from './dto';
+import { CreateApiKeyDto, UpdateAiModelsDto, UpdateExternalSourcesDto, UpdateOAuthProviderDto, UpdateOrganizationDto, WipeDataDto } from './dto';
 import type { OAuthProviderKey } from './settings.service';
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
@@ -55,6 +55,18 @@ export class SettingsController {
   @ApiOperation({ summary: 'Configure third-party API keys used by artist-enrichment fallback providers' })
   updateExternalSources(@CurrentUser() user: AuthUser, @Body() dto: UpdateExternalSourcesDto) {
     return this.settings.updateExternalSources(user, dto);
+  }
+
+  @Get('ai-models')
+  @ApiOperation({ summary: 'Up to 3 OpenRouter free models chosen for AI enrichment, tried in order' })
+  getAiModels(@CurrentUser() user: AuthUser) {
+    return this.settings.getAiModels(user);
+  }
+
+  @Patch('ai-models')
+  @ApiOperation({ summary: 'Set the (up to 3) OpenRouter models to use, in priority order' })
+  updateAiModels(@CurrentUser() user: AuthUser, @Body() dto: UpdateAiModelsDto) {
+    return this.settings.updateAiModels(user, dto.models);
   }
 
   @Get('oauth')

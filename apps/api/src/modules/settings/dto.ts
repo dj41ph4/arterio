@@ -65,6 +65,14 @@ export class WipeDataDto {
   categories!: WipeCategory[];
 }
 
+export class UpdateAiModelsDto {
+  @ApiPropertyOptional({ type: [String], maxItems: 3, description: 'Up to 3 OpenRouter model IDs, tried in order — the next is used automatically if one fails.' })
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(200, { each: true })
+  models!: string[];
+}
+
 export class UpdateOAuthProviderDto {
   @ApiPropertyOptional({ description: 'Leave out to keep unchanged, or send "" to clear' })
   @IsOptional()

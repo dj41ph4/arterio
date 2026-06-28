@@ -5,15 +5,18 @@ import { NullAiProvider } from './null.provider';
 import { AnthropicAiProvider } from './anthropic.provider';
 import { OpenRouterAiProvider } from './openrouter.provider';
 import { OpenRouterController } from './openrouter.controller';
+import { PrismaModule } from '../../core/prisma/prisma.module';
+import { PrismaService } from '../../core/prisma/prisma.service';
 import type { Env } from '../../core/config/configuration';
 
 @Module({
+  imports: [PrismaModule],
   controllers: [OpenRouterController],
   providers: [
     {
       provide: AI_PROVIDER,
-      inject: [ConfigService],
-      useFactory: (config: ConfigService<Env, true>) => {
+      inject: [ConfigService, PrismaService],
+      useFactory: (config: ConfigService<Env, true>, prisma: PrismaService) => {
         const enabled = config.get('AI_ENABLED', { infer: true });
         if (!enabled) return new NullAiProvider();
 
@@ -21,7 +24,7 @@ import type { Env } from '../../core/config/configuration';
         if (provider === 'openrouter') {
           const apiKey = config.get('OPENROUTER_API_KEY', { infer: true });
           const model = config.get('OPENROUTER_MODEL', { infer: true });
-          return new OpenRouterAiProvider(apiKey ?? '', model);
+          return new OpenRouterAiProvider(apiKey ?? '', model, prisma);
         }
         // Default to Anthropic for backward compatibility
         const apiKey = config.get('ANTHROPIC_API_KEY', { infer: true });

@@ -1,7 +1,6 @@
 import { Controller, Get, Query, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../../core/config/configuration';
-import fetch from 'node-fetch';
 
 /**
  * Exposes a minimal OpenRouter API for the frontend.

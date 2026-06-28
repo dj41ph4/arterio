@@ -1,28 +1,44 @@
 import type { AiCapabilities, AiProvider, DescribeInput, DescribeResult } from './ai.types';
 import { ServiceUnavailableException } from '@nestjs/common';
-import fetch from 'node-fetch';
+import type { PrismaService } from '../../core/prisma/prisma.service';
 
 /**
  * OpenRouter provider – a thin wrapper around the OpenRouter chat completions API.
- * It supports one or more model identifiers (comma‑separated in the env var).
- * When multiple models are configured, the provider will call each model in order
- * and return the first successful result. If more than one model returns a
- * result, the provider can optionally compare them for consistency – for now we
- * simply log a warning and return the first.
+ * It supports one or more model identifiers (comma‑separated in the env var, or
+ * up to 3 chosen per-organization in Settings → AI). When multiple models are
+ * configured, the provider calls each model in order and returns the first
+ * successful result — this is the "switch to the next AI when one stops
+ * working" failover the org admin configures.
  */
 export class OpenRouterAiProvider implements AiProvider {
   readonly id = 'openrouter';
   readonly enabled = true;
 
   private readonly apiKey: string;
-  private readonly models: string[];
-  private readonly defaultModel: string;
+  private readonly envModels: string[];
 
-  constructor(apiKey: string, modelList: string) {
+  constructor(
+    apiKey: string,
+    modelList: string,
+    private readonly prisma?: PrismaService,
+  ) {
     this.apiKey = apiKey;
     // Accept a comma‑separated list of model IDs, e.g. "openrouter/auto,openrouter/mistral-7b"
-    this.models = modelList.split(',').map((m) => m.trim()).filter(Boolean);
-    this.defaultModel = this.models[0] ?? 'openrouter/auto';
+    this.envModels = modelList.split(',').map((m) => m.trim()).filter(Boolean);
+  }
+
+  /** Org-chosen models (Settings → AI) take priority over the env-configured default list. */
+  private async resolveModels(organizationId?: string): Promise<string[]> {
+    if (organizationId && this.prisma) {
+      try {
+        const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
+        const orgModels = ((org?.settings as Record<string, unknown>)?.aiModels as string[] | undefined) ?? [];
+        if (orgModels.length) return orgModels;
+      } catch {
+        // fall through to env default
+      }
+    }
+    return this.envModels.length ? this.envModels : ['openrouter/auto'];
   }
 
   capabilities(): AiCapabilities {
@@ -74,8 +90,9 @@ Return ONLY a JSON object: {"description": "...", "keywords": [...], "suggestedC
 
   async describe(input: DescribeInput): Promise<DescribeResult> {
     // Try each configured model until one succeeds.
+    const models = await this.resolveModels(input.organizationId);
     const errors: string[] = [];
-    for (const model of this.models) {
+    for (const model of models) {
       try {
         return await this.callModel(model, input);
       } catch (e) {

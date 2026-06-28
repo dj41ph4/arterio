@@ -93,6 +93,11 @@ export const settingsApi = {
   updateExternalSources: (patch: Partial<Record<'europeana' | 'rijksmuseum' | 'harvard' | 'smithsonian', string>>) =>
     apiFetch<OrganizationSettings>('/settings/external-sources', { method: 'PATCH', body: JSON.stringify(patch) }),
 
+  getAiModels: () => apiFetch<{ models: string[] }>('/settings/ai-models'),
+  updateAiModels: (models: string[]) =>
+    apiFetch<{ models: string[] }>('/settings/ai-models', { method: 'PATCH', body: JSON.stringify({ models }) }),
+  listOpenRouterFreeModels: () => apiFetch<Array<{ id: string; name: string }>>('/openrouter/models?free=true'),
+
   getOAuthProviders: () => apiFetch<Record<OAuthProviderKey, boolean>>('/settings/oauth'),
   updateOAuthProvider: (provider: OAuthProviderKey, patch: { clientId?: string; clientSecret?: string }) =>
     apiFetch<Record<OAuthProviderKey, boolean>>(`/settings/oauth/${provider}`, {

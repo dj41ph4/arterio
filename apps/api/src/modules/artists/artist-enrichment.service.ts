@@ -164,6 +164,7 @@ export class ArtistEnrichmentService {
         const aiInput = {
           imageUrl: result.thumbnail,
           locale: 'en', // default to English for AI‑generated text
+          organizationId,
         } as const;
         const aiResult = await this.aiProvider.describe(aiInput);
         if (aiResult?.description) {
@@ -176,6 +177,7 @@ export class ArtistEnrichmentService {
         this.logger.warn(`AI enrichment failed for "${fullName}": ${String(e)}`);
       }
     }
+    return result;
     } finally {
       releaseEnrichmentSlot();
     }

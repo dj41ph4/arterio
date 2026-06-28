@@ -19,6 +19,8 @@ export interface DescribeInput {
   imageUrl?: string;
   context?: Record<string, unknown>;
   locale: Locale;
+  /** Lets a provider look up org-specific config (e.g. chosen OpenRouter models) instead of the env default. */
+  organizationId?: string;
 }
 
 export interface DescribeResult {
