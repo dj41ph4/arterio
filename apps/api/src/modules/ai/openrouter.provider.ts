@@ -264,12 +264,26 @@ Return ONLY a JSON object: {"description": "...", "keywords": [...], "suggestedC
   }
 
   async autofillArtwork(input: ArtworkAutofillInput): Promise<AiAutofillResponse<ArtworkAutofillResult>> {
+    // Search strategy validated by hand against a real, fairly obscure case
+    // (a 1979 regional Belgian painting, private collection, no museum
+    // record): the artist's own site ("[name].be"/".com", often with an
+    // "œuvres"/"catalogue raisonné" page) and auction-house listings
+    // (Artnet, Invaluable, auction-house PDF catalogs) reliably carry the
+    // exact technique, dimensions, signature placement, and catalogue
+    // raisonné number that a plain "describe this painting" prompt has no
+    // way to recall from memory alone. Naming these source types and the
+    // "catalogue raisonné" keyword explicitly — both in the system prompt
+    // and in the search query itself — is what actually surfaces them.
     const systemPrompt = `You are an expert art cataloguer with access to real-time web search results for this query.
 Respond in language code: ${input.locale}.
-Search results may include the artist's official website, a catalogue raisonné, an auction house listing, or a museum/gallery page — use them to extract precise, sourced facts (technique/medium, exact dimensions, date, catalogue raisonné number, where and how the work is signed) rather than a generic guess.
+The most reliable sources for a specific, named work are: (1) the artist's own official website, which for many painters has a dedicated "œuvres"/"catalogue raisonné"/"works" page listing each piece with its number, technique, and dimensions; (2) auction house listings and lot PDFs (Artnet, Invaluable, regional auction houses), which routinely state the exact technique/medium, dimensions in cm, where and how the work is signed, and sometimes a catalogue raisonné number; (3) museum/gallery pages. Prefer these over your own memory — for a regional or private-collection work you likely have no reliable memory of it at all, and a generic guess (e.g. "female nude") is worse than leaving a field empty.
+If a catalogue raisonné number or its author is found, append it to the description as "Catalogue raisonné n° X (établi par Y)".
 Only state facts you are actually confident about for this specific, named work — leave a field out entirely rather than guessing or inventing a number you didn't see in a source.
 Return ONLY a JSON object with any of: description, techniqueName, dateText, yearFrom (number), dimensionsNote (e.g. "46x38 cm"), signatureDescription (e.g. "signé en bas à droite : B. DUBAIL"), condition, tags (string array).`;
-    const userMessage = `Title: ${input.title ?? '(unknown)'}\nArtist: ${input.artistName ?? '(unknown)'}`;
+    const userMessage =
+      `Artist: ${input.artistName ?? '(unknown)'}\n` +
+      `Title: ${input.title ?? '(unknown)'}\n` +
+      `Search query to run: ${input.artistName ?? ''} "${input.title ?? ''}" catalogue raisonné dimensions technique signature`.trim();
     const { text, meta } = await this.completeWithFailover(input.organizationId, systemPrompt, userMessage, { webSearch: true });
     const data = this.parseJsonResult<ArtworkAutofillResult>(text, meta);
     return { data, meta };
