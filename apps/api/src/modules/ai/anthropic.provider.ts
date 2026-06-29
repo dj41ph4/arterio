@@ -9,6 +9,8 @@ import type {
   ArtworkAutofillResult,
   DescribeInput,
   DescribeResult,
+  FindImagesInput,
+  FindImagesResult,
   TranslateInput,
 } from './ai.types';
 import { Logger } from '@nestjs/common';
@@ -160,5 +162,14 @@ Return ONLY a JSON object with any of: biography, nationality, birthDate, deathD
       this.logger.warn(`Traduction vers "${input.targetLocale}" échouée : ${String(e)}`);
       return null;
     }
+  }
+
+  /** This provider has no web-search grounding configured, so it can't reliably find real image URLs — say so explicitly rather than guessing from memory. */
+  async findImages(_input: FindImagesInput): Promise<AiAutofillResponse<FindImagesResult>> {
+    const message = "Le fournisseur Anthropic ne dispose pas de recherche web — utilisez OpenRouter pour la recherche d'images par IA.";
+    return {
+      data: {},
+      meta: { fallbackUsed: false, attempts: [{ model: this.model, success: false, message }], message, hasUsableData: false },
+    };
   }
 }

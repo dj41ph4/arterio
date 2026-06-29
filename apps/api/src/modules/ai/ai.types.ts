@@ -72,6 +72,17 @@ export interface TranslateInput {
   organizationId?: string;
 }
 
+export interface FindImagesInput {
+  /** Free-text search-engine-style query, e.g. `Picasso "The Old Guitarist" photo painting image`. */
+  query: string;
+  organizationId?: string;
+}
+
+export interface FindImagesResult {
+  /** Real image URLs found in search results — never invented. Each one is still HEAD-validated by the caller before being trusted. */
+  imageUrls?: string[];
+}
+
 /** One model attempt, in human terms — surfaced to both server logs and the UI so a failure is never a silent/raw JSON blob. */
 export interface AiAttemptLog {
   model: string;
@@ -111,4 +122,6 @@ export interface AiProvider {
   autofillArtist(input: ArtistAutofillInput): Promise<AiAutofillResponse<ArtistAutofillResult>>;
   /** Best-effort — returns null (never throws) on any failure, so a translation gap never blocks enrichment. */
   translate(input: TranslateInput): Promise<string | null>;
+  /** Dedicated multi-image search (the "IA" image-search button) — separate from autofill's single best-effort imageUrl, this asks for as many real candidates as the search turns up. */
+  findImages(input: FindImagesInput): Promise<AiAutofillResponse<FindImagesResult>>;
 }

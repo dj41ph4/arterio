@@ -30,6 +30,8 @@ import type { Locale } from '@arterio/shared';
 import { resolveLocalized } from '@arterio/shared';
 import { useArtwork, useToggleFavorite } from '@/hooks/use-artworks';
 import { artworkRepository } from '@/lib/data';
+import { aiApi } from '@/lib/data/ai';
+import { ImageSearchButtons } from '@/components/shared/image-search-buttons';
 import { apiFetch } from '@/lib/api/client';
 import { Link, useRouter } from '@/i18n/navigation';
 import { formatCurrency, formatDate, formatDimensions } from '@/lib/format';
@@ -252,7 +254,7 @@ export function ArtworkDetailView({ id }: { id: string }) {
             </TabsContent>
 
             <TabsContent value="media">
-              <MediaTab artworkId={art.id} media={art.media} />
+              <MediaTab artworkId={art.id} media={art.media} title={title} artistName={art.artistName} />
             </TabsContent>
 
             <TabsContent value="documents">
@@ -633,7 +635,17 @@ function PlaceholderEmpty({ icon: Icon, label }: { icon: React.ElementType; labe
   );
 }
 
-function MediaTab({ artworkId, media }: { artworkId: string; media: { id: string; url: string }[] }) {
+function MediaTab({
+  artworkId,
+  media,
+  title,
+  artistName,
+}: {
+  artworkId: string;
+  media: { id: string; url: string }[];
+  title: string;
+  artistName?: string | null;
+}) {
   const t = useTranslations();
   const qc = useQueryClient();
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -648,6 +660,15 @@ function MediaTab({ artworkId, media }: { artworkId: string; media: { id: string
       invalidate();
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : t('artwork.media.uploadFailed')),
+  });
+
+  const attachFromUrlMutation = useMutation({
+    mutationFn: (url: string) => artworkRepository.attachMediaFromUrl(artworkId, url),
+    onSuccess: () => {
+      toast.success('Image ajoutée à la galerie');
+      invalidate();
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Échec de l'ajout de l'image"),
   });
 
   const removeMutation = useMutation({
@@ -689,6 +710,13 @@ function MediaTab({ artworkId, media }: { artworkId: string; media: { id: string
           onChange={(e) => { handleFiles(e.target.files); e.target.value = ''; }}
         />
       </div>
+
+      <ImageSearchButtons
+        onSearchWiki={() => aiApi.findArtworkImagesWiki({ title, artistName: artistName ?? undefined })}
+        onSearchAi={() => aiApi.findArtworkImagesAi({ title, artistName: artistName ?? undefined })}
+        onPick={(url) => attachFromUrlMutation.mutate(url)}
+        disabled={attachFromUrlMutation.isPending}
+      />
 
       {media.length > 0 && (
         <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">

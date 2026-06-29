@@ -10,6 +10,8 @@ import type {
   ArtworkAutofillResult,
   DescribeInput,
   DescribeResult,
+  FindImagesInput,
+  FindImagesResult,
   TranslateInput,
 } from './ai.types';
 import { Logger, ServiceUnavailableException } from '@nestjs/common';
@@ -423,6 +425,15 @@ Return ONLY a JSON object with any of: biography, nationality, birthDate, deathD
       this.logger.warn(`Traduction vers "${input.targetLocale}" échouée : ${describeError(e)}`);
       return null;
     }
+  }
+
+  /** Dedicated multi-image search — same web-search grounding as autofill, but asks specifically for every real candidate found instead of one best-effort URL. */
+  async findImages(input: FindImagesInput): Promise<AiAutofillResponse<FindImagesResult>> {
+    const systemPrompt = `You have access to real-time web search results for this query.
+Find as many DIFFERENT real, working image URLs as you can (up to 6) showing the exact subject of this query — actual photos found in search results (an auction lot photo, a museum/gallery page, the subject's own official website), never a generic stock photo, never a different work/person, and never an invented or guessed URL.
+CRITICAL: if nothing useful is found, OMIT the key entirely. Never write a sentence about not finding anything as a value.
+Return ONLY a JSON object: {"imageUrls": ["...", ...]}`;
+    return this.completeAndMergeJson<FindImagesResult>(input.organizationId, systemPrompt, input.query, { webSearch: true });
   }
 
   // The other AI capabilities are not implemented for OpenRouter.

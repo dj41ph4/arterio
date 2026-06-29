@@ -45,22 +45,31 @@ async function login(apiKey: string): Promise<string | null> {
   }
 }
 
-/** Searches WikiArt's painting index by free-text query (e.g. "Picasso The Old Guitarist"). Returns a real image URL, or null on any failure. */
-export async function searchWikiArtImage(apiKey: string, query: string): Promise<string | null> {
+/** Searches WikiArt's painting index by free-text query, best matches first. Returns up to `limit` real image URLs, or [] on any failure. */
+export async function searchWikiArtImages(apiKey: string, query: string, limit = 6): Promise<string[]> {
   const sessionKey = await login(apiKey);
-  if (!sessionKey) return null;
+  if (!sessionKey) return [];
 
   try {
     const res = await fetch(
       `https://www.wikiart.org/en/Api/2/PaintingSearch?term=${encodeURIComponent(query)}&authSessionKey=${encodeURIComponent(sessionKey)}`,
       { signal: AbortSignal.timeout(8_000) },
     );
-    if (!res.ok) return null;
+    if (!res.ok) return [];
     const data = (await res.json()) as { data?: Array<{ title?: string; artistName?: string; image?: string }> } | Array<{ title?: string; artistName?: string; image?: string }>;
     const results = Array.isArray(data) ? data : data.data ?? [];
-    const match = results.find((r) => matchesAnyToken(query, `${r.title ?? ''} ${r.artistName ?? ''}`)) ?? results[0];
-    return match?.image || null;
+    const ranked = [
+      ...results.filter((r) => matchesAnyToken(query, `${r.title ?? ''} ${r.artistName ?? ''}`)),
+      ...results.filter((r) => !matchesAnyToken(query, `${r.title ?? ''} ${r.artistName ?? ''}`)),
+    ];
+    return ranked.map((r) => r.image).filter((u): u is string => Boolean(u)).slice(0, limit);
   } catch {
-    return null;
+    return [];
   }
+}
+
+/** Single-best-result convenience wrapper for callers that only ever attach one photo. */
+export async function searchWikiArtImage(apiKey: string, query: string): Promise<string | null> {
+  const [first] = await searchWikiArtImages(apiKey, query, 1);
+  return first ?? null;
 }

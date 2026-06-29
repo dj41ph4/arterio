@@ -1,9 +1,9 @@
-import { Body, Controller, Inject, Logger, Post, ServiceUnavailableException, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Inject, Logger, Post, ServiceUnavailableException, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS, type Locale } from '@arterio/shared';
 import { AI_PROVIDER, type AiProvider } from './ai.types';
-import { searchCommonsImage } from '../../common/commons-image-search.util';
-import { searchWikiArtImage } from '../../common/wikiart-api.util';
+import { searchCommonsImage, searchCommonsImages } from '../../common/commons-image-search.util';
+import { searchWikiArtImage, searchWikiArtImages } from '../../common/wikiart-api.util';
 import { isLikelyRealImage } from '../../common/download-image.util';
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
@@ -58,6 +58,117 @@ export class AiController {
       return { url: aiGuessedUrl, source: 'ai-search' };
     }
     return { url: null, source: null };
+  }
+
+  /**
+   * The "Wiki" image-search button — WikiArt (if a key is configured) and
+   * Wikimedia Commons, combined and de-duplicated, no AI/LLM call involved
+   * at all. Deliberately separate from findPhoto() above (which only ever
+   * needs the single best hit for autofill) since this one is about
+   * surfacing as many real candidates as possible for the user to pick from.
+   */
+  private async findWikiImages(query: string, organizationId: string, limit = 8): Promise<{ images: string[]; wikiartCount: number }> {
+    let fromWikiArt: string[] = [];
+    try {
+      const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
+      const wikiartApiKeyEnc = ((org?.settings as Record<string, unknown>)?.ai as { wikiartApiKeyEnc?: string } | undefined)?.wikiartApiKeyEnc;
+      if (wikiartApiKeyEnc) {
+        const key = this.crypto.decrypt(wikiartApiKeyEnc);
+        fromWikiArt = await searchWikiArtImages(key, query, limit);
+      }
+    } catch {
+      // fall through to Commons-only
+    }
+    const fromCommons = await searchCommonsImages(query, limit);
+    const seen = new Set<string>();
+    const images = [...fromWikiArt, ...fromCommons].filter((u) => {
+      if (seen.has(u)) return false;
+      seen.add(u);
+      return true;
+    }).slice(0, limit);
+    return { images, wikiartCount: fromWikiArt.length };
+  }
+
+  @Post('images/artwork')
+  @RequirePermissions(PERMISSIONS.ARTWORK_CREATE)
+  @ApiOperation({ summary: 'Find multiple candidate photos for an artwork via WikiArt/Wikimedia Commons (no AI call)' })
+  async findArtworkImages(@CurrentUser() user: AuthUser, @Body() body: { title?: string; artistName?: string }) {
+    const query = `${body.artistName ?? ''} ${body.title ?? ''}`.trim();
+    if (!query) throw new BadRequestException('title or artistName is required');
+    const { images, wikiartCount } = await this.findWikiImages(query, user.organizationId);
+    const message = images.length
+      ? `${images.length} image${images.length > 1 ? 's' : ''} trouvée${images.length > 1 ? 's' : ''}${wikiartCount ? ` (dont ${wikiartCount} via WikiArt)` : ' via Wikimedia Commons'}.`
+      : 'Aucune image trouvée via WikiArt/Wikimedia Commons pour ce titre/artiste.';
+    this.logger.log(`Recherche Wiki d'images pour une œuvre — "${query}" — ${message}`);
+    return { images, message };
+  }
+
+  @Post('images/artwork/ai')
+  @RequirePermissions(PERMISSIONS.ARTWORK_CREATE)
+  @ApiOperation({ summary: 'Find multiple candidate photos for an artwork via AI-grounded web search' })
+  async findArtworkImagesAi(@CurrentUser() user: AuthUser, @Body() body: { title?: string; artistName?: string }) {
+    if (!(await this.ai.isEnabled(user.organizationId))) {
+      const message = 'IA désactivée ou non configurée pour cette organisation (Réglages → IA).';
+      throw new ServiceUnavailableException(message);
+    }
+    const query = `${body.artistName ?? ''} ${body.title ?? ''}`.trim();
+    if (!query) throw new BadRequestException('title or artistName is required');
+    const { data, meta } = await this.ai.findImages({
+      query: `Search query to run: ${body.artistName ?? ''} "${body.title ?? ''}" photo painting image`.trim(),
+      organizationId: user.organizationId,
+    });
+    const candidates = data.imageUrls ?? [];
+    const validated = (await Promise.all(candidates.map(async (u) => ((await isLikelyRealImage(u)) ? u : null)))).filter(
+      (u): u is string => Boolean(u),
+    );
+    const message =
+      validated.length > 0
+        ? `${meta.message} ${validated.length} image${validated.length > 1 ? 's' : ''} réelle${validated.length > 1 ? 's' : ''} vérifiée${validated.length > 1 ? 's' : ''} sur ${candidates.length} proposée${candidates.length > 1 ? 's' : ''} par l'IA.`
+        : candidates.length > 0
+          ? `${meta.message} Les ${candidates.length} URL proposée${candidates.length > 1 ? 's' : ''} par l'IA n'ont pas pu être vérifiées (lien mort ou pas une image) — aucune retenue.`
+          : meta.message;
+    this.logger.log(message);
+    return { images: validated, message };
+  }
+
+  @Post('images/artist')
+  @RequirePermissions(PERMISSIONS.ARTWORK_CREATE)
+  @ApiOperation({ summary: 'Find multiple candidate portraits for an artist via WikiArt/Wikimedia Commons (no AI call)' })
+  async findArtistImages(@CurrentUser() user: AuthUser, @Body() body: { fullName: string }) {
+    if (!body.fullName?.trim()) throw new BadRequestException('fullName is required');
+    const { images, wikiartCount } = await this.findWikiImages(`${body.fullName} portrait`, user.organizationId);
+    const message = images.length
+      ? `${images.length} portrait${images.length > 1 ? 's' : ''} trouvé${images.length > 1 ? 's' : ''}${wikiartCount ? ` (dont ${wikiartCount} via WikiArt)` : ' via Wikimedia Commons'}.`
+      : 'Aucun portrait trouvé via WikiArt/Wikimedia Commons pour ce nom.';
+    this.logger.log(`Recherche Wiki de portraits — "${body.fullName}" — ${message}`);
+    return { images, message };
+  }
+
+  @Post('images/artist/ai')
+  @RequirePermissions(PERMISSIONS.ARTWORK_CREATE)
+  @ApiOperation({ summary: 'Find multiple candidate portraits for an artist via AI-grounded web search' })
+  async findArtistImagesAi(@CurrentUser() user: AuthUser, @Body() body: { fullName: string }) {
+    if (!(await this.ai.isEnabled(user.organizationId))) {
+      const message = 'IA désactivée ou non configurée pour cette organisation (Réglages → IA).';
+      throw new ServiceUnavailableException(message);
+    }
+    if (!body.fullName?.trim()) throw new BadRequestException('fullName is required');
+    const { data, meta } = await this.ai.findImages({
+      query: `Search query to run: ${body.fullName} portrait photo`,
+      organizationId: user.organizationId,
+    });
+    const candidates = data.imageUrls ?? [];
+    const validated = (await Promise.all(candidates.map(async (u) => ((await isLikelyRealImage(u)) ? u : null)))).filter(
+      (u): u is string => Boolean(u),
+    );
+    const message =
+      validated.length > 0
+        ? `${meta.message} ${validated.length} portrait${validated.length > 1 ? 's' : ''} vérifié${validated.length > 1 ? 's' : ''} sur ${candidates.length} proposé${candidates.length > 1 ? 's' : ''} par l'IA.`
+        : candidates.length > 0
+          ? `${meta.message} Les ${candidates.length} URL proposée${candidates.length > 1 ? 's' : ''} par l'IA n'ont pas pu être vérifiées — aucune retenue.`
+          : meta.message;
+    this.logger.log(message);
+    return { images: validated, message };
   }
 
   @Post('autofill/artwork')

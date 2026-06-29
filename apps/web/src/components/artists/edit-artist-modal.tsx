@@ -6,6 +6,8 @@ import { X, Save, RefreshCw, AlertTriangle, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { artistRepository, type ArtistView } from '@/lib/data/artist-repository';
+import { aiApi } from '@/lib/data/ai';
+import { ImageSearchButtons } from '@/components/shared/image-search-buttons';
 import { LOCALES, LOCALE_META, type Locale } from '@arterio/shared';
 import { cn } from '@/lib/utils';
 
@@ -163,6 +165,14 @@ export function EditArtistModal({ artist, open, onClose, onDeleted }: EditArtist
                     e.target.value = '';
                     if (file) uploadPhotoMutation.mutate(file);
                   }}
+                />
+              </div>
+              <div className="mt-2">
+                <ImageSearchButtons
+                  onSearchWiki={() => aiApi.findArtistImagesWiki({ fullName })}
+                  onSearchAi={() => aiApi.findArtistImagesAi({ fullName })}
+                  onPick={(url) => setThumbnail(url)}
+                  disabled={!fullName.trim()}
                 />
               </div>
             </div>

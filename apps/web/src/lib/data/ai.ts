@@ -42,6 +42,11 @@ export interface AiAutofillResponse<T> {
   meta: AiAutofillMeta;
 }
 
+export interface ImageSearchResult {
+  images: string[];
+  message: string;
+}
+
 export const aiApi = {
   autofillArtwork: (input: { title?: string; artistName?: string; locale: Locale }) =>
     apiFetch<AiAutofillResponse<ArtworkAutofillResult>>('/ai/autofill/artwork', {
@@ -53,4 +58,14 @@ export const aiApi = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+  /** "Wiki" image search — WikiArt + Wikimedia Commons, no AI call. */
+  findArtworkImagesWiki: (input: { title?: string; artistName?: string }) =>
+    apiFetch<ImageSearchResult>('/ai/images/artwork', { method: 'POST', body: JSON.stringify(input) }),
+  /** "IA" image search — AI-grounded web search, each candidate URL validated server-side before being returned. */
+  findArtworkImagesAi: (input: { title?: string; artistName?: string }) =>
+    apiFetch<ImageSearchResult>('/ai/images/artwork/ai', { method: 'POST', body: JSON.stringify(input) }),
+  findArtistImagesWiki: (input: { fullName: string }) =>
+    apiFetch<ImageSearchResult>('/ai/images/artist', { method: 'POST', body: JSON.stringify(input) }),
+  findArtistImagesAi: (input: { fullName: string }) =>
+    apiFetch<ImageSearchResult>('/ai/images/artist/ai', { method: 'POST', body: JSON.stringify(input) }),
 };
