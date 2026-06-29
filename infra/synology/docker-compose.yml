@@ -30,6 +30,12 @@ services:
     #   # Décommentez si votre reverse proxy se connecte à l'API en HTTPS
     #   # (certificat auto-signé généré à chaque démarrage, jamais persisté) :
     #   HTTPS_ENABLED: 'true'
+    #   # OBLIGATOIRE derrière un reverse proxy avec un nom de domaine public :
+    #   # le domaine affiché dans la barre d'adresse du navigateur (celui du WEB,
+    #   # pas celui de l'API si vous les avez séparés) doit être listé ici, sinon
+    #   # le navigateur bloque les appels avec une erreur CORS ("Failed to fetch").
+    #   APP_URL: 'https://arterio.votredomaine.com'
+    #   CORS_ORIGINS: 'https://arterio.votredomaine.com'
     labels:
       com.centurylinklabs.watchtower.enable: 'true'
 
