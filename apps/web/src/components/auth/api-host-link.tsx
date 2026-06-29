@@ -75,13 +75,15 @@ export function ApiHostLink() {
           Enregistrer
         </button>
       </div>
-      {current && (
-        <button onClick={handleReset} className="mt-2 text-xs text-muted-foreground underline-offset-2 hover:underline">
-          Revenir à la détection automatique
-        </button>
-      )}
+      <button
+        onClick={handleReset}
+        className="mt-2 w-full rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+      >
+        API sur le même serveur
+      </button>
       <p className="mt-2 text-[11px] text-muted-foreground">
         Juste l'URL de base (ex. <code>https://api.exemple.com</code>) — <code>/api/v1</code> est ajouté automatiquement.
+        « API sur le même serveur » efface l'adresse personnalisée et revient à la détection automatique.
       </p>
     </div>
   );
