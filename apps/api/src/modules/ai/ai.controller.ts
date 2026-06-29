@@ -1,7 +1,7 @@
-import { BadRequestException, Body, Controller, Inject, Logger, Post, ServiceUnavailableException, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Inject, Logger, Post, ServiceUnavailableException, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS, type Locale } from '@arterio/shared';
-import { AI_PROVIDER, type AiProvider } from './ai.types';
+import { AI_PROVIDER, type AiProvider, type AiAttemptLog } from './ai.types';
 import { searchCommonsImage, searchCommonsImages } from '../../common/commons-image-search.util';
 import { searchWikiArtImage, searchWikiArtImages } from '../../common/wikiart-api.util';
 import { isLikelyRealImage } from '../../common/download-image.util';
@@ -24,6 +24,53 @@ export class AiController {
     private readonly prisma: PrismaService,
     private readonly crypto: CryptoService,
   ) {}
+
+  /** Best-effort usage tracking — one row per model attempt, never lets a logging failure break the actual AI feature. */
+  private logUsage(organizationId: string, operation: string, attempts: AiAttemptLog[]): void {
+    if (!attempts.length) return;
+    this.prisma.aiUsageLog
+      .createMany({
+        data: attempts.map((a) => ({
+          organizationId,
+          operation,
+          provider: this.ai.id,
+          model: a.model,
+          success: a.success,
+        })),
+      })
+      .catch((e) => this.logger.warn(`Échec de l'enregistrement de l'usage IA : ${String(e)}`));
+  }
+
+  @Get('usage')
+  @RequirePermissions(PERMISSIONS.ARTWORK_READ)
+  @ApiOperation({ summary: "Aggregated AI call volume for this org's Settings → AI usage panel" })
+  async usage(@CurrentUser() user: AuthUser) {
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const rows = await this.prisma.aiUsageLog.findMany({
+      where: { organizationId: user.organizationId, createdAt: { gte: since } },
+      select: { operation: true, model: true, success: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    const total = rows.length;
+    const byDay = new Map<string, number>();
+    const byOperation = new Map<string, number>();
+    const byModel = new Map<string, number>();
+    let failures = 0;
+    for (const r of rows) {
+      const day = r.createdAt.toISOString().slice(0, 10);
+      byDay.set(day, (byDay.get(day) ?? 0) + 1);
+      byOperation.set(r.operation, (byOperation.get(r.operation) ?? 0) + 1);
+      byModel.set(r.model, (byModel.get(r.model) ?? 0) + 1);
+      if (!r.success) failures++;
+    }
+    return {
+      total,
+      failures,
+      last30Days: Array.from(byDay.entries()).map(([date, count]) => ({ date, count })).sort((a, b) => a.date.localeCompare(b.date)),
+      byOperation: Array.from(byOperation.entries()).map(([operation, count]) => ({ operation, count })),
+      byModel: Array.from(byModel.entries()).map(([model, count]) => ({ model, count })),
+    };
+  }
 
   /**
    * WikiArt (with a registered key) takes priority — it's a curated art-only
@@ -128,6 +175,7 @@ export class AiController {
           ? `${meta.message} Les ${candidates.length} URL proposée${candidates.length > 1 ? 's' : ''} par l'IA n'ont pas pu être vérifiées (lien mort ou pas une image) — aucune retenue.`
           : meta.message;
     this.logger.log(message);
+    this.logUsage(user.organizationId, 'findImages.artwork', meta.attempts);
     return { images: validated, message };
   }
 
@@ -168,6 +216,7 @@ export class AiController {
           ? `${meta.message} Les ${candidates.length} URL proposée${candidates.length > 1 ? 's' : ''} par l'IA n'ont pas pu être vérifiées — aucune retenue.`
           : meta.message;
     this.logger.log(message);
+    this.logUsage(user.organizationId, 'findImages.artist', meta.attempts);
     return { images: validated, message };
   }
 
@@ -206,6 +255,7 @@ export class AiController {
       else meta.message += ' Aucune photo trouvée.';
     }
     this.logger.log(meta.message);
+    this.logUsage(user.organizationId, 'autofillArtwork', meta.attempts);
     return { data, meta };
   }
 
@@ -232,6 +282,7 @@ export class AiController {
     else if (source === 'ai-search') meta.message += " Portrait trouvé par l'IA via recherche web et vérifié.";
     else meta.message += ' Aucun portrait trouvé.';
     this.logger.log(meta.message);
+    this.logUsage(user.organizationId, 'autofillArtist', meta.attempts);
     return { data, meta };
   }
 }

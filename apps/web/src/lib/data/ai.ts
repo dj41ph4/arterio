@@ -49,6 +49,14 @@ export interface ImageSearchResult {
   message: string;
 }
 
+export interface AiUsageSummary {
+  total: number;
+  failures: number;
+  last30Days: Array<{ date: string; count: number }>;
+  byOperation: Array<{ operation: string; count: number }>;
+  byModel: Array<{ model: string; count: number }>;
+}
+
 export const aiApi = {
   autofillArtwork: (input: { title?: string; artistName?: string; locale: Locale }) =>
     apiFetch<AiAutofillResponse<ArtworkAutofillResult>>('/ai/autofill/artwork', {
@@ -70,4 +78,5 @@ export const aiApi = {
     apiFetch<ImageSearchResult>('/ai/images/artist', { method: 'POST', body: JSON.stringify(input) }),
   findArtistImagesAi: (input: { fullName: string }) =>
     apiFetch<ImageSearchResult>('/ai/images/artist/ai', { method: 'POST', body: JSON.stringify(input) }),
+  getUsage: () => apiFetch<AiUsageSummary>('/ai/usage'),
 };

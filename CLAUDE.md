@@ -140,11 +140,13 @@ Do not remove either fix — Node 25 exposes a broken `localStorage` global.
 - `apps/api/src/modules/ai/` — provider-agnostic interface (`AiProvider`), `NullProvider` (default), `AnthropicProvider` stub
 
 ### Still mock-only (no backend module)
-**Collections**, and the **Reports** PDF-generation buttons, have no backend yet
-(Reports' live snapshot stats *are* real — they reuse the artwork stats endpoint).
-Wiring these up follows the same pattern as `exhibitions`/`loans`/`locations`/`documents`:
-a NestJS CRUD module gated by `@RequirePermissions`, plus a frontend view using
-`apiFetch` behind `NEXT_PUBLIC_DATA_SOURCE === 'http'`.
+The **Reports** PDF-generation buttons have no backend yet (Reports' live snapshot
+stats *are* real — they reuse the artwork stats endpoint). Collections has a real
+NestJS module (`apps/api/src/modules/collections/`) plus `HttpCollectionRepository`
+on the frontend — not mock-only anymore. Wiring up Reports follows the same pattern
+as `exhibitions`/`loans`/`locations`/`documents`/`collections`: a NestJS CRUD module
+gated by `@RequirePermissions`, plus a frontend view using `apiFetch` behind
+`NEXT_PUBLIC_DATA_SOURCE === 'http'`.
 
 ### AI layer
 `AI_ENABLED=false` in `.env` — platform runs fully without any AI config.

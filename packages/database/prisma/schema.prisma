@@ -67,6 +67,7 @@ model Organization {
   webhooks     Webhook[]
   alerts       Alert[]
   auditLogs    AuditLog[]
+  aiUsageLogs  AiUsageLog[]
 
   @@map("organizations")
 }
@@ -1011,4 +1012,24 @@ model AuditLog {
   @@index([organizationId, createdAt])
   @@index([resource, resourceId])
   @@map("audit_logs")
+}
+
+// One row per AI call attempt (not per request — a single autofill click that
+// queries 3 models in parallel logs 3 rows) so Settings → AI can show real
+// call volume per provider/model/operation without an admin having to dig
+// through server logs to estimate OpenRouter usage/cost.
+model AiUsageLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // e.g. "autofillArtwork", "autofillArtist", "findImages", "translate"
+  operation String
+  provider  String // "openrouter" | "anthropic"
+  model     String
+  success   Boolean
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@map("ai_usage_logs")
 }
