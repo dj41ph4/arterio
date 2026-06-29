@@ -30,6 +30,7 @@ export function AiModelsPanel() {
   const [artsyApiKey, setArtsyApiKey] = React.useState<string | undefined>(undefined);
   const [geminiApiKey, setGeminiApiKey] = React.useState<string | undefined>(undefined);
   const [providerOrder, setProviderOrder] = React.useState<('openrouter' | 'gemini')[] | null>(null);
+  const [multiModelMode, setMultiModelMode] = React.useState<'parallel' | 'fallback' | null>(null);
   const [models, setModels] = React.useState<string[] | null>(null);
   const [search, setSearch] = React.useState('');
   const [freeOnly, setFreeOnly] = React.useState(true);
@@ -37,6 +38,7 @@ export function AiModelsPanel() {
   const effectiveEnabled = enabled ?? data?.enabled ?? false;
   const effectiveModels = models ?? data?.models ?? [];
   const effectiveOrder = providerOrder ?? data?.providerOrder ?? ['openrouter', 'gemini'];
+  const effectiveMultiModelMode = multiModelMode ?? data?.multiModelMode ?? 'parallel';
   const hasChanges =
     enabled !== null ||
     apiKey !== undefined ||
@@ -44,6 +46,7 @@ export function AiModelsPanel() {
     artsyApiKey !== undefined ||
     geminiApiKey !== undefined ||
     providerOrder !== null ||
+    multiModelMode !== null ||
     models !== null;
 
   const mutation = useMutation({
@@ -55,6 +58,7 @@ export function AiModelsPanel() {
         artsyApiKey,
         geminiApiKey,
         providerOrder: providerOrder ?? undefined,
+        multiModelMode: multiModelMode ?? undefined,
         models: models ?? undefined,
       }),
     onSuccess: () => {
@@ -65,6 +69,7 @@ export function AiModelsPanel() {
       setArtsyApiKey(undefined);
       setGeminiApiKey(undefined);
       setProviderOrder(null);
+      setMultiModelMode(null);
       setModels(null);
       qc.invalidateQueries({ queryKey: ['ai-settings'] });
     },
@@ -136,6 +141,34 @@ export function AiModelsPanel() {
             </a>
             .
           </p>
+        </div>
+
+        <div>
+          <p className="mb-2 flex items-center gap-1.5 text-sm font-medium text-foreground">
+            <ArrowRightLeft className="h-3.5 w-3.5 text-primary" /> Mode d'appel des modèles
+          </p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => setMultiModelMode('parallel')}
+              className={cn(
+                'rounded-lg border px-3 py-2 text-left text-xs font-medium transition-colors',
+                effectiveMultiModelMode === 'parallel' ? 'border-primary bg-primary/10 text-primary' : 'border-border text-foreground hover:bg-muted',
+              )}
+            >
+              Parallèle — fusionne les réponses (le plus complet, coûte un appel par modèle)
+            </button>
+            <button
+              type="button"
+              onClick={() => setMultiModelMode('fallback')}
+              className={cn(
+                'rounded-lg border px-3 py-2 text-left text-xs font-medium transition-colors',
+                effectiveMultiModelMode === 'fallback' ? 'border-primary bg-primary/10 text-primary' : 'border-border text-foreground hover:bg-muted',
+              )}
+            >
+              Économique — un modèle à la fois, bascule seulement si rien d'exploitable
+            </button>
+          </div>
         </div>
 
         <div>

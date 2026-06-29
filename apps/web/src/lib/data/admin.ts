@@ -65,6 +65,8 @@ export interface AiSettingsView {
   hasArtsyKey: boolean;
   /** Order providers are tried in — the first with no usable result falls through to the next. */
   providerOrder: ('openrouter' | 'gemini')[];
+  /** "parallel": every configured OpenRouter model queried at once and merged. "fallback": one at a time, cheaper. */
+  multiModelMode: 'parallel' | 'fallback';
 }
 
 export interface OrganizationSettings {
@@ -114,6 +116,7 @@ export const settingsApi = {
     geminiApiKey?: string;
     artsyApiKey?: string;
     providerOrder?: ('openrouter' | 'gemini')[];
+    multiModelMode?: 'parallel' | 'fallback';
   }) =>
     apiFetch<AiSettingsView>('/settings/ai', {
       method: 'PATCH',

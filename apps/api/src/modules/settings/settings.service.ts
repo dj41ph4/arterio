@@ -24,6 +24,8 @@ interface AiOrgSettings {
   artsyApiKeyEnc?: string;
   /** Fallback order between configured providers, e.g. ['openrouter', 'gemini'] or reversed. */
   providerOrder?: string[];
+  /** 'parallel' (default): every configured OpenRouter model queried at once and merged. 'fallback': tried one at a time, cheaper. */
+  multiModelMode?: 'parallel' | 'fallback';
 }
 
 @Injectable()
@@ -84,6 +86,7 @@ export class SettingsService {
       hasGeminiKey: Boolean(ai.geminiApiKeyEnc),
       hasArtsyKey: Boolean(ai.artsyApiKeyEnc),
       providerOrder: ai.providerOrder?.length === 2 ? ai.providerOrder : ['openrouter', 'gemini'],
+      multiModelMode: ai.multiModelMode === 'fallback' ? 'fallback' : 'parallel',
     };
   }
 
@@ -98,6 +101,7 @@ export class SettingsService {
       geminiApiKey?: string;
       artsyApiKey?: string;
       providerOrder?: string[];
+      multiModelMode?: 'parallel' | 'fallback';
     },
   ) {
     const org = await this.prisma.organization.findUniqueOrThrow({ where: { id: user.organizationId } });
@@ -125,6 +129,9 @@ export class SettingsService {
     if (input.providerOrder !== undefined) {
       const valid = input.providerOrder.filter((p) => p === 'openrouter' || p === 'gemini');
       if (valid.length === 2) next.providerOrder = valid;
+    }
+    if (input.multiModelMode !== undefined) {
+      next.multiModelMode = input.multiModelMode === 'fallback' ? 'fallback' : 'parallel';
     }
     if (input.models !== undefined) {
       next.models = input.models.map((m) => m.trim()).filter(Boolean).slice(0, 3);

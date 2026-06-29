@@ -24,6 +24,8 @@ interface OrgAiSettings {
   enabled?: boolean;
   openrouterApiKeyEnc?: string;
   models?: string[];
+  /** 'parallel' (default): every configured model is queried at once and merged — most complete answer, but spends a call per model every time. 'fallback': models are tried one at a time, stopping at the first usable result — cheaper, costs the same as a single call unless that model fails. */
+  multiModelMode?: 'parallel' | 'fallback';
 }
 
 interface CompletionOutcome {
@@ -275,6 +277,108 @@ export class OpenRouterAiProvider implements AiProvider {
     throw new ServiceUnavailableException(message);
   }
 
+  /** Parses one model's raw text response into an attempt log + usable data (or null) — shared by both the parallel-merge and the sequential-fallback paths so they stay byte-identical in how they judge a response. */
+  private parseModelAttempt(model: string, text: string): { attempt: AiAttemptLog; data: Record<string, unknown> | null } {
+    const block = extractJsonBlock(text);
+    if (!block) {
+      return {
+        attempt: { model, success: false, message: `Réponse reçue de "${model}" mais aucun JSON exploitable.`, provider: 'openrouter' },
+        data: null,
+      };
+    }
+    try {
+      const parsed = stripFillerFields(JSON.parse(block) as Record<string, unknown>);
+      const fieldCount = Object.values(parsed).filter(
+        (v) => v !== undefined && v !== null && v !== '' && !(Array.isArray(v) && v.length === 0),
+      ).length;
+      const attempt: AiAttemptLog = {
+        model,
+        success: fieldCount > 0,
+        provider: 'openrouter',
+        message:
+          fieldCount > 0
+            ? `Réponse reçue avec succès du modèle "${model}" (${fieldCount} champ${fieldCount > 1 ? 's' : ''}).`
+            : `Réponse reçue du modèle "${model}" mais sans information exploitable (aucun résultat trouvé pour cette recherche).`,
+      };
+      return { attempt, data: fieldCount > 0 ? parsed : null };
+    } catch (e) {
+      return {
+        attempt: { model, success: false, message: `Réponse reçue de "${model}" mais JSON invalide (${(e as Error).message}).`, provider: 'openrouter' },
+        data: null,
+      };
+    }
+  }
+
+  /** Dispatches to the parallel-merge or sequential-fallback strategy per the org's configured multiModelMode (Settings → AI, default "parallel"). */
+  private async completeMultiModel<T extends object>(
+    organizationId: string | undefined,
+    systemPrompt: string,
+    userMessage: string,
+    opts?: { webSearch?: boolean },
+  ): Promise<{ data: T; meta: AiAutofillMeta }> {
+    const org = await this.resolveOrgSettings(organizationId);
+    if (org?.multiModelMode === 'fallback') {
+      return this.completeWithModelFallback<T>(organizationId, systemPrompt, userMessage, opts);
+    }
+    return this.completeAndMergeJson<T>(organizationId, systemPrompt, userMessage, opts);
+  }
+
+  /**
+   * Cheaper alternative to completeAndMergeJson: tries each configured model
+   * ONE AT A TIME, by priority order, stopping at the first one that returns
+   * usable data — costs exactly one model call in the common case (first
+   * model succeeds), instead of always spending one call per configured
+   * model. Trade-off: unlike the parallel/merge mode, a field only the
+   * second model would have found is never picked up once the first model
+   * already returned *something* usable.
+   */
+  private async completeWithModelFallback<T extends object>(
+    organizationId: string | undefined,
+    systemPrompt: string,
+    userMessage: string,
+    opts?: { webSearch?: boolean },
+  ): Promise<{ data: T; meta: AiAutofillMeta }> {
+    const org = await this.resolveOrgSettings(organizationId);
+    const apiKey = await this.resolveApiKey(org);
+    if (!apiKey) {
+      const message = "Aucune clé API OpenRouter configurée — impossible d'appeler l'IA.";
+      this.logger.warn(message);
+      throw new ServiceUnavailableException(message);
+    }
+
+    const models = this.resolveModels(org);
+    this.logger.log(`Appel IA — mode économique, un modèle à la fois par ordre de priorité : ${models.join(', ')}`);
+
+    const attempts: AiAttemptLog[] = [];
+    for (const model of models) {
+      let text: string;
+      try {
+        text = await this.callModel(model, apiKey, systemPrompt, userMessage, opts);
+      } catch (e) {
+        const reason = describeError(e);
+        const failMessage = `Échec appel modèle "${model}" : ${reason}`;
+        attempts.push({ model, success: false, message: failMessage, provider: 'openrouter' });
+        this.logger.warn(failMessage);
+        continue;
+      }
+      const { attempt, data } = this.parseModelAttempt(model, text);
+      attempts.push(attempt);
+      if (data) {
+        const fieldCount = Object.keys(data).length;
+        const fallbackUsed = attempts.length > 1;
+        const message = fallbackUsed
+          ? `Modèle précédent sans résultat exploitable — bascule sur "${model}" réussie (${fieldCount} champ${fieldCount > 1 ? 's' : ''}).`
+          : `Réponse IA reçue correctement depuis OpenRouter (modèle : ${model}) — ${fieldCount} champ${fieldCount > 1 ? 's' : ''}.`;
+        this.logger.log(message);
+        return { data: data as T, meta: { modelUsed: model, fallbackUsed, attempts, message, hasUsableData: true } };
+      }
+    }
+
+    const message = `Tous les modèles ont échoué ou n'ont rien trouvé (${attempts.length}/${attempts.length}) : ${attempts.map((a) => a.message).join(' | ')}`;
+    this.logger.error(message);
+    return { data: {} as T, meta: { fallbackUsed: attempts.length > 1, attempts, message, hasUsableData: false } };
+  }
+
   /**
    * Calls every configured model with the SAME query simultaneously instead
    * of trying one and only falling back on outright failure — this is the
@@ -313,29 +417,9 @@ export class OpenRouterAiProvider implements AiProvider {
         this.logger.warn(`Échec appel modèle "${model}" : ${reason}`);
         return;
       }
-      const block = extractJsonBlock(outcome.value);
-      if (!block) {
-        attempts.push({ model, success: false, message: `Réponse reçue de "${model}" mais aucun JSON exploitable.`, provider: 'openrouter' });
-        return;
-      }
-      try {
-        const parsed = stripFillerFields(JSON.parse(block) as Record<string, unknown>);
-        const fieldCount = Object.values(parsed).filter(
-          (v) => v !== undefined && v !== null && v !== '' && !(Array.isArray(v) && v.length === 0),
-        ).length;
-        attempts.push({
-          model,
-          success: fieldCount > 0,
-          provider: 'openrouter',
-          message:
-            fieldCount > 0
-              ? `Réponse reçue avec succès du modèle "${model}" (${fieldCount} champ${fieldCount > 1 ? 's' : ''}).`
-              : `Réponse reçue du modèle "${model}" mais sans information exploitable (aucun résultat trouvé pour cette recherche).`,
-        });
-        if (fieldCount > 0) parsedByModel.push({ model, data: parsed });
-      } catch (e) {
-        attempts.push({ model, success: false, message: `Réponse reçue de "${model}" mais JSON invalide (${(e as Error).message}).`, provider: 'openrouter' });
-      }
+      const { attempt, data } = this.parseModelAttempt(model, outcome.value);
+      attempts.push(attempt);
+      if (data) parsedByModel.push({ model, data });
     });
 
     if (!parsedByModel.length) {
@@ -402,7 +486,7 @@ Return ONLY a JSON object with any of: description, techniqueName, dateText, yea
       `Artist: ${input.artistName ?? '(unknown)'}\n` +
       `Title: ${input.title ?? '(unknown)'}\n` +
       `Search query to run: ${input.artistName ?? ''} "${input.title ?? ''}" catalogue raisonné dimensions technique signature photo`.trim();
-    return this.completeAndMergeJson<ArtworkAutofillResult>(input.organizationId, systemPrompt, userMessage, { webSearch: true });
+    return this.completeMultiModel<ArtworkAutofillResult>(input.organizationId, systemPrompt, userMessage, { webSearch: true });
   }
 
   async autofillArtist(input: ArtistAutofillInput): Promise<AiAutofillResponse<ArtistAutofillResult>> {
@@ -414,7 +498,7 @@ Only state facts you are actually confident about for this specific person — l
 CRITICAL: if the search results contain nothing useful, OMIT the key entirely. Never write a sentence ABOUT not finding something (e.g. "No information was found for this person") as the VALUE of biography or any other field — an omitted key is the correct way to say "I found nothing".
 Return ONLY a JSON object with any of: biography, nationality, birthDate, deathDate, movement, imageUrl.`;
     const userMessage = `Artist: ${input.fullName}\nSearch query to run: ${input.fullName} biography portrait photo`;
-    return this.completeAndMergeJson<ArtistAutofillResult>(input.organizationId, systemPrompt, userMessage, { webSearch: true });
+    return this.completeMultiModel<ArtistAutofillResult>(input.organizationId, systemPrompt, userMessage, { webSearch: true });
   }
 
   /** Best-effort text translation — never throws, returns null so the caller (enrichment) just skips that locale on failure. */
@@ -439,7 +523,7 @@ Return ONLY a JSON object with any of: biography, nationality, birthDate, deathD
 Find as many DIFFERENT real, working image URLs as you can (up to 6) showing the exact subject of this query — actual photos found in search results (an auction lot photo, a museum/gallery page, the subject's own official website), never a generic stock photo, never a different work/person, and never an invented or guessed URL.
 CRITICAL: if nothing useful is found, OMIT the key entirely. Never write a sentence about not finding anything as a value.
 Return ONLY a JSON object: {"imageUrls": ["...", ...]}`;
-    return this.completeAndMergeJson<FindImagesResult>(input.organizationId, systemPrompt, input.query, { webSearch: true });
+    return this.completeMultiModel<FindImagesResult>(input.organizationId, systemPrompt, input.query, { webSearch: true });
   }
 
   // The other AI capabilities are not implemented for OpenRouter.

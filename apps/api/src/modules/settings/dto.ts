@@ -106,6 +106,15 @@ export class UpdateAiSettingsDto {
   @IsArray()
   @IsIn(['openrouter', 'gemini'], { each: true })
   providerOrder?: string[];
+
+  @ApiPropertyOptional({
+    enum: ['parallel', 'fallback'],
+    description:
+      '"parallel" (default): every configured OpenRouter model is queried at once and merged — most complete, but spends one call per model every time. "fallback": models are tried one at a time, stopping at the first usable result — cheaper.',
+  })
+  @IsOptional()
+  @IsIn(['parallel', 'fallback'])
+  multiModelMode?: 'parallel' | 'fallback';
 }
 
 export class UploadCertificateDto {
