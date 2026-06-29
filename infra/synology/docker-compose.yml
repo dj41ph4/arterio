@@ -1,30 +1,35 @@
 # =============================================================================
-#  Arterio — déploiement Synology (simple)
+#  Arterio — déploiement Synology (recommandé : image unique)
 #
-#  Deux images pré-construites (API + Web) publiées sur Docker Hub par GitHub
-#  Actions à chaque `git push`. La base de données est un fichier SQLite dans le
-#  dossier mappé ./data — AUCUN serveur PostgreSQL/Redis à installer à côté.
+#  UNE seule image (API + Web dans le même conteneur), publiée sur Docker Hub
+#  par GitHub Actions à chaque `git push`. Le serveur web parle à l'API via
+#  "localhost" à l'intérieur du même conteneur — aucun réseau Docker entre
+#  deux conteneurs à configurer, aucun CORS, aucune variable d'environnement
+#  à deviner. La base de données est un fichier SQLite dans le dossier mappé
+#  ./data — AUCUN serveur PostgreSQL/Redis à installer à côté.
 #
 #  Pour déployer : Container Manager → Projet → coller ce fichier → Lancer.
 #  Premier lancement : ouvrez http://IP-DU-NAS:3000 → assistant de configuration.
 #  À sauvegarder : le seul dossier ./data (base + photos/documents).
 #
-#  Reverse proxy / nom de domaine : pointez UN SEUL hôte du reverse proxy vers
-#  le port 3000 (web). Le conteneur web relaie lui-même /api/v1 et /uploads
-#  vers le conteneur api en interne (réseau Docker) — pas besoin d'une seconde
-#  règle de proxy pour l'API, et pas de CORS à configurer dans le cas courant
-#  (un seul domaine). N'ouvrez/exposez le port 4000 au reverse proxy que si
-#  vous voulez vraiment un domaine séparé pour l'API (voir CORS_ORIGINS ci-dessous).
+#  Reverse proxy / nom de domaine : pointez votre reverse proxy vers le port
+#  3000, c'est tout. Un seul hôte, un seul conteneur, rien d'autre à régler.
+#
+#  Vous préférez deux conteneurs séparés (api/web) ? Voir docker-compose.split.yml.
 # =============================================================================
 
 name: arterio
 
 services:
-  api:
-    image: docker.io/dj41ph4/arterio-api:latest
+  app:
+    image: docker.io/dj41ph4/arterio:latest
     restart: unless-stopped
     ports:
-      - '4000:4000'
+      - '3000:3000'
+      # Décommentez pour accéder directement à l'API/Swagger sans passer par
+      # le web — jamais nécessaire pour l'usage normal, et à ne PAS exposer
+      # publiquement sur un reverse proxy :
+      # - '4000:4000'
     volumes:
       # Tout le persistant : base SQLite + médias. Le seul dossier à sauvegarder.
       - ./data:/data
@@ -34,38 +39,12 @@ services:
     #   JWT_ACCESS_SECRET: change-me-long-random-string
     #   JWT_REFRESH_SECRET: change-me-another-long-random-string
     #   DATA_ENCRYPTION_KEY: change-me-32-bytes-base64
-    #   # Décommentez si votre reverse proxy se connecte à l'API en HTTPS
-    #   # (certificat auto-signé généré à chaque démarrage, jamais persisté) :
-    #   HTTPS_ENABLED: 'true'
-    #   # Seulement si l'API est exposée sur un domaine SÉPARÉ du web (déploiement
-    #   # éclaté entre deux serveurs/domaines) — sinon inutile, le relais interne
-    #   # via le conteneur web (voir l'en-tête du fichier) évite tout CORS :
-    #   APP_URL: 'https://arterio.votredomaine.com'
-    #   CORS_ORIGINS: 'https://arterio.votredomaine.com'
     labels:
       com.centurylinklabs.watchtower.enable: 'true'
 
-  web:
-    image: docker.io/dj41ph4/arterio-web:latest
-    restart: unless-stopped
-    ports:
-      - '3000:3000'
-    depends_on: [api]
-    # environment:
-    #   # Le conteneur web relaie /api/v1 et /uploads vers "http://api:4000" par
-    #   # défaut — ça ne marche QUE si api et web sont déployés ensemble comme
-    #   # ce fichier (même Projet = même réseau Docker, le nom "api" se résout
-    #   # tout seul). Si vous avez créé les conteneurs séparément (pas via ce
-    #   # fichier comme un seul Projet), "api" ne se résout pas et toutes les
-    #   # requêtes échouent en 500 sans rien dans les logs du conteneur api.
-    #   # Pointez alors directement vers l'IP du NAS + le port publié de l'api :
-    #   API_INTERNAL_URL: 'http://IP-DU-NAS:4000'
-    labels:
-      com.centurylinklabs.watchtower.enable: 'true'
-
-  # Mises à jour automatiques : surveille Docker Hub et re-déploie api/web dès
-  # qu'une nouvelle image :latest est publiée. Rien à faire sur le NAS après un
-  # `git push`. Dépôt Docker Hub privé : ajoutez REPO_USER / REPO_PASS ci-dessous.
+  # Mises à jour automatiques : surveille Docker Hub et re-déploie l'image dès
+  # qu'une nouvelle version `:latest` est publiée. Rien à faire sur le NAS après
+  # un `git push`. Dépôt Docker Hub privé : ajoutez REPO_USER / REPO_PASS ci-dessous.
   watchtower:
     image: containrrr/watchtower:latest
     restart: unless-stopped

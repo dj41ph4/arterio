@@ -11,11 +11,11 @@ export const API_HOST_OVERRIDE_KEY = 'arterio_api_host';
  *   2. A manual override saved to localStorage during first-run setup — for
  *      the split-deployment case where the API genuinely runs on a different
  *      host than the web app (see the "same server?" question in SetupForm).
- *   3. Derived **in the browser** from the host that served the page, so a
- *      typical self-hosted install works on any IP/hostname with no config:
- *      - Behind nginx (port 80/443):  same origin, API under `/api/v1`.
- *      - Direct ports (web :3000):    same host, API on `:4000/api/v1`.
- *      - Local dev (localhost:3000):  localhost:4000/api/v1.
+ *   3. Same-origin under `/api/v1`, on whatever host/port served the page —
+ *      `next.config.mjs`'s `rewrites()` forwards that path server-side to the
+ *      actual API (localhost in the combined image, `API_INTERNAL_URL`
+ *      elsewhere), so the browser never needs to know or guess the API's
+ *      real host/port. This is why no port-guessing logic lives here anymore.
  */
 function resolveApiBaseUrl(): string {
   const baked = process.env.NEXT_PUBLIC_API_URL;
@@ -26,12 +26,7 @@ function resolveApiBaseUrl(): string {
     if (override) return override;
 
     const { protocol, hostname, port } = window.location;
-    // Served through nginx on the standard ports → API is same-origin under /api.
-    if (port === '' || port === '80' || port === '443') {
-      return `${protocol}//${hostname}${port ? `:${port}` : ''}/api/v1`;
-    }
-    // Direct-port deployment (web on :3000) → API on :4000 of the same host.
-    return `${protocol}//${hostname}:4000/api/v1`;
+    return `${protocol}//${hostname}${port ? `:${port}` : ''}/api/v1`;
   }
 
   return 'http://localhost:4000/api/v1';

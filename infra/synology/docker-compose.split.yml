@@ -1,0 +1,84 @@
+# =============================================================================
+#  Arterio — déploiement Synology (simple)
+#
+#  Deux images pré-construites (API + Web) publiées sur Docker Hub par GitHub
+#  Actions à chaque `git push`. La base de données est un fichier SQLite dans le
+#  dossier mappé ./data — AUCUN serveur PostgreSQL/Redis à installer à côté.
+#
+#  Pour déployer : Container Manager → Projet → coller ce fichier → Lancer.
+#  Premier lancement : ouvrez http://IP-DU-NAS:3000 → assistant de configuration.
+#  À sauvegarder : le seul dossier ./data (base + photos/documents).
+#
+#  Reverse proxy / nom de domaine : pointez UN SEUL hôte du reverse proxy vers
+#  le port 3000 (web). Le conteneur web relaie lui-même /api/v1 et /uploads
+#  vers le conteneur api en interne (réseau Docker) — pas besoin d'une seconde
+#  règle de proxy pour l'API, et pas de CORS à configurer dans le cas courant
+#  (un seul domaine). N'ouvrez/exposez le port 4000 au reverse proxy que si
+#  vous voulez vraiment un domaine séparé pour l'API (voir CORS_ORIGINS ci-dessous).
+# =============================================================================
+
+name: arterio
+
+services:
+  api:
+    image: docker.io/dj41ph4/arterio-api:latest
+    restart: unless-stopped
+    ports:
+      - '4000:4000'
+    volumes:
+      # Tout le persistant : base SQLite + médias. Le seul dossier à sauvegarder.
+      - ./data:/data
+    # environment:
+    #   # Sécurité (recommandé en production) — sinon des valeurs de dev sont
+    #   # utilisées. Générez des secrets aléatoires longs et une clé 32 octets base64 :
+    #   JWT_ACCESS_SECRET: change-me-long-random-string
+    #   JWT_REFRESH_SECRET: change-me-another-long-random-string
+    #   DATA_ENCRYPTION_KEY: change-me-32-bytes-base64
+    #   # Décommentez si votre reverse proxy se connecte à l'API en HTTPS
+    #   # (certificat auto-signé généré à chaque démarrage, jamais persisté) :
+    #   HTTPS_ENABLED: 'true'
+    #   # Seulement si l'API est exposée sur un domaine SÉPARÉ du web (déploiement
+    #   # éclaté entre deux serveurs/domaines) — sinon inutile, le relais interne
+    #   # via le conteneur web (voir l'en-tête du fichier) évite tout CORS :
+    #   APP_URL: 'https://arterio.votredomaine.com'
+    #   CORS_ORIGINS: 'https://arterio.votredomaine.com'
+    labels:
+      com.centurylinklabs.watchtower.enable: 'true'
+
+  web:
+    image: docker.io/dj41ph4/arterio-web:latest
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    depends_on: [api]
+    environment:
+      # OBLIGATOIRE avec deux conteneurs séparés : par défaut, le conteneur web
+      # relaie /api/v1 et /uploads vers "http://localhost:4000" (correct pour
+      # l'image unique, où API et web partagent le même conteneur — voir
+      # docker-compose.yml). Ici, "localhost" dans le conteneur web ne désigne
+      # PAS le conteneur api. Si api et web sont déployés ensemble comme ce
+      # fichier (même Projet Container Manager = même réseau Docker), le nom
+      # "api" se résout tout seul :
+      API_INTERNAL_URL: 'http://api:4000'
+      # Si vous avez créé les conteneurs séparément (pas comme un seul Projet),
+      # "api" ne se résout pas et toutes les requêtes échouent en 500 sans rien
+      # dans les logs du conteneur api — pointez alors directement vers l'IP du
+      # NAS + le port publié de l'api à la place de la ligne ci-dessus :
+      # API_INTERNAL_URL: 'http://IP-DU-NAS:4000'
+    labels:
+      com.centurylinklabs.watchtower.enable: 'true'
+
+  # Mises à jour automatiques : surveille Docker Hub et re-déploie api/web dès
+  # qu'une nouvelle image :latest est publiée. Rien à faire sur le NAS après un
+  # `git push`. Dépôt Docker Hub privé : ajoutez REPO_USER / REPO_PASS ci-dessous.
+  watchtower:
+    image: containrrr/watchtower:latest
+    restart: unless-stopped
+    environment:
+      WATCHTOWER_CLEANUP: 'true'
+      WATCHTOWER_LABEL_ENABLE: 'true'
+      WATCHTOWER_POLL_INTERVAL: '120'
+      # REPO_USER: dj41ph4
+      # REPO_PASS: <token Docker Hub>
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
