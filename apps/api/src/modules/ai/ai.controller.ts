@@ -4,6 +4,7 @@ import { PERMISSIONS, type Locale } from '@arterio/shared';
 import { AI_PROVIDER, type AiProvider, type AiAttemptLog } from './ai.types';
 import { searchCommonsImage, searchCommonsImages } from '../../common/commons-image-search.util';
 import { searchWikiArtImage, searchWikiArtImages } from '../../common/wikiart-api.util';
+import { searchArtsyImage, searchArtsyImages } from '../../common/artsy-api.util';
 import { isLikelyRealImage } from '../../common/download-image.util';
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
@@ -90,10 +91,27 @@ export class AiController {
     };
   }
 
+  /** Decrypted optional API keys for the third-party image sources, read once per call. */
+  private async resolveImageSourceKeys(organizationId: string): Promise<{ wikiartKey?: string; artsyKey?: string }> {
+    try {
+      const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
+      const ai = (org?.settings as Record<string, unknown>)?.ai as
+        | { wikiartApiKeyEnc?: string; artsyApiKeyEnc?: string }
+        | undefined;
+      return {
+        wikiartKey: ai?.wikiartApiKeyEnc ? this.crypto.decrypt(ai.wikiartApiKeyEnc) : undefined,
+        artsyKey: ai?.artsyApiKeyEnc ? this.crypto.decrypt(ai.artsyApiKeyEnc) : undefined,
+      };
+    } catch {
+      return {};
+    }
+  }
+
   /**
    * WikiArt (with a registered key) takes priority — it's a curated art-only
    * index, so a hit is higher-confidence than a general Commons search.
-   * Falls through to Commons, and finally — now that autofill runs with a
+   * Falls through to Commons, then Artsy (another curated art-world index,
+   * if a key is configured), and finally — now that autofill runs with a
    * real OpenRouter web search behind it instead of pure model memory — to
    * whatever imageUrl the AI itself found in a search result, but only once
    * that URL is verified (HEAD-checked) to actually resolve to a real image.
@@ -104,20 +122,20 @@ export class AiController {
     query: string,
     organizationId: string,
     aiGuessedUrl?: string,
-  ): Promise<{ url: string | null; source: 'wikiart' | 'commons' | 'ai-search' | null }> {
-    try {
-      const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
-      const wikiartApiKeyEnc = ((org?.settings as Record<string, unknown>)?.ai as { wikiartApiKeyEnc?: string } | undefined)?.wikiartApiKeyEnc;
-      if (wikiartApiKeyEnc) {
-        const key = this.crypto.decrypt(wikiartApiKeyEnc);
-        const fromWikiArt = await searchWikiArtImage(key, query);
-        if (fromWikiArt) return { url: fromWikiArt, source: 'wikiart' };
-      }
-    } catch {
-      // fall through to Commons
+  ): Promise<{ url: string | null; source: 'wikiart' | 'commons' | 'artsy' | 'ai-search' | null }> {
+    const { wikiartKey, artsyKey } = await this.resolveImageSourceKeys(organizationId);
+
+    if (wikiartKey) {
+      const fromWikiArt = await searchWikiArtImage(wikiartKey, query);
+      if (fromWikiArt) return { url: fromWikiArt, source: 'wikiart' };
     }
     const fromCommons = await searchCommonsImage(query);
     if (fromCommons) return { url: fromCommons, source: 'commons' };
+
+    if (artsyKey) {
+      const fromArtsy = await searchArtsyImage(artsyKey, query);
+      if (fromArtsy) return { url: fromArtsy, source: 'artsy' };
+    }
 
     if (aiGuessedUrl && (await isLikelyRealImage(aiGuessedUrl))) {
       return { url: aiGuessedUrl, source: 'ai-search' };
@@ -132,38 +150,42 @@ export class AiController {
    * needs the single best hit for autofill) since this one is about
    * surfacing as many real candidates as possible for the user to pick from.
    */
-  private async findWikiImages(query: string, organizationId: string, limit = 8): Promise<{ images: string[]; wikiartCount: number }> {
-    let fromWikiArt: string[] = [];
-    try {
-      const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
-      const wikiartApiKeyEnc = ((org?.settings as Record<string, unknown>)?.ai as { wikiartApiKeyEnc?: string } | undefined)?.wikiartApiKeyEnc;
-      if (wikiartApiKeyEnc) {
-        const key = this.crypto.decrypt(wikiartApiKeyEnc);
-        fromWikiArt = await searchWikiArtImages(key, query, limit);
-      }
-    } catch {
-      // fall through to Commons-only
-    }
+  private async findWikiImages(
+    query: string,
+    organizationId: string,
+    limit = 8,
+  ): Promise<{ images: string[]; wikiartCount: number; artsyCount: number }> {
+    const { wikiartKey, artsyKey } = await this.resolveImageSourceKeys(organizationId);
+    const fromWikiArt = wikiartKey ? await searchWikiArtImages(wikiartKey, query, limit) : [];
     const fromCommons = await searchCommonsImages(query, limit);
+    const fromArtsy = artsyKey ? await searchArtsyImages(artsyKey, query, limit) : [];
     const seen = new Set<string>();
-    const images = [...fromWikiArt, ...fromCommons].filter((u) => {
+    const images = [...fromWikiArt, ...fromCommons, ...fromArtsy].filter((u) => {
       if (seen.has(u)) return false;
       seen.add(u);
       return true;
     }).slice(0, limit);
-    return { images, wikiartCount: fromWikiArt.length };
+    return { images, wikiartCount: fromWikiArt.length, artsyCount: fromArtsy.length };
+  }
+
+  /** Builds the "(dont N via WikiArt, M via Artsy)" suffix for the Wiki image-search messages. */
+  private describeSourceBreakdown(wikiartCount: number, artsyCount: number): string {
+    const parts = [];
+    if (wikiartCount) parts.push(`${wikiartCount} via WikiArt`);
+    if (artsyCount) parts.push(`${artsyCount} via Artsy`);
+    return parts.length ? ` (dont ${parts.join(', ')})` : ' via Wikimedia Commons';
   }
 
   @Post('images/artwork')
   @RequirePermissions(PERMISSIONS.ARTWORK_CREATE)
-  @ApiOperation({ summary: 'Find multiple candidate photos for an artwork via WikiArt/Wikimedia Commons (no AI call)' })
+  @ApiOperation({ summary: 'Find multiple candidate photos for an artwork via WikiArt/Artsy/Wikimedia Commons (no AI call)' })
   async findArtworkImages(@CurrentUser() user: AuthUser, @Body() body: { title?: string; artistName?: string }) {
     const query = `${body.artistName ?? ''} ${body.title ?? ''}`.trim();
     if (!query) throw new BadRequestException('title or artistName is required');
-    const { images, wikiartCount } = await this.findWikiImages(query, user.organizationId);
+    const { images, wikiartCount, artsyCount } = await this.findWikiImages(query, user.organizationId);
     const message = images.length
-      ? `${images.length} image${images.length > 1 ? 's' : ''} trouvée${images.length > 1 ? 's' : ''}${wikiartCount ? ` (dont ${wikiartCount} via WikiArt)` : ' via Wikimedia Commons'}.`
-      : 'Aucune image trouvée via WikiArt/Wikimedia Commons pour ce titre/artiste.';
+      ? `${images.length} image${images.length > 1 ? 's' : ''} trouvée${images.length > 1 ? 's' : ''}${this.describeSourceBreakdown(wikiartCount, artsyCount)}.`
+      : 'Aucune image trouvée via WikiArt/Artsy/Wikimedia Commons pour ce titre/artiste.';
     this.logger.log(`Recherche Wiki d'images pour une œuvre — "${query}" — ${message}`);
     return { images, message };
   }
@@ -201,13 +223,13 @@ export class AiController {
 
   @Post('images/artist')
   @RequirePermissions(PERMISSIONS.ARTWORK_CREATE)
-  @ApiOperation({ summary: 'Find multiple candidate portraits for an artist via WikiArt/Wikimedia Commons (no AI call)' })
+  @ApiOperation({ summary: 'Find multiple candidate portraits for an artist via WikiArt/Artsy/Wikimedia Commons (no AI call)' })
   async findArtistImages(@CurrentUser() user: AuthUser, @Body() body: { fullName: string }) {
     if (!body.fullName?.trim()) throw new BadRequestException('fullName is required');
-    const { images, wikiartCount } = await this.findWikiImages(`${body.fullName} portrait`, user.organizationId);
+    const { images, wikiartCount, artsyCount } = await this.findWikiImages(`${body.fullName} portrait`, user.organizationId);
     const message = images.length
-      ? `${images.length} portrait${images.length > 1 ? 's' : ''} trouvé${images.length > 1 ? 's' : ''}${wikiartCount ? ` (dont ${wikiartCount} via WikiArt)` : ' via Wikimedia Commons'}.`
-      : 'Aucun portrait trouvé via WikiArt/Wikimedia Commons pour ce nom.';
+      ? `${images.length} portrait${images.length > 1 ? 's' : ''} trouvé${images.length > 1 ? 's' : ''}${this.describeSourceBreakdown(wikiartCount, artsyCount)}.`
+      : 'Aucun portrait trouvé via WikiArt/Artsy/Wikimedia Commons pour ce nom.';
     this.logger.log(`Recherche Wiki de portraits — "${body.fullName}" — ${message}`);
     return { images, message };
   }
@@ -282,6 +304,7 @@ export class AiController {
       data.imageUrl = url ?? undefined;
       if (source === 'wikiart') meta.message += ' Photo réelle trouvée via WikiArt.';
       else if (source === 'commons') meta.message += ' Photo réelle trouvée via Wikimedia Commons.';
+      else if (source === 'artsy') meta.message += ' Photo réelle trouvée via Artsy.';
       else if (source === 'ai-search') meta.message += " Photo trouvée par l'IA via recherche web et vérifiée.";
       else meta.message += ' Aucune photo trouvée.';
     }
@@ -316,6 +339,7 @@ export class AiController {
     data.imageUrl = url ?? undefined;
     if (source === 'wikiart') meta.message += ' Portrait trouvé via WikiArt.';
     else if (source === 'commons') meta.message += ' Portrait trouvé via Wikimedia Commons.';
+    else if (source === 'artsy') meta.message += ' Portrait trouvé via Artsy.';
     else if (source === 'ai-search') meta.message += " Portrait trouvé par l'IA via recherche web et vérifié.";
     else meta.message += ' Aucun portrait trouvé.';
     this.logger.log(meta.message);

@@ -21,6 +21,7 @@ interface AiOrgSettings {
   models?: string[];
   wikiartApiKeyEnc?: string;
   geminiApiKeyEnc?: string;
+  artsyApiKeyEnc?: string;
   /** Fallback order between configured providers, e.g. ['openrouter', 'gemini'] or reversed. */
   providerOrder?: string[];
 }
@@ -81,6 +82,7 @@ export class SettingsService {
       models: ai.models ?? [],
       hasWikiArtKey: Boolean(ai.wikiartApiKeyEnc),
       hasGeminiKey: Boolean(ai.geminiApiKeyEnc),
+      hasArtsyKey: Boolean(ai.artsyApiKeyEnc),
       providerOrder: ai.providerOrder?.length === 2 ? ai.providerOrder : ['openrouter', 'gemini'],
     };
   }
@@ -94,6 +96,7 @@ export class SettingsService {
       models?: string[];
       wikiartApiKey?: string;
       geminiApiKey?: string;
+      artsyApiKey?: string;
       providerOrder?: string[];
     },
   ) {
@@ -110,6 +113,10 @@ export class SettingsService {
     if (input.wikiartApiKey !== undefined) {
       if (input.wikiartApiKey === '') delete next.wikiartApiKeyEnc;
       else next.wikiartApiKeyEnc = this.crypto.encrypt(input.wikiartApiKey);
+    }
+    if (input.artsyApiKey !== undefined) {
+      if (input.artsyApiKey === '') delete next.artsyApiKeyEnc;
+      else next.artsyApiKeyEnc = this.crypto.encrypt(input.artsyApiKey);
     }
     if (input.geminiApiKey !== undefined) {
       if (input.geminiApiKey === '') delete next.geminiApiKeyEnc;

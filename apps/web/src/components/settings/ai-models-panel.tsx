@@ -27,6 +27,7 @@ export function AiModelsPanel() {
   const [enabled, setEnabled] = React.useState<boolean | null>(null);
   const [apiKey, setApiKey] = React.useState<string | undefined>(undefined);
   const [wikiartApiKey, setWikiartApiKey] = React.useState<string | undefined>(undefined);
+  const [artsyApiKey, setArtsyApiKey] = React.useState<string | undefined>(undefined);
   const [geminiApiKey, setGeminiApiKey] = React.useState<string | undefined>(undefined);
   const [providerOrder, setProviderOrder] = React.useState<('openrouter' | 'gemini')[] | null>(null);
   const [models, setModels] = React.useState<string[] | null>(null);
@@ -37,7 +38,13 @@ export function AiModelsPanel() {
   const effectiveModels = models ?? data?.models ?? [];
   const effectiveOrder = providerOrder ?? data?.providerOrder ?? ['openrouter', 'gemini'];
   const hasChanges =
-    enabled !== null || apiKey !== undefined || wikiartApiKey !== undefined || geminiApiKey !== undefined || providerOrder !== null || models !== null;
+    enabled !== null ||
+    apiKey !== undefined ||
+    wikiartApiKey !== undefined ||
+    artsyApiKey !== undefined ||
+    geminiApiKey !== undefined ||
+    providerOrder !== null ||
+    models !== null;
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -45,6 +52,7 @@ export function AiModelsPanel() {
         enabled: enabled ?? undefined,
         apiKey,
         wikiartApiKey,
+        artsyApiKey,
         geminiApiKey,
         providerOrder: providerOrder ?? undefined,
         models: models ?? undefined,
@@ -54,6 +62,7 @@ export function AiModelsPanel() {
       setEnabled(null);
       setApiKey(undefined);
       setWikiartApiKey(undefined);
+      setArtsyApiKey(undefined);
       setGeminiApiKey(undefined);
       setProviderOrder(null);
       setModels(null);
@@ -219,6 +228,39 @@ export function AiModelsPanel() {
               wikiart.org/fr/App/GetApi/GetKeys
             </a>{' '}
             — collez le code d'accès et le code secret séparés par <code>:</code> (ex.{' '}
+            <code>abc123:xyz789</code>).
+          </p>
+        </div>
+
+        <div>
+          <label className="mb-1 flex items-center gap-2 text-sm font-medium text-foreground">
+            <ImageIcon className="h-3.5 w-3.5 text-primary" /> Clé API Artsy (optionnel)
+            {data.hasArtsyKey && (
+              <span className="flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400">
+                <Check className="h-3 w-3" /> Configurée
+              </span>
+            )}
+          </label>
+          <input
+            type="password"
+            value={artsyApiKey ?? ''}
+            onChange={(e) => setArtsyApiKey(e.target.value)}
+            placeholder={data.hasArtsyKey ? '••••••••••••••••' : 'clientId:clientSecret'}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            Recherchée entre Wikimedia Commons et la recherche IA (donc après WikiArt/Commons, avant l'IA) pour
+            trouver une vraie photo d'œuvre/portrait d'artiste sur l'index curaté d'Artsy. Clé gratuite à demander
+            sur{' '}
+            <a
+              href="https://developers.artsy.net/v2"
+              target="_blank"
+              rel="noreferrer"
+              className="text-primary hover:underline"
+            >
+              developers.artsy.net
+            </a>{' '}
+            (« Getting Started ») — collez l'ID client et la clé secrète séparés par <code>:</code> (ex.{' '}
             <code>abc123:xyz789</code>).
           </p>
         </div>

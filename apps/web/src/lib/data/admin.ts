@@ -62,6 +62,7 @@ export interface AiSettingsView {
   models: string[];
   hasWikiArtKey: boolean;
   hasGeminiKey: boolean;
+  hasArtsyKey: boolean;
   /** Order providers are tried in — the first with no usable result falls through to the next. */
   providerOrder: ('openrouter' | 'gemini')[];
 }
@@ -111,6 +112,7 @@ export const settingsApi = {
     models?: string[];
     wikiartApiKey?: string;
     geminiApiKey?: string;
+    artsyApiKey?: string;
     providerOrder?: ('openrouter' | 'gemini')[];
   }) =>
     apiFetch<AiSettingsView>('/settings/ai', {

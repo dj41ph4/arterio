@@ -88,6 +88,11 @@ export class UpdateAiSettingsDto {
   @IsString()
   wikiartApiKey?: string;
 
+  @ApiPropertyOptional({ description: 'Leave out to keep unchanged, or send "" to clear. Format "clientId:clientSecret" (Artsy → Getting Started). Tried between Wikimedia Commons and the AI-search fallback for artwork/artist photos.' })
+  @IsOptional()
+  @IsString()
+  artsyApiKey?: string;
+
   @ApiPropertyOptional({ description: 'Leave out to keep unchanged, or send "" to clear (falls back to the server\'s GEMINI_API_KEY env var, if set)' })
   @IsOptional()
   @IsString()
