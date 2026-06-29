@@ -5,11 +5,14 @@ import { motion } from 'framer-motion';
 import { X, Save, RefreshCw, AlertTriangle, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useLocale } from 'next-intl';
 import { artistRepository, type ArtistView } from '@/lib/data/artist-repository';
 import { aiApi } from '@/lib/data/ai';
 import { ImageSearchButtons } from '@/components/shared/image-search-buttons';
+import { AutofillButtons, type AutofillOutcome } from '@/components/shared/autofill-buttons';
 import { LOCALES, LOCALE_META, type Locale } from '@arterio/shared';
 import { cn } from '@/lib/utils';
+import { ApiError } from '@/lib/api/client';
 
 interface EditArtistModalProps {
   artist: ArtistView;
@@ -20,6 +23,7 @@ interface EditArtistModalProps {
 
 export function EditArtistModal({ artist, open, onClose, onDeleted }: EditArtistModalProps) {
   const qc = useQueryClient();
+  const locale = useLocale() as Locale;
   const [fullName, setFullName] = React.useState(artist.fullName);
   const [nationality, setNationality] = React.useState(artist.nationality ?? '');
   const [birthDate, setBirthDate] = React.useState(artist.birthDate ?? '');
@@ -85,6 +89,50 @@ export function EditArtistModal({ artist, open, onClose, onDeleted }: EditArtist
     onError: () => toast.error('Échec de la réinitialisation'),
   });
 
+  /** Re-runs Wikidata/Wikipedia enrichment from the current name — only fills fields still empty locally, never overwrites what's already on screen (mirrors the same "manual edits win" rule the server applies). */
+  const handleWikiEnrich = async (): Promise<AutofillOutcome> => {
+    try {
+      const updated = await artistRepository.enrich(artist.id);
+      let filled = 0;
+      if (!nationality && updated.nationality) { setNationality(updated.nationality); filled++; }
+      if (!birthDate && updated.birthDate) { setBirthDate(updated.birthDate); filled++; }
+      if (!deathDate && updated.deathDate) { setDeathDate(updated.deathDate); filled++; }
+      if (!thumbnail && updated.thumbnail) { setThumbnail(updated.thumbnail); filled++; }
+      setBiography((b) => {
+        const next = { ...b };
+        for (const [lang, text] of Object.entries(updated.biography ?? {})) {
+          if (!next[lang as Locale] && text) { next[lang as Locale] = text; filled++; }
+        }
+        return next;
+      });
+      qc.invalidateQueries({ queryKey: ['artists-all'] });
+      return {
+        message: filled > 0 ? `${filled} champ${filled > 1 ? 's' : ''} complété${filled > 1 ? 's' : ''} via Wikidata/Wikipedia.` : 'Aucune nouvelle information trouvée via Wikidata/Wikipedia.',
+        success: filled > 0,
+      };
+    } catch (err) {
+      return { message: err instanceof Error ? err.message : 'Échec de la recherche Wikidata.', success: false };
+    }
+  };
+
+  const handleAiEnrich = async (): Promise<AutofillOutcome> => {
+    if (!fullName.trim()) return { message: 'Entrez un nom.', success: false };
+    try {
+      const { data, meta } = await aiApi.autofillArtist({ fullName: fullName.trim(), locale });
+      if (!meta.hasUsableData) return { message: meta.message, success: false };
+      if (!nationality && data.nationality) setNationality(data.nationality);
+      if (!birthDate && data.birthDate) setBirthDate(data.birthDate);
+      if (!deathDate && data.deathDate) setDeathDate(data.deathDate);
+      if (!thumbnail && data.imageUrl) setThumbnail(data.imageUrl);
+      if (!biography[locale] && data.biography) {
+        setBiography((b) => ({ ...b, [locale]: data.biography }));
+      }
+      return { message: meta.message, success: true };
+    } catch (err) {
+      return { message: err instanceof ApiError ? err.message : 'Échec de la recherche IA.', success: false };
+    }
+  };
+
   const deleteMutation = useMutation({
     mutationFn: () => artistRepository.remove(artist.id, artist.artworkCount > 0),
     onSuccess: () => {
@@ -121,11 +169,14 @@ export function EditArtistModal({ artist, open, onClose, onDeleted }: EditArtist
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           <div>
             <label className="text-xs font-medium text-muted-foreground">Nom complet</label>
-            <input
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              className="mt-1.5 w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-            />
+            <div className="mt-1.5 flex gap-2">
+              <input
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+              />
+              <AutofillButtons onWiki={handleWikiEnrich} onAi={handleAiEnrich} disabled={!fullName.trim()} />
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

@@ -3,17 +3,17 @@
 import * as React from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ImagePlus, RefreshCw, Sparkles } from 'lucide-react';
+import { X, ImagePlus, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { ARTWORK_STATUS, CONDITION_RATING, CURRENCY, type ArtworkView, type Currency, type Locale } from '@arterio/shared';
 import { resolveLocalized } from '@arterio/shared';
 import { useCreateArtwork, useUpdateArtwork } from '@/hooks/use-artworks';
 import { useCollections } from '@/hooks/use-collections';
-import { useAiAvailable } from '@/hooks/use-ai-available';
 import { aiApi } from '@/lib/data/ai';
 import { artworkRepository } from '@/lib/data';
 import { ApiError } from '@/lib/api/client';
 import { cn } from '@/lib/utils';
+import { AutofillButtons, type AutofillOutcome } from '@/components/shared/autofill-buttons';
 
 interface ArtworkFormModalProps {
   open: boolean;
@@ -92,8 +92,6 @@ export function ArtworkFormModal({ open, onClose, artwork, defaultArtistId, defa
 
   const [form, setForm] = React.useState<FormState>(emptyForm());
   const [aiImageUrl, setAiImageUrl] = React.useState<string | null>(null);
-  const [aiLoading, setAiLoading] = React.useState(false);
-  const aiAvailable = useAiAvailable();
 
   React.useEffect(() => {
     if (!open) return;
@@ -107,9 +105,10 @@ export function ArtworkFormModal({ open, onClose, artwork, defaultArtistId, defa
 
   const saving = create.isPending || update.isPending;
 
-  const handleAiAutofill = async () => {
-    if (!form.title.trim() && !form.artistName.trim()) return;
-    setAiLoading(true);
+  const handleAiAutofill = async (): Promise<AutofillOutcome> => {
+    if (!form.title.trim() && !form.artistName.trim()) {
+      return { message: t('artwork.form.aiError'), success: false };
+    }
     try {
       const { data, meta } = await aiApi.autofillArtwork({
         title: form.title.trim() || undefined,
@@ -120,8 +119,7 @@ export function ArtworkFormModal({ open, onClose, artwork, defaultArtistId, defa
       console.info('[AI autofill:artwork]', meta.message, meta.attempts);
       if (data.imageUrl) setAiImageUrl(data.imageUrl);
       if (!meta.hasUsableData) {
-        toast.error(meta.message);
-        return;
+        return { message: meta.message, success: false };
       }
       setForm((f) => ({
         ...f,
@@ -135,11 +133,9 @@ export function ArtworkFormModal({ open, onClose, artwork, defaultArtistId, defa
         condition: data.condition && CONDITION_RATING.includes(data.condition as never) ? data.condition : f.condition,
         tags: f.tags || (data.tags?.length ? data.tags.join(', ') : f.tags),
       }));
-      toast.success(meta.message);
+      return { message: meta.message, success: true };
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : t('artwork.form.aiError'));
-    } finally {
-      setAiLoading(false);
+      return { message: err instanceof ApiError ? err.message : t('artwork.form.aiError'), success: false };
     }
   };
 
@@ -237,17 +233,10 @@ export function ArtworkFormModal({ open, onClose, artwork, defaultArtistId, defa
               <FieldLabel>{t('artwork.fields.artist')}</FieldLabel>
               <div className="mt-1.5 flex gap-2">
                 <input type="text" value={form.artistName} onChange={(e) => set('artistName', e.target.value)} className={`${inputClass} mt-0`} />
-                {aiAvailable && (
-                  <button
-                    type="button"
-                    title={t('artwork.form.aiAutofill')}
-                    disabled={aiLoading || (!form.title.trim() && !form.artistName.trim())}
-                    onClick={handleAiAutofill}
-                    className="flex shrink-0 items-center justify-center rounded-lg border border-primary/30 bg-primary/10 px-3 text-primary transition-colors hover:bg-primary/20 disabled:opacity-40"
-                  >
-                    {aiLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                  </button>
-                )}
+                <AutofillButtons
+                  onAi={handleAiAutofill}
+                  disabled={!form.title.trim() && !form.artistName.trim()}
+                />
               </div>
             </div>
             <div>

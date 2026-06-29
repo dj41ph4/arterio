@@ -2,15 +2,14 @@
 
 import * as React from 'react';
 import { motion } from 'framer-motion';
-import { X, Sparkles, RefreshCw, Check } from 'lucide-react';
-import { toast } from 'sonner';
+import { X, Sparkles, Check } from 'lucide-react';
 import { enrichArtistLive } from '@/lib/wikipedia-enrichment';
 import { artistRepository, type ArtistView } from '@/lib/data/artist-repository';
-import { useAiAvailable } from '@/hooks/use-ai-available';
 import { aiApi } from '@/lib/data/ai';
 import { ApiError } from '@/lib/api/client';
 import { useLocale } from 'next-intl';
 import type { Locale } from '@arterio/shared';
+import { AutofillButtons, type AutofillOutcome } from '@/components/shared/autofill-buttons';
 
 interface AddArtistModalProps {
   open: boolean;
@@ -22,7 +21,6 @@ type Status = 'idle' | 'loading' | 'done' | 'notfound';
 
 export function AddArtistModal({ open, onClose, onAdded }: AddArtistModalProps) {
   const locale = useLocale() as Locale;
-  const aiAvailable = useAiAvailable();
   const [name, setName] = React.useState('');
   const [status, setStatus] = React.useState<Status>('idle');
   const [log, setLog] = React.useState<string[]>([]);
@@ -37,8 +35,8 @@ export function AddArtistModal({ open, onClose, onAdded }: AddArtistModalProps) 
 
   const addLog = (msg: string) => setLog((l) => [...l, msg]);
 
-  const handleEnrich = async () => {
-    if (!name.trim()) return;
+  const handleEnrich = async (): Promise<AutofillOutcome> => {
+    if (!name.trim()) return { message: 'Entrez un nom.', success: false };
     setStatus('loading');
     setLog([]);
     addLog(`Recherche de "${name}" sur Wikidata…`);
@@ -46,8 +44,9 @@ export function AddArtistModal({ open, onClose, onAdded }: AddArtistModalProps) 
       const data = await enrichArtistLive(name.trim());
       if (!data.qid) {
         setStatus('notfound');
-        addLog('Aucune entrée Wikidata trouvée pour ce nom.');
-        return;
+        const message = 'Aucune entrée Wikidata trouvée pour ce nom.';
+        addLog(message);
+        return { message, success: false };
       }
       const canonicalName = data.label ?? name.trim();
       if (canonicalName !== name.trim()) {
@@ -90,15 +89,17 @@ export function AddArtistModal({ open, onClose, onAdded }: AddArtistModalProps) 
       setResult(artist);
       setStatus('done');
       addLog('Fiche artiste créée avec succès.');
-      toast.success(`${canonicalName} ajouté avec données Wikipedia en direct`);
+      return { message: `${canonicalName} ajouté avec données Wikipedia en direct`, success: true };
     } catch (err) {
       setStatus('notfound');
-      addLog(`Erreur : ${String(err)}`);
+      const message = `Erreur : ${String(err)}`;
+      addLog(message);
+      return { message, success: false };
     }
   };
 
-  const handleAiEnrich = async () => {
-    if (!name.trim()) return;
+  const handleAiEnrich = async (): Promise<AutofillOutcome> => {
+    if (!name.trim()) return { message: 'Entrez un nom.', success: false };
     setStatus('loading');
     setLog([]);
     addLog(`Recherche IA de "${name}"…`);
@@ -107,8 +108,7 @@ export function AddArtistModal({ open, onClose, onAdded }: AddArtistModalProps) 
       addLog(meta.message);
       if (!meta.hasUsableData) {
         setStatus('notfound');
-        toast.error(meta.message);
-        return;
+        return { message: meta.message, success: false };
       }
       const artist: ArtistView = {
         id: `artist-ai-${Date.now()}`,
@@ -129,12 +129,12 @@ export function AddArtistModal({ open, onClose, onAdded }: AddArtistModalProps) 
       setResult(artist);
       setStatus('done');
       addLog('Fiche artiste créée avec succès.');
-      toast.success(meta.message);
+      return { message: meta.message, success: true };
     } catch (err) {
       setStatus('notfound');
       const message = err instanceof ApiError ? err.message : String(err);
       addLog(`Erreur : ${message}`);
-      toast.error(message);
+      return { message, success: false };
     }
   };
 
@@ -177,24 +177,7 @@ export function AddArtistModal({ open, onClose, onAdded }: AddArtistModalProps) 
                 disabled={status === 'loading'}
                 className="flex-1 rounded-lg border border-border bg-muted px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
               />
-              <button
-                onClick={handleEnrich}
-                disabled={status === 'loading' || !name.trim()}
-                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-              >
-                {status === 'loading' ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                Rechercher
-              </button>
-              {aiAvailable && (
-                <button
-                  onClick={handleAiEnrich}
-                  disabled={status === 'loading' || !name.trim()}
-                  title="Recherche IA (si Wikidata ne trouve rien)"
-                  className="flex shrink-0 items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
-                >
-                  IA
-                </button>
-              )}
+              <AutofillButtons onWiki={handleEnrich} onAi={handleAiEnrich} disabled={!name.trim()} />
             </div>
           </div>
 
