@@ -258,7 +258,7 @@ export function ArtworkFormModal({ open, onClose, artwork, defaultArtistId, defa
               <FieldLabel>{t('artwork.fields.signature')}</FieldLabel>
               <input
                 type="text"
-                placeholder="Signé en bas à droite : B. DUBAIL"
+                placeholder="Ex. : signé en bas à droite"
                 value={form.signatureDescription}
                 onChange={(e) => set('signatureDescription', e.target.value)}
                 className={inputClass}

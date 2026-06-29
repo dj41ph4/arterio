@@ -42,7 +42,7 @@ export interface ArtworkAutofillResult {
   dateText?: string;
   yearFrom?: number;
   dimensionsNote?: string;
-  /** Where/how the work is signed, e.g. "signé en bas à droite : B. DUBAIL" — important for authentication. */
+  /** Where/how the work is signed, e.g. "signé en bas à droite" — important for authentication. */
   signatureDescription?: string;
   condition?: string;
   tags?: string[];
