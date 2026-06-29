@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useRouter, useParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Search, Users, Sparkles, RefreshCw, SearchX, Merge } from 'lucide-react';
+import { Search, Users, Sparkles, RefreshCw, SearchX, Merge, Upload } from 'lucide-react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { artistRepository } from '@/lib/data/artist-repository';
@@ -12,6 +12,7 @@ import { PageHeader } from '@/components/app-shell/page-header';
 import { translateNationality } from '@/lib/nationality';
 import { cn } from '@/lib/utils';
 import { AddArtistModal } from './add-artist-modal';
+import { ImportModal } from '@/components/import/import-modal';
 import { useQueryClient } from '@tanstack/react-query';
 import type { ArtistView } from '@/lib/data/artist-repository';
 import type { Locale } from '@arterio/shared';
@@ -121,6 +122,7 @@ export function ArtistListView() {
   const { locale } = useParams<{ locale: string }>();
   const [search, setSearch] = useState('');
   const [addOpen, setAddOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [unenrichedOnly, setUnenrichedOnly] = useState(false);
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
@@ -278,6 +280,14 @@ export function ArtistListView() {
           <Merge className={cn('h-4 w-4', mergeMutation.isPending && 'animate-pulse')} />
           {mergeMutation.isPending ? 'Analyse…' : 'Fusionner les doublons'}
         </button>
+        <button
+          onClick={() => setImportOpen(true)}
+          className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted"
+          title="Importer un fichier CSV/Excel — un fichier nom/biographie/photo par artiste est détecté automatiquement"
+        >
+          <Upload className="h-4 w-4" />
+          Importer
+        </button>
       </div>
 
       {/* Grid */}
@@ -320,6 +330,7 @@ export function ArtistListView() {
           router.push(`/${locale}/artists/${artist.id}`);
         }}
       />
+      <ImportModal open={importOpen} onClose={() => setImportOpen(false)} />
     </div>
   );
 }
