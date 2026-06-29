@@ -80,14 +80,30 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     };
 
-    if (!user || user.status !== 'active') return fail('no_user');
+    // A newly invited member (members.service.ts) is created with
+    // status 'invited' and a placeholder hash — they have to be allowed
+    // through THIS check so the bootstrap branch below can run at all.
+    // Blocking on `status !== 'active'` here meant an invited member could
+    // never log in even once: their very first login attempt — the one
+    // meant to set their real password — was rejected before reaching the
+    // bootstrap logic, so the account was permanently stuck on "invited".
+    if (!user || (user.status !== 'active' && user.status !== 'invited')) return fail('no_user');
 
-    // Bootstrap: the seed stores a placeholder; the first successful login sets
-    // a real Argon2id hash from the supplied password. Documented dev behaviour.
+    // Bootstrap: an invite (or the first-run setup wizard) stores a
+    // placeholder hash; the first successful login sets a real Argon2id hash
+    // from the supplied password, and flips the account to 'active' — this
+    // IS how a member activates their account, there's no separate "verify
+    // your email" step in this self-hosted appliance.
     if (user.passwordHash === PLACEHOLDER_HASH) {
       const hashed = await this.crypto.hashPassword(password);
-      await this.prisma.user.update({ where: { id: user.id }, data: { passwordHash: hashed } });
+      await this.prisma.user.update({ where: { id: user.id }, data: { passwordHash: hashed, status: 'active' } });
+      await this.prisma.membership.updateMany({
+        where: { userId: user.id, organizationId: user.organizationId },
+        data: { status: 'active' },
+      });
       this.logger.warn(`Bootstrapped password for ${user.email}`);
+    } else if (user.status !== 'active') {
+      return fail('no_user');
     } else if (!user.passwordHash || !(await this.crypto.verifyPassword(user.passwordHash, password))) {
       return fail('bad_password');
     }
