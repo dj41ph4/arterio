@@ -95,7 +95,7 @@ anything else → mock). Two patterns coexist:
 - `NEXT_PUBLIC_DATA_SOURCE` is a **build-time** Next.js env var — setting it in
   `docker-compose.yml` at runtime does nothing to an already-built image. The
   production Docker image bakes `NEXT_PUBLIC_DATA_SOURCE=http` via an `ARG` in
-  `infra/docker/web.Dockerfile`.
+  `infra/docker/all-in-one.Dockerfile`.
 - Mock data is deterministic (mulberry32 PRNG seeded with `20260620`).
 
 ### API base URL resolution (browser-side)
@@ -208,37 +208,32 @@ Copy `.env.example` → `.env` for local dev. Critical values are defaulted — 
 
 ## Docker / deployment
 
-Three images, built and pushed by `.github/workflows/docker-publish.yml` on every push
-to `main`: `docker.io/dj41ph4/arterio` (**recommended** — API + web combined in one
-container, `infra/docker/all-in-one.Dockerfile`), plus the original split
-`arterio-api`/`arterio-web` for anyone who genuinely wants two separate containers.
-The workflow auto-increments a semver patch tag (`vX.Y.Z`, starting `1.0.0`) shared by
-all three, alongside `latest`.
+One image, `docker.io/dj41ph4/arterio`, built and pushed by
+`.github/workflows/docker-publish.yml` on every push to `main`
+(`infra/docker/all-in-one.Dockerfile`) — API and web combined in a single
+container. The workflow auto-increments a semver patch tag (`vX.Y.Z`, starting
+`1.0.0`), alongside `latest`. There used to be two separate images
+(`arterio-api`/`arterio-web`) — removed; running api+web as independently-created
+containers wasn't on a shared Docker network, so service-name DNS (`api:4000`)
+didn't resolve and broke every API call. Don't reintroduce a split build without a
+real reason.
 
 The combined image runs both the NestJS API and the Next.js web server as sibling
 processes (`infra/docker/start-all-in-one.sh`) — the web server reaches the API over
 plain `localhost` (`API_INTERNAL_URL=http://localhost:4000`, baked in), since they
-share one network namespace. This is what eliminates the whole "container can't
-resolve the other container's hostname" class of bug that split deployments kept
-hitting on Synology (independently-created containers aren't on a shared Docker
-network, so service-name DNS like `api:4000` doesn't resolve). Only port 3000 needs
-publishing/reverse-proxying; 4000 (Swagger/direct API) is optional and should never be
-exposed publicly.
+share one network namespace. Only port 3000 needs publishing/reverse-proxying; 4000
+(Swagger/direct API) is optional and should never be exposed publicly.
 
-`infra/synology/docker-compose.yml` (the combined image) is intentionally minimal:
-**app + watchtower**, one bind-mounted `./data:/data` volume (DB + uploaded media), no
-Postgres/Redis/Elasticsearch/MinIO/nginx. `docker-compose.split.yml` is the
-two-container alternative (sets `API_INTERNAL_URL` on `web` if the containers aren't
-on a shared network, and `APP_URL`/`CORS_ORIGINS` on `api` for a genuinely
-split-domain deployment). Watchtower polls Docker Hub every 2 minutes and redeploys
-any container labeled `com.centurylinklabs.watchtower.enable=true` — this is what
-makes `git push` → live update on the NAS fully automatic. Don't add services back to
-either compose file without strong reason; the explicit goal is "map one port and one
-folder, nothing else to configure."
+`infra/synology/docker-compose.yml` is intentionally minimal: **app + watchtower**,
+one bind-mounted `./data:/data` volume (DB + uploaded media), no
+Postgres/Redis/Elasticsearch/MinIO/nginx. Watchtower polls Docker Hub every 2 minutes
+and redeploys any container labeled `com.centurylinklabs.watchtower.enable=true` —
+this is what makes `git push` → live update on the NAS fully automatic. Don't add
+services back to this compose file without strong reason; the explicit goal is
+"map one port and one folder, nothing else to configure."
 
-Both Docker images run as **root** (no `USER` directive on the API/combined image) so
-they can always write to a bind-mounted Synology folder without PUID/PGID
-configuration.
+The Docker image runs as **root** (no `USER` directive) so it can always write to a
+bind-mounted Synology folder without PUID/PGID configuration.
 
 First-run: no seeded demo admin in production images. `GET /api/v1/setup/status` /
 `POST /api/v1/setup` (web page `/[locale]/setup`) creates the real org + admin on first

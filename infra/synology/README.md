@@ -36,8 +36,7 @@ les identifiants dans **Container Manager → Registre**.
 ## 2. Déployer sur le NAS
 
 Via **File Station**, créez un dossier (ex. `/volume1/docker/arterio`) et
-uploadez-y `docker-compose.yml` (celui de ce dossier — l'image unique, pas
-`docker-compose.split.yml`).
+uploadez-y `docker-compose.yml` (celui de ce dossier).
 
 Dans **Container Manager → Projet → Créer**, indiquez ce dossier. DSM y
 trouve le `docker-compose.yml` et lance :
@@ -89,5 +88,5 @@ L'appli a aussi son propre export depuis **Réglages → Sauvegarde** (JSON ou
 |---|---|
 | L'Action GitHub échoue (rouge) | Onglet Actions → cliquez le run pour voir le détail — le plus souvent une erreur de compilation TypeScript, à corriger comme un bug normal. |
 | Page blanche / erreur 500 derrière un reverse proxy | Vérifiez que le reverse proxy pointe bien sur le port **3000** du conteneur `app` (pas 4000) — c'est le web qui sert tout, y compris l'API en interne. |
-| `Failed to fetch` / erreur CORS dans la console | N'arrive qu'en déploiement éclaté (API sur un autre domaine/serveur) — voir `APP_URL`/`CORS_ORIGINS` dans `docker-compose.split.yml`. Avec l'image unique (`docker-compose.yml`), ça ne devrait jamais arriver. |
+| `Failed to fetch` / erreur CORS dans la console | Ne devrait jamais arriver avec l'image unique — un seul conteneur, une seule origine pour le navigateur. Si ça arrive, vérifiez que le reverse proxy pointe bien sur le port 3000 et rien d'autre. |
 | Watchtower ne redéploie pas | Le label `com.centurylinklabs.watchtower.enable: 'true'` doit être sur le conteneur `app`. Dépôt Docker Hub privé : ajoutez `REPO_USER`/`REPO_PASS` au service `watchtower`. |

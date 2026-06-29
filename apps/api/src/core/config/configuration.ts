@@ -17,7 +17,7 @@ export const envSchema = z.object({
     .transform((v) => v === 'true'),
 
   // SQLite by default — a single file, no separate database server. In Docker
-  // this points at a mapped volume (see infra/docker/api.Dockerfile).
+  // this points at a mapped volume (see infra/docker/all-in-one.Dockerfile).
   DATABASE_URL: z.string().default('file:./dev.db'),
   // Where uploaded media is written. Defaults to <cwd>/uploads; the container
   // overrides it to live alongside the database in the mapped /data volume.

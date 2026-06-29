@@ -14,8 +14,6 @@
 #
 #  Reverse proxy / nom de domaine : pointez votre reverse proxy vers le port
 #  3000, c'est tout. Un seul hôte, un seul conteneur, rien d'autre à régler.
-#
-#  Vous préférez deux conteneurs séparés (api/web) ? Voir docker-compose.split.yml.
 # =============================================================================
 
 name: arterio

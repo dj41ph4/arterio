@@ -1,11 +1,12 @@
-name: Build and publish Docker images
+name: Build and publish Docker image
 
-# Builds the api + web images and pushes them to Docker Hub on every push to
-# main. This is what the Synology NAS / Windows install pulls from — see
-# infra/synology/README.md. No source code needs to live on the NAS.
+# Builds the single combined image (API + Web in one container) and pushes
+# it to Docker Hub on every push to main. This is what the Synology NAS /
+# Windows install pulls from — see infra/synology/README.md. No source code
+# needs to live on the NAS.
 #
 # Versioning: each push to main auto-increments the patch version (starting at
-# 1.0.0) and tags the images with that number AND `latest`. A matching git tag
+# 1.0.0) and tags the image with that number AND `latest`. A matching git tag
 # (vX.Y.Z) is created so the history of releases is visible in the repo.
 #
 # Requires two repository secrets (Settings > Secrets and variables > Actions):
@@ -23,10 +24,6 @@ env:
   OWNER: dj41ph4
 
 jobs:
-  # ---------------------------------------------------------------------------
-  # Compute the next semantic version and create the git tag once, so both
-  # images (api + web) share the same version number.
-  # ---------------------------------------------------------------------------
   version:
     runs-on: ubuntu-latest
     permissions:
@@ -61,54 +58,6 @@ jobs:
           git push origin "v$next"
 
   build-and-push:
-    needs: version
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    strategy:
-      matrix:
-        component: [api, web]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Extract metadata (tags)
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: docker.io/${{ env.OWNER }}/arterio-${{ matrix.component }}
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=${{ needs.version.outputs.version }}
-            type=sha,format=short
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and push
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: infra/docker/${{ matrix.component }}.Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # ---------------------------------------------------------------------------
-  # Single combined image (API + Web in one container) — the recommended
-  # deployment: one image, one port to publish/reverse-proxy, no Docker
-  # network/DNS between two containers to ever get wrong. Published as
-  # "arterio" (no suffix) to make it the obvious default.
-  # ---------------------------------------------------------------------------
-  build-and-push-all-in-one:
     needs: version
     runs-on: ubuntu-latest
     permissions:
