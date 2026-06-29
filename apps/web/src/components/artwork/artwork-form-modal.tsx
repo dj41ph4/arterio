@@ -243,7 +243,7 @@ export function ArtworkFormModal({ open, onClose, artwork, defaultArtistId, defa
             </div>
             <div>
               <FieldLabel>{t('artwork.fields.date')}</FieldLabel>
-              <input type="text" inputMode="numeric" placeholder="1937" value={form.year} onChange={(e) => set('year', e.target.value)} className={inputClass} />
+              <input type="text" inputMode="numeric" placeholder="Ex. : 1937" value={form.year} onChange={(e) => set('year', e.target.value)} className={inputClass} />
             </div>
 
             <div>
@@ -252,7 +252,7 @@ export function ArtworkFormModal({ open, onClose, artwork, defaultArtistId, defa
             </div>
             <div>
               <FieldLabel>{t('artwork.fields.dimensions')}</FieldLabel>
-              <input type="text" placeholder="46x38 cm" value={form.dimensionsNote} onChange={(e) => set('dimensionsNote', e.target.value)} className={inputClass} />
+              <input type="text" placeholder="Ex. : 50 x 70 cm" value={form.dimensionsNote} onChange={(e) => set('dimensionsNote', e.target.value)} className={inputClass} />
             </div>
             <div>
               <FieldLabel>{t('artwork.fields.signature')}</FieldLabel>

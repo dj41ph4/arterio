@@ -116,6 +116,15 @@
   ::selection {
     background-color: hsl(var(--primary) / 0.18);
   }
+
+  /* Placeholders must read as clearly fainter than real entered text, never
+     as data the user might mistake for an actual value (e.g. an example
+     date or dimension left unread). Browser default placeholder color is
+     too close to --foreground on this palette to guarantee that. */
+  input::placeholder,
+  textarea::placeholder {
+    color: hsl(var(--muted-foreground) / 0.55);
+  }
 }
 
 @layer utilities {
