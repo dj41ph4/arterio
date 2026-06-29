@@ -18,6 +18,7 @@ import type {
 import type { PrismaService } from '../../core/prisma/prisma.service';
 import type { CryptoService } from '../../core/crypto/crypto.service';
 import { stripFillerFields } from '../../common/ai-filler.util';
+import { getCachedOrg } from './org-ai-settings-cache.util';
 
 interface OrgAiSettings {
   enabled?: boolean;
@@ -80,7 +81,10 @@ export class GeminiAiProvider implements AiProvider {
   private async resolveOrgSettings(organizationId?: string): Promise<OrgAiSettings | null> {
     if (!organizationId || !this.prisma) return null;
     try {
-      const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
+      // Same row is independently re-fetched by isEnabled() and by the actual
+      // completion call within one request — cached briefly to cut that to a
+      // single DB read, with no change to what's returned.
+      const org = await getCachedOrg(organizationId, () => this.prisma!.organization.findUnique({ where: { id: organizationId } }));
       return ((org?.settings as Record<string, unknown>)?.ai as OrgAiSettings | undefined) ?? null;
     } catch {
       return null;

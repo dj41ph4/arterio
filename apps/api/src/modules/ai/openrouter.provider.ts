@@ -18,6 +18,7 @@ import { Logger, ServiceUnavailableException } from '@nestjs/common';
 import type { PrismaService } from '../../core/prisma/prisma.service';
 import type { CryptoService } from '../../core/crypto/crypto.service';
 import { stripFillerFields } from '../../common/ai-filler.util';
+import { getCachedOrg } from './org-ai-settings-cache.util';
 
 interface OrgAiSettings {
   enabled?: boolean;
@@ -136,7 +137,10 @@ export class OpenRouterAiProvider implements AiProvider {
   private async resolveOrgSettings(organizationId?: string): Promise<OrgAiSettings | null> {
     if (!organizationId || !this.prisma) return null;
     try {
-      const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
+      // isEnabled() and the actual completion call each independently need
+      // this same row within the same request — cached briefly so that's one
+      // DB read instead of two or three, with no change to what's returned.
+      const org = await getCachedOrg(organizationId, () => this.prisma!.organization.findUnique({ where: { id: organizationId } }));
       return ((org?.settings as Record<string, unknown>)?.ai as OrgAiSettings | undefined) ?? null;
     } catch {
       return null;

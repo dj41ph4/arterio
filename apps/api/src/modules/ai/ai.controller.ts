@@ -25,6 +25,24 @@ export class AiController {
     private readonly crypto: CryptoService,
   ) {}
 
+  /**
+   * Coalesces identical concurrent calls into a single underlying AI call —
+   * a double-click, a re-render firing the same effect twice, or two browser
+   * tabs hitting the same query at once would otherwise each spend their own
+   * Gemini/OpenRouter call for an identical question. Every caller awaits
+   * the exact same promise, so the result is byte-identical to not deduping
+   * at all — this only ever removes a wasted duplicate request, never
+   * changes what's returned.
+   */
+  private readonly inFlight = new Map<string, Promise<unknown>>();
+  private dedupe<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const existing = this.inFlight.get(key);
+    if (existing) return existing as Promise<T>;
+    const promise = fn().finally(() => this.inFlight.delete(key));
+    this.inFlight.set(key, promise);
+    return promise;
+  }
+
   /** Best-effort usage tracking — one row per model attempt, never lets a logging failure break the actual AI feature. */
   private logUsage(organizationId: string, operation: string, attempts: AiAttemptLog[]): void {
     if (!attempts.length) return;
@@ -160,10 +178,12 @@ export class AiController {
     }
     const query = `${body.artistName ?? ''} ${body.title ?? ''}`.trim();
     if (!query) throw new BadRequestException('title or artistName is required');
-    const { data, meta } = await this.ai.findImages({
-      query: `Search query to run: ${body.artistName ?? ''} "${body.title ?? ''}" photo painting image`.trim(),
-      organizationId: user.organizationId,
-    });
+    const { data, meta } = await this.dedupe(`findImages.artwork:${user.organizationId}:${query}`, () =>
+      this.ai.findImages({
+        query: `Search query to run: ${body.artistName ?? ''} "${body.title ?? ''}" photo painting image`.trim(),
+        organizationId: user.organizationId,
+      }),
+    );
     const candidates = data.imageUrls ?? [];
     const validated = (await Promise.all(candidates.map(async (u) => ((await isLikelyRealImage(u)) ? u : null)))).filter(
       (u): u is string => Boolean(u),
@@ -201,10 +221,12 @@ export class AiController {
       throw new ServiceUnavailableException(message);
     }
     if (!body.fullName?.trim()) throw new BadRequestException('fullName is required');
-    const { data, meta } = await this.ai.findImages({
-      query: `Search query to run: ${body.fullName} portrait photo`,
-      organizationId: user.organizationId,
-    });
+    const { data, meta } = await this.dedupe(`findImages.artist:${user.organizationId}:${body.fullName}`, () =>
+      this.ai.findImages({
+        query: `Search query to run: ${body.fullName} portrait photo`,
+        organizationId: user.organizationId,
+      }),
+    );
     const candidates = data.imageUrls ?? [];
     const validated = (await Promise.all(candidates.map(async (u) => ((await isLikelyRealImage(u)) ? u : null)))).filter(
       (u): u is string => Boolean(u),
@@ -233,12 +255,21 @@ export class AiController {
       this.logger.warn(message);
       throw new ServiceUnavailableException(message);
     }
-    const { data, meta } = await this.ai.autofillArtwork({
-      title: body.title,
-      artistName: body.artistName,
-      locale: body.locale ?? 'en',
-      organizationId: user.organizationId,
-    });
+    const dedupeKey = `autofillArtwork:${user.organizationId}:${body.title ?? ''}:${body.artistName ?? ''}:${body.locale ?? 'en'}`;
+    const shared = await this.dedupe(dedupeKey, () =>
+      this.ai.autofillArtwork({
+        title: body.title,
+        artistName: body.artistName,
+        locale: body.locale ?? 'en',
+        organizationId: user.organizationId,
+      }),
+    );
+    // Cloned because two concurrent identical requests share the exact same
+    // dedupe()'d result object — mutating it in place below (data.imageUrl,
+    // meta.message) would otherwise let one caller's photo lookup corrupt
+    // the other's response.
+    const data = { ...shared.data };
+    const meta = { ...shared.meta, attempts: [...shared.meta.attempts] };
     // A WikiArt/Commons hit is always preferred (dedicated art/media
     // indexes), but the AI's own imageUrl is no longer discarded outright —
     // autofill now runs with a real web search behind it, so its guess is
@@ -269,11 +300,17 @@ export class AiController {
       this.logger.warn(message);
       throw new ServiceUnavailableException(message);
     }
-    const { data, meta } = await this.ai.autofillArtist({
-      fullName: body.fullName,
-      locale: body.locale ?? 'en',
-      organizationId: user.organizationId,
-    });
+    const sharedArtist = await this.dedupe(`autofillArtist:${user.organizationId}:${body.fullName}:${body.locale ?? 'en'}`, () =>
+      this.ai.autofillArtist({
+        fullName: body.fullName,
+        locale: body.locale ?? 'en',
+        organizationId: user.organizationId,
+      }),
+    );
+    // Cloned for the same reason as autofillArtwork above — avoids two
+    // concurrent identical requests mutating a shared response object.
+    const data = { ...sharedArtist.data };
+    const meta = { ...sharedArtist.meta, attempts: [...sharedArtist.meta.attempts] };
     const aiGuessedUrl = data.imageUrl;
     const { url, source } = await this.findPhoto(`${body.fullName} portrait`, user.organizationId, aiGuessedUrl);
     data.imageUrl = url ?? undefined;
