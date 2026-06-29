@@ -27,6 +27,7 @@ import {
   normalizeArtistName,
   artistDedupKey,
   artworkDedupKey,
+  isLikelyDuplicateArtwork,
   normalizeDate,
   normalizePaymentMethod,
   normalizeBoolean,
@@ -81,19 +82,43 @@ function cell(rows: (string | number | null)[][], rowIdx: number, colIdx: number
 /** Loads every existing artwork's (title, artist) dedup key so re-importing the same spreadsheet — or a
  *  file that overlaps the existing collection — skips rows instead of creating duplicates. Paginates up to
  *  the same 5000-row safety cap the catalog list endpoint itself uses (single-tenant appliance). */
-async function loadExistingArtworkKeys(): Promise<Set<string>> {
-  const keys = new Set<string>();
+interface ExistingArtworkRef {
+  key: string;
+  title: string;
+  artist: string;
+}
+
+async function loadExistingArtworkKeys(): Promise<ExistingArtworkRef[]> {
+  const refs: ExistingArtworkRef[] = [];
   let cursor: string | null = null;
   for (let page = 0; page < 25; page++) {
     const result = await artworkRepository.list({ limit: 200, cursor });
     for (const item of result.items) {
-      const title = item.title?.fr || Object.values(item.title ?? {}).find((v) => v) || '';
-      keys.add(artworkDedupKey(String(title), item.artistName ?? ''));
+      const title = String(item.title?.fr || Object.values(item.title ?? {}).find((v) => v) || '');
+      const artist = item.artistName ?? '';
+      refs.push({ key: artworkDedupKey(title, artist), title, artist });
     }
     if (!result.nextCursor || result.items.length === 0) break;
     cursor = result.nextCursor;
   }
-  return keys;
+  return refs;
+}
+
+/** Exact-key fast path first (handles the common "re-imported the same file" case for free), then a
+ *  fuzzy fallback that catches near-duplicates an exact key would miss — a typo, an extra middle name,
+ *  reversed first/last name order. No AI involved: pure bigram-similarity string comparison. */
+function findDuplicate(
+  title: string,
+  artist: string,
+  key: string,
+  existing: ExistingArtworkRef[],
+  seenInFile: ExistingArtworkRef[],
+): 'collection' | 'file' | null {
+  for (const ref of existing) if (ref.key === key) return 'collection';
+  for (const ref of seenInFile) if (ref.key === key) return 'file';
+  for (const ref of existing) if (isLikelyDuplicateArtwork(title, artist, ref.title, ref.artist)) return 'collection';
+  for (const ref of seenInFile) if (isLikelyDuplicateArtwork(title, artist, ref.title, ref.artist)) return 'file';
+  return null;
 }
 
 function DropZone({ onFile, loading }: { onFile: (file: File) => void; loading: boolean }) {
@@ -266,13 +291,13 @@ export function ImportModal({ open, onClose }: ImportModalProps) {
     let artistsCreated = 0;
     const log: ImportLogEntry[] = [];
 
-    let existingKeys: Set<string>;
+    let existingRefs: ExistingArtworkRef[];
     try {
-      existingKeys = await loadExistingArtworkKeys();
+      existingRefs = await loadExistingArtworkKeys();
     } catch {
-      existingKeys = new Set();
+      existingRefs = [];
     }
-    const seenInFile = new Set<string>();
+    const seenInFile: ExistingArtworkRef[] = [];
 
     const resolveArtist = async (raw: string): Promise<{ id: string | null; name: string | null }> => {
       const normalized = normalizeArtistName(raw);
@@ -311,6 +336,62 @@ export function ImportModal({ open, onClose }: ImportModalProps) {
       }
     };
 
+    // Some real-world files are an artist roster, not an artwork inventory — e.g. just
+    // "Nom / Oeuvre / Bio / Photo", one row per artist. Forcing that shape through the
+    // artwork importer would create one fake, near-empty artwork per artist. Detect it by
+    // the absence of any artwork-only signal (title/technique/dimensions/inventory/year) and
+    // route to a dedicated artist-roster import instead — same dedup/resolve logic, no
+    // artwork rows created.
+    const artistOnlyFile =
+      titleColIdx === undefined &&
+      fieldCol('technique') === undefined &&
+      fieldCol('dimensions') === undefined &&
+      fieldCol('inventoryNumber') === undefined &&
+      fieldCol('year') === undefined &&
+      artistColIdx !== undefined &&
+      (fieldCol('bio') !== undefined || fieldCol('photo') !== undefined);
+
+    if (artistOnlyFile) {
+      for (let i = 0; i < sheet.rows.length; i++) {
+        const artistRaw = cell(sheet.rows, i, artistColIdx);
+        const bio = cell(sheet.rows, i, fieldCol('bio')).trim();
+        const photoUrl = cell(sheet.rows, i, fieldCol('photo')).trim();
+        if (!artistRaw.trim()) {
+          skipped++;
+          setProgress({ done: i + 1, total });
+          continue;
+        }
+        const { id: artistId, name: artistName } = await resolveArtist(artistRaw);
+        if (!artistId) {
+          skipped++;
+          log.push({ row: i + 2, title: '', artist: artistRaw, status: 'skipped', reason: 'Nom d\'artiste invalide' });
+          setProgress({ done: i + 1, total });
+          continue;
+        }
+        try {
+          const current = await artistRepository.getById(artistId);
+          const patch: Record<string, unknown> = {};
+          if (bio && !Object.values(current?.biography ?? {}).some((v) => v)) patch.biography = { fr: bio };
+          if (photoUrl && /^https?:\/\//i.test(photoUrl) && !current?.thumbnail) patch.thumbnail = photoUrl;
+          if (Object.keys(patch).length) await artistRepository.update(artistId, patch as never);
+          created++;
+          log.push({ row: i + 2, title: '', artist: artistName ?? artistRaw, status: 'created', reason: '' });
+        } catch (err) {
+          skipped++;
+          const reason = err instanceof ApiError ? `${err.status} ${err.message}` : String(err);
+          log.push({ row: i + 2, title: '', artist: artistName ?? artistRaw, status: 'skipped', reason });
+        }
+        setProgress({ done: i + 1, total });
+      }
+
+      setSummary({ created, skipped, duplicates, artistsCreated, inventoryGenerated: 0 });
+      setImportLog(log);
+      setStep('done');
+      qc.invalidateQueries({ queryKey: ['artists-all'] });
+      toast.success(`${created} artiste${created > 1 ? 's' : ''} mis à jour`);
+      return;
+    }
+
     for (let i = 0; i < sheet.rows.length; i++) {
       const titleRaw = cell(sheet.rows, i, titleColIdx);
       const artistRaw = cell(sheet.rows, i, artistColIdx);
@@ -323,7 +404,8 @@ export function ImportModal({ open, onClose }: ImportModalProps) {
       }
 
       const dedupKey = artworkDedupKey(titleRaw, artistRaw);
-      if (existingKeys.has(dedupKey) || seenInFile.has(dedupKey)) {
+      const duplicateOf = findDuplicate(titleRaw, artistRaw, dedupKey, existingRefs, seenInFile);
+      if (duplicateOf) {
         skipped++;
         duplicates++;
         log.push({
@@ -331,12 +413,12 @@ export function ImportModal({ open, onClose }: ImportModalProps) {
           title: titleRaw,
           artist: artistRaw,
           status: 'skipped',
-          reason: existingKeys.has(dedupKey) ? 'Doublon — déjà présent dans la collection' : 'Doublon — déjà importé dans ce fichier',
+          reason: duplicateOf === 'collection' ? 'Doublon — déjà présent dans la collection (ou très similaire)' : 'Doublon — déjà importé dans ce fichier (ou très similaire)',
         });
         setProgress({ done: i + 1, total });
         continue;
       }
-      seenInFile.add(dedupKey);
+      seenInFile.push({ key: dedupKey, title: titleRaw, artist: artistRaw });
 
       const { id: artistId, name: artistName } = await resolveArtist(artistRaw);
       const dateInfo = normalizeDate(cell(sheet.rows, i, fieldCol('year')));
@@ -350,13 +432,17 @@ export function ImportModal({ open, onClose }: ImportModalProps) {
       const hasCertificate = normalizeBoolean(cell(sheet.rows, i, fieldCol('certificate')));
       const hasInvoice = normalizeBoolean(cell(sheet.rows, i, fieldCol('invoice')));
       const inventoryNumber = inventoryPlan.assignments.get(i);
+      const notes = cell(sheet.rows, i, fieldCol('notes')).trim();
+      const bio = cell(sheet.rows, i, fieldCol('bio')).trim();
+      const photoUrl = cell(sheet.rows, i, fieldCol('photo')).trim();
 
       const title = titleRaw.trim() || artistName || 'Sans titre';
 
       try {
-        await artworkRepository.create({
+        const createdArtwork = await artworkRepository.create({
           inventoryNumber,
           title: { fr: title },
+          description: notes ? { fr: notes } : undefined,
           artistId: artistId ?? undefined,
           artistName: artistId ? undefined : artistName ?? undefined,
           dateText: dateInfo.raw || undefined,
@@ -376,6 +462,28 @@ export function ImportModal({ open, onClose }: ImportModalProps) {
         } as never);
         created++;
         log.push({ row: i + 2, title, artist: artistName ?? '', status: 'created', reason: '' });
+
+        // Bio/photo columns describe the artist, not the artwork (real spreadsheets repeat them on every
+        // row of that artist) — never overwrite a bio/photo the artist already has from a prior row or a
+        // previous enrichment pass.
+        if (artistId && (bio || (photoUrl && /^https?:\/\//i.test(photoUrl)))) {
+          try {
+            const current = await artistRepository.getById(artistId);
+            const patch: Record<string, unknown> = {};
+            if (bio && !Object.values(current?.biography ?? {}).some((v) => v)) patch.biography = { fr: bio };
+            if (photoUrl && /^https?:\/\//i.test(photoUrl) && !current?.thumbnail) patch.thumbnail = photoUrl;
+            if (Object.keys(patch).length) await artistRepository.update(artistId, patch as never);
+          } catch {
+            // best-effort enrichment from the spreadsheet — never blocks the artwork import itself
+          }
+        }
+        if (photoUrl && /^https?:\/\//i.test(photoUrl)) {
+          try {
+            await artworkRepository.attachMediaFromUrl(createdArtwork.id, photoUrl);
+          } catch {
+            // unreachable/invalid image URL — the artwork row itself still imported successfully
+          }
+        }
       } catch (err) {
         skipped++;
         const reason = err instanceof ApiError ? `${err.status} ${err.message}` : String(err);

@@ -5,6 +5,8 @@ import type { Env } from '../../core/config/configuration';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { CryptoService } from '../../core/crypto/crypto.service';
 import { AI_PROVIDER, type AiProvider } from '../ai/ai.types';
+import { scrapeICAC, scrapeArtmajeur } from '../../common/gallery-site-scraper.util';
+import { TtlCache } from '../../common/ttl-cache.util';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -38,7 +40,7 @@ export interface WikidataArtist {
   influencedByLabels?: string[];
 }
 
-export type FallbackSource = 'met' | 'aic' | 'wikiart' | 'europeana' | 'rijksmuseum' | 'harvard' | 'smithsonian';
+export type FallbackSource = 'met' | 'aic' | 'wikiart' | 'europeana' | 'rijksmuseum' | 'harvard' | 'smithsonian' | 'icac' | 'artmajeur';
 
 /** A hit from a museum collection API — used when Wikidata has no match. */
 export interface FallbackHit {
@@ -66,6 +68,23 @@ export interface ArtistEnrichmentResult {
   fallback?: FallbackHit;
   /** Wikidata's canonical label for the matched entity — should win over a manually typed name. */
   matchedName?: string;
+  /** 0–100 weighted field-presence score (name/image/bio/dates/style) — informational only, exposed to
+   *  the API response so the frontend can show "enrichment quality" without recomputing it. Does not
+   *  gate any control flow here: it's a signal, not a trigger, to avoid changing existing behavior. */
+  completeness?: number;
+}
+
+/** name +20, image +20, bio +30, dates +20, style/movement +10 — the same weights as a Wikidata-style
+ *  "infobox completeness" check. Reused as-is for both the Wikidata path and the museum/scrape fallback
+ *  path so the score means the same thing regardless of which source filled the fields. */
+function computeCompletenessScore(result: Pick<ArtistEnrichmentResult, 'wikidata' | 'biographies' | 'thumbnail' | 'matchedName' | 'fallback'>): number {
+  let score = 0;
+  if (result.matchedName || result.wikidata?.labels) score += 20;
+  if (result.thumbnail) score += 20;
+  if (Object.values(result.biographies).some((b) => b)) score += 30;
+  if (result.wikidata?.birthDate || result.fallback?.birthDate) score += 20;
+  if (result.wikidata?.movement) score += 10;
+  return score;
 }
 
 // ---------------------------------------------------------------------------
@@ -132,6 +151,14 @@ function releaseEnrichmentSlot(): void {
   else activeEnrichments--;
 }
 
+// Wikidata search/entity results are immutable enough within a session to cache: a bulk import
+// commonly creates several artworks by the same artist back-to-back, and a re-enrich() call on
+// the same artist shortly after creation (manual retry, auto-merge check) would otherwise repeat
+// the exact same SPARQL/search round trip. 10 min TTL — long enough to absorb a big import batch,
+// short enough that a stale miss self-corrects quickly.
+const wikidataSearchCache = new TtlCache<{ qid: string; label: string; exact: boolean; ambiguous: boolean } | null>(10 * 60_000);
+const wikidataEntityCache = new TtlCache<WikidataArtist | null>(10 * 60_000);
+
 @Injectable()
 export class ArtistEnrichmentService {
   private readonly logger = new Logger(ArtistEnrichmentService.name);
@@ -184,6 +211,7 @@ export class ArtistEnrichmentService {
       // that's still missing, instead of leaving those tabs empty.
       await this.translateMissingBiographies(result, fullName, organizationId);
     }
+    result.completeness = computeCompletenessScore(result);
     return result;
     } finally {
       releaseEnrichmentSlot();
@@ -342,6 +370,12 @@ export class ArtistEnrichmentService {
   private async searchWikidataOnce(
     name: string,
   ): Promise<{ qid: string; label: string; exact: boolean; ambiguous: boolean } | null> {
+    return wikidataSearchCache.wrap(name.trim().toLowerCase(), () => this.searchWikidataOnceUncached(name));
+  }
+
+  private async searchWikidataOnceUncached(
+    name: string,
+  ): Promise<{ qid: string; label: string; exact: boolean; ambiguous: boolean } | null> {
     const url =
       `https://www.wikidata.org/w/api.php?action=wbsearchentities` +
       `&search=${encodeURIComponent(name)}&language=en&limit=8&format=json&type=item&origin=*`;
@@ -379,6 +413,10 @@ export class ArtistEnrichmentService {
   // ---------------------------------------------------------------------------
 
   private async fetchWikidataEntity(qid: string): Promise<WikidataArtist | null> {
+    return wikidataEntityCache.wrap(qid, () => this.fetchWikidataEntityUncached(qid));
+  }
+
+  private async fetchWikidataEntityUncached(qid: string): Promise<WikidataArtist | null> {
     const langs = Object.keys(LANG_MAP).join('|');
     // Two separate queries on purpose: mixing GROUP_CONCAT (for the list fields
     // below) with single-valued OPTIONAL joins under one GROUP BY caused a
@@ -572,6 +610,11 @@ WHERE {
       () => this.fetchFromRijksmuseum(name, keys.rijksmuseum),
       () => this.fetchFromHarvard(name, keys.harvard),
       () => this.fetchFromSmithsonian(name, keys.smithsonian),
+      // Last resort, lowest authority: small gallery marketplace pages with
+      // no public API, reached via a guessed URL slug — only useful for
+      // contemporary/regional artists no museum or Wikidata entry covers.
+      () => this.fetchFromICAC(name),
+      () => this.fetchFromArtmajeur(name),
     ];
     for (const provider of providers) {
       try {
@@ -809,4 +852,17 @@ WHERE {
     };
   }
 
+  /** i-CAC gallery listing — no API, reached via a guessed URL slug, sanity-checked against the name before being trusted. Scrape → extract → validate → merge only: never feeds a scraped result into an AI call. */
+  private async fetchFromICAC(name: string): Promise<FallbackHit | null> {
+    const hit = await scrapeICAC(name);
+    if (!hit) return null;
+    return { source: 'icac', matchedName: name, biography: hit.biography, sourceUrl: hit.sourceUrl };
+  }
+
+  /** Artmajeur gallery listing — same guessed-slug, sanity-checked, scrape-only approach as i-CAC. */
+  private async fetchFromArtmajeur(name: string): Promise<FallbackHit | null> {
+    const hit = await scrapeArtmajeur(name);
+    if (!hit) return null;
+    return { source: 'artmajeur', matchedName: name, biography: hit.biography, sourceUrl: hit.sourceUrl };
+  }
 }

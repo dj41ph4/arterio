@@ -16,6 +16,10 @@ export const ARTWORK_FIELDS = [
   { key: 'condition', label: "État de l'œuvre" },
   { key: 'inventoryNumber', label: 'N° inventaire' },
   { key: 'category', label: 'Catégorie (section)' },
+  { key: 'currentValue', label: 'Valeur actuelle' },
+  { key: 'notes', label: 'Commentaire / notes' },
+  { key: 'bio', label: "Biographie de l'artiste" },
+  { key: 'photo', label: 'Photo (URL)' },
   { key: '_ignore', label: '— Ignorer cette colonne —' },
 ] as const;
 
@@ -50,8 +54,14 @@ const RULES: FieldRule[] = [
   { key: 'paymentType', headerPattern: /paiement|payment/i, contentScore: (s) => ratio(s, (v) => /cash|virement|cheque|leasing|cadeau/i.test(v)) },
   { key: 'certificate', headerPattern: /certificat/i, contentScore: (s) => ratio(s, (v) => /^(cert|oui|non)$/i.test(v.trim())) },
   { key: 'invoice', headerPattern: /facture/i, contentScore: (s) => ratio(s, (v) => /^(oui|non)$/i.test(v.trim())) },
-  { key: 'condition', headerPattern: /[eé]tat\s*de\s*l.?œuvre|condition/i, contentScore: () => 0.2 },
+  { key: 'condition', headerPattern: /[eé]tat\s*de\s*l.?(œuvre|oeuvre)|condition/i, contentScore: () => 0.2 },
   { key: 'category', headerPattern: /^cat[eé]gorie/i, contentScore: () => 0.1 },
+  { key: 'currentValue', headerPattern: /prix\s*actuel|valeur\s*actuelle|current\s*value/i, contentScore: (s) => ratio(s, (v) => /^\d+([.,]\d+)?$/.test(v.trim()) && Number(v.replace(',', '.')) > 0) },
+  { key: 'notes', headerPattern: /commentaire|remarque|notes?$/i, contentScore: () => 0.15 },
+  { key: 'bio', headerPattern: /^bio(graphie)?$/i, contentScore: (s) => ratio(s, (v) => v.trim().length > 80) },
+  // "Photos                  recto - verso - signature - détail" (real header seen in the wild)
+  // is a free-text description column, not a URL — only matches a stricter "Photo"/"Photos" header.
+  { key: 'photo', headerPattern: /^photos?$/i, contentScore: (s) => ratio(s, (v) => /^https?:\/\//i.test(v.trim())) },
 ];
 
 export interface ColumnMapping {
