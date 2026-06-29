@@ -13,6 +13,7 @@ import { useAiAvailable } from '@/hooks/use-ai-available';
 import { aiApi } from '@/lib/data/ai';
 import { artworkRepository } from '@/lib/data';
 import { ApiError } from '@/lib/api/client';
+import { cn } from '@/lib/utils';
 
 interface ArtworkFormModalProps {
   open: boolean;
@@ -28,6 +29,8 @@ interface FormState {
   artistName: string;
   year: string;
   techniqueName: string;
+  heightCm: string;
+  widthCm: string;
   dimensionsNote: string;
   signatureDescription: string;
   collectionId: string;
@@ -42,7 +45,7 @@ interface FormState {
 
 function emptyForm(): FormState {
   return {
-    title: '', artistName: '', year: '', techniqueName: '', dimensionsNote: '', signatureDescription: '', collectionId: '',
+    title: '', artistName: '', year: '', techniqueName: '', heightCm: '', widthCm: '', dimensionsNote: '', signatureDescription: '', collectionId: '',
     status: 'draft', condition: 'unknown', currentValue: '', insuranceValue: '',
     currency: 'EUR', description: '', tags: '',
   };
@@ -54,6 +57,8 @@ function fromArtwork(art: ArtworkView, locale: Locale): FormState {
     artistName: art.artistName ?? '',
     year: art.yearFrom != null ? String(art.yearFrom) : '',
     techniqueName: art.techniqueName ?? '',
+    heightCm: art.heightCm != null ? String(art.heightCm) : '',
+    widthCm: art.widthCm != null ? String(art.widthCm) : '',
     dimensionsNote: art.dimensionsNote ?? '',
     signatureDescription: art.signatureDescription ?? '',
     collectionId: art.collectionId ?? '',
@@ -122,6 +127,8 @@ export function ArtworkFormModal({ open, onClose, artwork, defaultArtistId, defa
         ...f,
         description: f.description || data.description || f.description,
         techniqueName: f.techniqueName || data.techniqueName || f.techniqueName,
+        heightCm: f.heightCm || (data.heightCm != null ? String(data.heightCm) : f.heightCm),
+        widthCm: f.widthCm || (data.widthCm != null ? String(data.widthCm) : f.widthCm),
         dimensionsNote: f.dimensionsNote || data.dimensionsNote || f.dimensionsNote,
         signatureDescription: f.signatureDescription || data.signatureDescription || f.signatureDescription,
         year: f.year || (data.yearFrom ? String(data.yearFrom) : f.year),
@@ -150,6 +157,8 @@ export function ArtworkFormModal({ open, onClose, artwork, defaultArtistId, defa
       yearFrom: form.year ? Number(form.year) : null,
       dateText: form.year || null,
       techniqueName: form.techniqueName.trim() || null,
+      heightCm: form.heightCm ? Number(form.heightCm) : null,
+      widthCm: form.widthCm ? Number(form.widthCm) : null,
       dimensionsNote: form.dimensionsNote.trim() || null,
       signatureDescription: form.signatureDescription.trim() || null,
       collectionId: form.collectionId || null,
@@ -252,7 +261,32 @@ export function ArtworkFormModal({ open, onClose, artwork, defaultArtistId, defa
             </div>
             <div>
               <FieldLabel>{t('artwork.fields.dimensions')}</FieldLabel>
-              <input type="text" placeholder="Ex. : 50 x 70 cm" value={form.dimensionsNote} onChange={(e) => set('dimensionsNote', e.target.value)} className={inputClass} />
+              <div className="mt-1.5 flex items-center gap-2">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  placeholder="H (cm)"
+                  value={form.heightCm}
+                  onChange={(e) => set('heightCm', e.target.value)}
+                  className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
+                />
+                <span className="text-muted-foreground">×</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  placeholder="L (cm)"
+                  value={form.widthCm}
+                  onChange={(e) => set('widthCm', e.target.value)}
+                  className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+              <input
+                type="text"
+                placeholder="Ex. : précision supplémentaire (encadrement, etc.)"
+                value={form.dimensionsNote}
+                onChange={(e) => set('dimensionsNote', e.target.value)}
+                className={cn(inputClass, 'mt-1.5')}
+              />
             </div>
             <div>
               <FieldLabel>{t('artwork.fields.signature')}</FieldLabel>

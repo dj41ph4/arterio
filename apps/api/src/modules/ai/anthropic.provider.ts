@@ -132,8 +132,9 @@ Return ONLY a JSON object: {"description": "...", "keywords": [...], "suggestedC
   async autofillArtwork(input: ArtworkAutofillInput): Promise<AiAutofillResponse<ArtworkAutofillResult>> {
     const systemPrompt = `You are an expert art cataloguer. Respond in language code: ${input.locale}.
 Only state facts you are confident about for this specific, named work — leave a field out entirely rather than guessing.
+If a dimension is known (e.g. "46x38 cm"), split it into heightCm (first number) and widthCm (second number), in centimeters — alongside dimensionsNote with the raw text, never instead of the parsed numbers.
 CRITICAL: if you have nothing useful for a field, OMIT that key entirely. Never write a sentence ABOUT not knowing something (e.g. "No information is available for this work") as the VALUE of a field.
-Return ONLY a JSON object with any of: description, techniqueName, dateText, yearFrom (number), dimensionsNote, signatureDescription (e.g. "signé en bas à droite"), condition, tags (string array).`;
+Return ONLY a JSON object with any of: description, techniqueName, dateText, yearFrom (number), heightCm (number), widthCm (number), dimensionsNote, signatureDescription (e.g. "signé en bas à droite"), condition, tags (string array).`;
     const userMessage = `Title: ${input.title ?? '(unknown)'}\nArtist: ${input.artistName ?? '(unknown)'}`;
     const text = await this.complete(systemPrompt, userMessage);
     return this.parseAutofillResult<ArtworkAutofillResult>(text, this.model);

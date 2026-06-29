@@ -6,6 +6,8 @@ export interface ArtworkAutofillResult {
   techniqueName?: string;
   dateText?: string;
   yearFrom?: number;
+  heightCm?: number;
+  widthCm?: number;
   dimensionsNote?: string;
   signatureDescription?: string;
   condition?: string;

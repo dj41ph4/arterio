@@ -204,6 +204,8 @@ export class ArtworkService {
             status: (body.status as never) ?? 'draft',
             condition: (body.condition as never) ?? 'unknown',
             collectionId: (body.collectionId as string) || null,
+            heightCm: (body.heightCm as number) ?? null,
+            widthCm: (body.widthCm as number) ?? null,
             dimensionsNote: (body.dimensionsNote as string) ?? null,
             framed: (body.framed as boolean) ?? false,
             acquisitionMethod: (body.acquisitionMethod as never) ?? 'unknown',
@@ -444,6 +446,7 @@ export class ArtworkService {
   /** Builds a Prisma orderBy, routing relation-backed fields (artist) through their join. */
   private buildOrderBy(field: string, dir: 'asc' | 'desc'): Record<string, unknown> {
     if (field === 'artistName') return { artist: { fullName: dir } };
+    if (field === 'collection') return { collection: { name: dir } };
     const allowed = [
       'inventoryNumber',
       'yearFrom',
@@ -452,6 +455,8 @@ export class ArtworkService {
       'updatedAt',
       'createdAt',
       'acquisitionDate',
+      'heightCm',
+      'widthCm',
     ];
     return { [allowed.includes(field) ? field : 'updatedAt']: dir };
   }

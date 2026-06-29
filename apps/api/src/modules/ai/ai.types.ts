@@ -41,6 +41,10 @@ export interface ArtworkAutofillResult {
   techniqueName?: string;
   dateText?: string;
   yearFrom?: number;
+  /** Height in cm — when a source gives "20x30 cm", the larger dimension convention is height x width; parsed out of dimensionsNote, not left as text-only. */
+  heightCm?: number;
+  widthCm?: number;
+  /** Raw dimension text as found in the source (may include extra detail beyond height/width, e.g. a frame size) — kept alongside the parsed numbers, never instead of them. */
   dimensionsNote?: string;
   /** Where/how the work is signed, e.g. "signé en bas à droite" — important for authentication. */
   signatureDescription?: string;

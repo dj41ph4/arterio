@@ -48,6 +48,9 @@ const SORT_FIELD: Record<string, string> = {
   condition: 'condition',
   inventoryNumber: 'inventoryNumber',
   acquisitionDate: 'acquisitionDate',
+  heightCm: 'heightCm',
+  widthCm: 'widthCm',
+  collectionName: 'collection',
 };
 
 function Checkbox({
