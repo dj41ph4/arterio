@@ -27,6 +27,16 @@ function InviteForm({ roles, onInvited }: { roles: { key: string; name: string }
   const [fullName, setFullName] = React.useState('');
   const [roleKey, setRoleKey] = React.useState(roles[0]?.key ?? '');
 
+  // `roles` loads asynchronously and is usually still empty on first render,
+  // so the useState initializer above almost always locks roleKey at ''
+  // forever — the submit guard below then silently no-ops on every click
+  // ("le bouton ajouter ne fonctionne pas") since roleKey never gets filled
+  // unless the user happens to manually touch the dropdown. Pick a default
+  // once the real list arrives.
+  React.useEffect(() => {
+    if (!roleKey && roles.length) setRoleKey(roles[0]!.key);
+  }, [roles, roleKey]);
+
   const mutation = useMutation({
     mutationFn: () => membersApi.invite({ email, fullName, roleKey }),
     onSuccess: () => {
@@ -76,7 +86,7 @@ function InviteForm({ roles, onInvited }: { roles: { key: string; name: string }
       </div>
       <button
         type="submit"
-        disabled={mutation.isPending || !email || !fullName}
+        disabled={mutation.isPending || !email || !fullName || !roleKey}
         className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
       >
         <UserPlus className="h-4 w-4" /> Ajouter
