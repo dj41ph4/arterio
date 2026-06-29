@@ -106,6 +106,16 @@ from `window.location` at runtime (same-origin `/api/v1` behind nginx on :80/:44
 image work on any NAS/LAN IP without a rebuild — don't reintroduce a hardcoded
 `localhost:4000` default.
 
+`apps/web/next.config.mjs` has a matching `rewrites()` that forwards `/api/v1/*` and
+`/uploads/*` server-side to the API container (`API_INTERNAL_URL`, defaults to
+`http://api:4000` — the compose service name) — so a single reverse-proxy entry
+pointed at the **web** container alone is enough; the web container does the
+internal hand-off to the API container itself. This is the recommended single-domain
+deployment and needs no CORS configuration at all, since the browser only ever sees
+one origin. A genuinely split deployment (API on a separate host) still works via the
+manual API-host override (login screen / first-run setup) — that's the case CORS
+below exists for.
+
 ### CORS
 `apps/api/src/main.ts` auto-allows LAN-private origins (`10.x`, `192.168.x`,
 `172.16-31.x`, `localhost`) plus `APP_URL` and any origin listed in `CORS_ORIGINS`

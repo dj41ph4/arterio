@@ -8,6 +8,13 @@
 #  Pour déployer : Container Manager → Projet → coller ce fichier → Lancer.
 #  Premier lancement : ouvrez http://IP-DU-NAS:3000 → assistant de configuration.
 #  À sauvegarder : le seul dossier ./data (base + photos/documents).
+#
+#  Reverse proxy / nom de domaine : pointez UN SEUL hôte du reverse proxy vers
+#  le port 3000 (web). Le conteneur web relaie lui-même /api/v1 et /uploads
+#  vers le conteneur api en interne (réseau Docker) — pas besoin d'une seconde
+#  règle de proxy pour l'API, et pas de CORS à configurer dans le cas courant
+#  (un seul domaine). N'ouvrez/exposez le port 4000 au reverse proxy que si
+#  vous voulez vraiment un domaine séparé pour l'API (voir CORS_ORIGINS ci-dessous).
 # =============================================================================
 
 name: arterio
@@ -30,10 +37,9 @@ services:
     #   # Décommentez si votre reverse proxy se connecte à l'API en HTTPS
     #   # (certificat auto-signé généré à chaque démarrage, jamais persisté) :
     #   HTTPS_ENABLED: 'true'
-    #   # OBLIGATOIRE derrière un reverse proxy avec un nom de domaine public :
-    #   # le domaine affiché dans la barre d'adresse du navigateur (celui du WEB,
-    #   # pas celui de l'API si vous les avez séparés) doit être listé ici, sinon
-    #   # le navigateur bloque les appels avec une erreur CORS ("Failed to fetch").
+    #   # Seulement si l'API est exposée sur un domaine SÉPARÉ du web (déploiement
+    #   # éclaté entre deux serveurs/domaines) — sinon inutile, le relais interne
+    #   # via le conteneur web (voir l'en-tête du fichier) évite tout CORS :
     #   APP_URL: 'https://arterio.votredomaine.com'
     #   CORS_ORIGINS: 'https://arterio.votredomaine.com'
     labels:
