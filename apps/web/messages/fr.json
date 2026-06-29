@@ -285,7 +285,8 @@
   "reports": {
     "subtitle": "Générez des rapports PDF et consultez un aperçu en direct de votre collection",
     "generatePdf": "Générer le PDF",
-    "generating": "Génération de « {name} »… (démo)",
+    "generated": "« {name} » généré et téléchargé",
+    "generateFailed": "Échec de la génération du rapport",
     "snapshot": "Aperçu en direct",
     "types": {
       "catalogue": { "title": "Catalogue de collection", "description": "Catalogue illustré de toutes les œuvres" },

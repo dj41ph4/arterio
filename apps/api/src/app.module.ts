@@ -12,6 +12,7 @@ import { CatalogModule } from './modules/catalog/artwork.module';
 import { ArtistsModule } from './modules/artists/artists.module';
 import { ExhibitionsModule } from './modules/exhibitions/exhibitions.module';
 import { CollectionsModule } from './modules/collections/collections.module';
+import { ReportsModule } from './modules/reports/reports.module';
 import { RestorationsModule } from './modules/restorations/restorations.module';
 import { LoansModule } from './modules/loans/loans.module';
 import { LocationsModule } from './modules/locations/locations.module';
@@ -48,6 +49,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
     ArtistsModule,
     ExhibitionsModule,
     CollectionsModule,
+    ReportsModule,
     RestorationsModule,
     LoansModule,
     LocationsModule,

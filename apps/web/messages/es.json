@@ -285,7 +285,8 @@
   "reports": {
     "subtitle": "Genere informes en PDF y consulte un resumen en vivo de su colección",
     "generatePdf": "Generar PDF",
-    "generating": "Generando \"{name}\"… (demo)",
+    "generated": "\"{name}\" generado y descargado",
+    "generateFailed": "Error al generar el informe",
     "snapshot": "Resumen en vivo",
     "types": {
       "catalogue": { "title": "Catálogo de la colección", "description": "Catálogo ilustrado de todas las obras" },

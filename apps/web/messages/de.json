@@ -285,7 +285,8 @@
   "reports": {
     "subtitle": "Erstellen Sie PDF-Berichte und sehen Sie eine Live-Übersicht Ihrer Sammlung",
     "generatePdf": "PDF erstellen",
-    "generating": "Erstelle \"{name}\"… (Demo)",
+    "generated": "\"{name}\" erstellt und heruntergeladen",
+    "generateFailed": "Erstellung des Berichts fehlgeschlagen",
     "snapshot": "Live-Übersicht",
     "types": {
       "catalogue": { "title": "Sammlungskatalog", "description": "Illustrierter Katalog aller Werke" },

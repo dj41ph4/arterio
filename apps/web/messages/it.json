@@ -285,7 +285,8 @@
   "reports": {
     "subtitle": "Genera report PDF e visualizza un riepilogo in tempo reale della tua collezione",
     "generatePdf": "Genera PDF",
-    "generating": "Generazione di \"{name}\"… (demo)",
+    "generated": "\"{name}\" generato e scaricato",
+    "generateFailed": "Generazione del rapporto non riuscita",
     "snapshot": "Riepilogo in tempo reale",
     "types": {
       "catalogue": { "title": "Catalogo della collezione", "description": "Catalogo illustrato di tutte le opere" },

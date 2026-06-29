@@ -304,7 +304,8 @@
   "reports": {
     "subtitle": "Generate PDF reports and view a live snapshot of your collection",
     "generatePdf": "Generate PDF",
-    "generating": "Generating \"{name}\"… (demo)",
+    "generated": "\"{name}\" generated and downloaded",
+    "generateFailed": "Failed to generate the report",
     "snapshot": "Live snapshot",
     "types": {
       "catalogue": { "title": "Collection catalogue", "description": "Illustrated catalogue of all artworks" },

@@ -285,7 +285,8 @@
   "reports": {
     "subtitle": "Genereer PDF-rapporten en bekijk een live overzicht van uw collectie",
     "generatePdf": "PDF genereren",
-    "generating": "\"{name}\" genereren… (demo)",
+    "generated": "\"{name}\" gegenereerd en gedownload",
+    "generateFailed": "Genereren van het rapport mislukt",
     "snapshot": "Live overzicht",
     "types": {
       "catalogue": { "title": "Collectiecatalogus", "description": "Geïllustreerde catalogus van alle kunstwerken" },

@@ -1,13 +1,15 @@
 'use client';
 
+import * as React from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import {
-  BarChart3, FileBarChart, ShieldCheck, Wrench, Image as ImageIcon, Download,
+  BarChart3, FileBarChart, ShieldCheck, Wrench, Image as ImageIcon, Download, RefreshCw,
 } from 'lucide-react';
 import { useDashboardStats } from '@/hooks/use-artworks';
 import { formatCurrency } from '@/lib/format';
 import { PageHeader } from '@/components/app-shell/page-header';
+import { reportsApi, type ReportType } from '@/lib/data/reports';
 
 const REPORT_DEFS = [
   { id: 'catalogue', icon: ImageIcon, tone: 'text-blue-600 dark:text-blue-400 bg-blue-500/12' },
@@ -19,9 +21,18 @@ const REPORT_DEFS = [
 export function ReportsView() {
   const t = useTranslations();
   const { data: stats, isLoading } = useDashboardStats();
+  const [generating, setGenerating] = React.useState<ReportType | null>(null);
 
-  const handleGenerate = (id: string) => {
-    toast.info(t('reports.generating', { name: t(`reports.types.${id}.title`) }));
+  const handleGenerate = async (id: ReportType) => {
+    setGenerating(id);
+    try {
+      await reportsApi.downloadPdf(id);
+      toast.success(t('reports.generated', { name: t(`reports.types.${id}.title`) }));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('reports.generateFailed'));
+    } finally {
+      setGenerating(null);
+    }
   };
 
   return (
@@ -48,9 +59,10 @@ export function ReportsView() {
                 </div>
                 <button
                   onClick={() => handleGenerate(def.id)}
-                  className="flex items-center justify-center gap-2 self-start rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
+                  disabled={generating !== null}
+                  className="flex items-center justify-center gap-2 self-start rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
                 >
-                  <Download className="h-3.5 w-3.5" />
+                  {generating === def.id ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
                   {t('reports.generatePdf')}
                 </button>
               </div>
