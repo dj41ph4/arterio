@@ -51,6 +51,15 @@ services:
     ports:
       - '3000:3000'
     depends_on: [api]
+    # environment:
+    #   # Le conteneur web relaie /api/v1 et /uploads vers "http://api:4000" par
+    #   # défaut — ça ne marche QUE si api et web sont déployés ensemble comme
+    #   # ce fichier (même Projet = même réseau Docker, le nom "api" se résout
+    #   # tout seul). Si vous avez créé les conteneurs séparément (pas via ce
+    #   # fichier comme un seul Projet), "api" ne se résout pas et toutes les
+    #   # requêtes échouent en 500 sans rien dans les logs du conteneur api.
+    #   # Pointez alors directement vers l'IP du NAS + le port publié de l'api :
+    #   API_INTERNAL_URL: 'http://IP-DU-NAS:4000'
     labels:
       com.centurylinklabs.watchtower.enable: 'true'
 
