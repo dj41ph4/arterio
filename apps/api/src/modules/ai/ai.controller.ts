@@ -33,7 +33,7 @@ export class AiController {
         data: attempts.map((a) => ({
           organizationId,
           operation,
-          provider: this.ai.id,
+          provider: a.provider ?? this.ai.id,
           model: a.model,
           success: a.success,
         })),

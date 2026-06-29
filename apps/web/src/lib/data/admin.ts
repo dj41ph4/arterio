@@ -56,6 +56,16 @@ export const membersApi = {
 // Organization / notifications
 // ---------------------------------------------------------------------------
 
+export interface AiSettingsView {
+  enabled: boolean;
+  hasApiKey: boolean;
+  models: string[];
+  hasWikiArtKey: boolean;
+  hasGeminiKey: boolean;
+  /** Order providers are tried in — the first with no usable result falls through to the next. */
+  providerOrder: ('openrouter' | 'gemini')[];
+}
+
 export interface OrganizationSettings {
   id: string;
   name: string;
@@ -93,11 +103,17 @@ export const settingsApi = {
   updateExternalSources: (patch: Partial<Record<'europeana' | 'rijksmuseum' | 'harvard' | 'smithsonian', string>>) =>
     apiFetch<OrganizationSettings>('/settings/external-sources', { method: 'PATCH', body: JSON.stringify(patch) }),
 
-  getAiSettings: () =>
-    apiFetch<{ enabled: boolean; hasApiKey: boolean; models: string[]; hasWikiArtKey: boolean }>('/settings/ai'),
-  /** apiKey/wikiartApiKey: omit to keep unchanged, send "" to clear it. */
-  updateAiSettings: (patch: { enabled?: boolean; apiKey?: string; models?: string[]; wikiartApiKey?: string }) =>
-    apiFetch<{ enabled: boolean; hasApiKey: boolean; models: string[]; hasWikiArtKey: boolean }>('/settings/ai', {
+  getAiSettings: () => apiFetch<AiSettingsView>('/settings/ai'),
+  /** apiKey/wikiartApiKey/geminiApiKey: omit to keep unchanged, send "" to clear it. */
+  updateAiSettings: (patch: {
+    enabled?: boolean;
+    apiKey?: string;
+    models?: string[];
+    wikiartApiKey?: string;
+    geminiApiKey?: string;
+    providerOrder?: ('openrouter' | 'gemini')[];
+  }) =>
+    apiFetch<AiSettingsView>('/settings/ai', {
       method: 'PATCH',
       body: JSON.stringify(patch),
     }),

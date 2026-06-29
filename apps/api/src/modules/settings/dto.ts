@@ -87,6 +87,20 @@ export class UpdateAiSettingsDto {
   @IsOptional()
   @IsString()
   wikiartApiKey?: string;
+
+  @ApiPropertyOptional({ description: 'Leave out to keep unchanged, or send "" to clear (falls back to the server\'s GEMINI_API_KEY env var, if set)' })
+  @IsOptional()
+  @IsString()
+  geminiApiKey?: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Fallback order between configured providers, e.g. ["openrouter", "gemini"] or reversed.',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsIn(['openrouter', 'gemini'], { each: true })
+  providerOrder?: string[];
 }
 
 export class UploadCertificateDto {

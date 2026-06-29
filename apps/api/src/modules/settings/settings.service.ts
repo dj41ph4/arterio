@@ -15,6 +15,16 @@ export type ExternalSourceKey = (typeof EXTERNAL_SOURCES)[number];
 export const OAUTH_PROVIDERS = ['google', 'microsoft'] as const;
 export type OAuthProviderKey = (typeof OAUTH_PROVIDERS)[number];
 
+interface AiOrgSettings {
+  enabled?: boolean;
+  openrouterApiKeyEnc?: string;
+  models?: string[];
+  wikiartApiKeyEnc?: string;
+  geminiApiKeyEnc?: string;
+  /** Fallback order between configured providers, e.g. ['openrouter', 'gemini'] or reversed. */
+  providerOrder?: string[];
+}
+
 @Injectable()
 export class SettingsService {
   constructor(
@@ -64,20 +74,32 @@ export class SettingsService {
   async getAiSettings(user: AuthUser) {
     const org = await this.prisma.organization.findUniqueOrThrow({ where: { id: user.organizationId } });
     const settings = (org.settings as Record<string, unknown>) ?? {};
-    const ai = (settings.ai as { enabled?: boolean; openrouterApiKeyEnc?: string; models?: string[]; wikiartApiKeyEnc?: string }) ?? {};
+    const ai = (settings.ai as AiOrgSettings) ?? {};
     return {
       enabled: ai.enabled ?? false,
       hasApiKey: Boolean(ai.openrouterApiKeyEnc),
       models: ai.models ?? [],
       hasWikiArtKey: Boolean(ai.wikiartApiKeyEnc),
+      hasGeminiKey: Boolean(ai.geminiApiKeyEnc),
+      providerOrder: ai.providerOrder?.length === 2 ? ai.providerOrder : ['openrouter', 'gemini'],
     };
   }
 
-  /** apiKey/wikiartApiKey: omit to keep unchanged, send "" to clear (falls back to the env OPENROUTER_API_KEY / to Wikimedia Commons, respectively). */
-  async updateAiSettings(user: AuthUser, input: { enabled?: boolean; apiKey?: string; models?: string[]; wikiartApiKey?: string }) {
+  /** apiKey/wikiartApiKey/geminiApiKey: omit to keep unchanged, send "" to clear (falls back to the matching env var / Wikimedia Commons, respectively). */
+  async updateAiSettings(
+    user: AuthUser,
+    input: {
+      enabled?: boolean;
+      apiKey?: string;
+      models?: string[];
+      wikiartApiKey?: string;
+      geminiApiKey?: string;
+      providerOrder?: string[];
+    },
+  ) {
     const org = await this.prisma.organization.findUniqueOrThrow({ where: { id: user.organizationId } });
     const settings = (org.settings as Record<string, unknown>) ?? {};
-    const existing = (settings.ai as { enabled?: boolean; openrouterApiKeyEnc?: string; models?: string[]; wikiartApiKeyEnc?: string }) ?? {};
+    const existing = (settings.ai as AiOrgSettings) ?? {};
 
     const next = { ...existing };
     if (input.enabled !== undefined) next.enabled = input.enabled;
@@ -88,6 +110,14 @@ export class SettingsService {
     if (input.wikiartApiKey !== undefined) {
       if (input.wikiartApiKey === '') delete next.wikiartApiKeyEnc;
       else next.wikiartApiKeyEnc = this.crypto.encrypt(input.wikiartApiKey);
+    }
+    if (input.geminiApiKey !== undefined) {
+      if (input.geminiApiKey === '') delete next.geminiApiKeyEnc;
+      else next.geminiApiKeyEnc = this.crypto.encrypt(input.geminiApiKey);
+    }
+    if (input.providerOrder !== undefined) {
+      const valid = input.providerOrder.filter((p) => p === 'openrouter' || p === 'gemini');
+      if (valid.length === 2) next.providerOrder = valid;
     }
     if (input.models !== undefined) {
       next.models = input.models.map((m) => m.trim()).filter(Boolean).slice(0, 3);

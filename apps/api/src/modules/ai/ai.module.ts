@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { AI_PROVIDER } from './ai.types';
 import { AnthropicAiProvider } from './anthropic.provider';
 import { OpenRouterAiProvider } from './openrouter.provider';
+import { GeminiAiProvider } from './gemini.provider';
+import { AiProviderChain } from './ai-provider-chain';
 import { OpenRouterController } from './openrouter.controller';
 import { AiController } from './ai.controller';
 import { PrismaModule } from '../../core/prisma/prisma.module';
@@ -32,9 +34,21 @@ import type { Env } from '../../core/config/configuration';
           const model = config.get('AI_MODEL', { infer: true });
           return new AnthropicAiProvider(apiKey ?? '', model);
         }
-        const apiKey = config.get('OPENROUTER_API_KEY', { infer: true });
-        const model = config.get('OPENROUTER_MODEL', { infer: true });
-        return new OpenRouterAiProvider(apiKey ?? '', model ?? '', prisma, crypto);
+        const openRouterKey = config.get('OPENROUTER_API_KEY', { infer: true });
+        const openRouterModel = config.get('OPENROUTER_MODEL', { infer: true });
+        const geminiKey = config.get('GEMINI_API_KEY', { infer: true });
+        const geminiModel = config.get('GEMINI_MODEL', { infer: true });
+        // Chained so a free-tier OpenRouter model that 402s/429s — or simply
+        // finds nothing — falls through to Gemini's free tier automatically,
+        // with the order itself swappable per-org from Settings → AI.
+        return new AiProviderChain(
+          {
+            openrouter: new OpenRouterAiProvider(openRouterKey ?? '', openRouterModel ?? '', prisma, crypto),
+            gemini: new GeminiAiProvider(geminiKey ?? '', geminiModel ?? '', prisma, crypto),
+          },
+          ['openrouter', 'gemini'],
+          prisma,
+        );
       },
     },
   ],

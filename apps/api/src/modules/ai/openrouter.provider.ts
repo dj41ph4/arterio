@@ -248,7 +248,7 @@ export class OpenRouterAiProvider implements AiProvider {
       try {
         const text = await this.callModel(model, apiKey, systemPrompt, userMessage, opts);
         const successMessage = `Réponse reçue avec succès du modèle "${model}"`;
-        attempts.push({ model, success: true, message: successMessage });
+        attempts.push({ model, success: true, message: successMessage, provider: 'openrouter' });
         this.logger.log(successMessage);
         const fallbackUsed = attempts.length > 1;
         const message = fallbackUsed
@@ -261,7 +261,7 @@ export class OpenRouterAiProvider implements AiProvider {
       } catch (e) {
         const reason = describeError(e);
         const failMessage = `Échec appel modèle "${model}" : ${reason}`;
-        attempts.push({ model, success: false, message: failMessage });
+        attempts.push({ model, success: false, message: failMessage, provider: 'openrouter' });
         this.logger.warn(failMessage);
       }
     }
@@ -305,13 +305,13 @@ export class OpenRouterAiProvider implements AiProvider {
       const model = models[i]!;
       if (outcome.status === 'rejected') {
         const reason = describeError(outcome.reason);
-        attempts.push({ model, success: false, message: `Échec appel modèle "${model}" : ${reason}` });
+        attempts.push({ model, success: false, message: `Échec appel modèle "${model}" : ${reason}`, provider: 'openrouter' });
         this.logger.warn(`Échec appel modèle "${model}" : ${reason}`);
         return;
       }
       const block = extractJsonBlock(outcome.value);
       if (!block) {
-        attempts.push({ model, success: false, message: `Réponse reçue de "${model}" mais aucun JSON exploitable.` });
+        attempts.push({ model, success: false, message: `Réponse reçue de "${model}" mais aucun JSON exploitable.`, provider: 'openrouter' });
         return;
       }
       try {
@@ -322,6 +322,7 @@ export class OpenRouterAiProvider implements AiProvider {
         attempts.push({
           model,
           success: fieldCount > 0,
+          provider: 'openrouter',
           message:
             fieldCount > 0
               ? `Réponse reçue avec succès du modèle "${model}" (${fieldCount} champ${fieldCount > 1 ? 's' : ''}).`
@@ -329,7 +330,7 @@ export class OpenRouterAiProvider implements AiProvider {
         });
         if (fieldCount > 0) parsedByModel.push({ model, data: parsed });
       } catch (e) {
-        attempts.push({ model, success: false, message: `Réponse reçue de "${model}" mais JSON invalide (${(e as Error).message}).` });
+        attempts.push({ model, success: false, message: `Réponse reçue de "${model}" mais JSON invalide (${(e as Error).message}).`, provider: 'openrouter' });
       }
     });
 

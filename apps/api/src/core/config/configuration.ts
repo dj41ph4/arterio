@@ -47,6 +47,12 @@ export const envSchema = z.object({
   // OpenRouter integration (optional)
   OPENROUTER_API_KEY: z.string().optional(),
   OPENROUTER_MODEL: z.string().default('openrouter/auto'),
+  // Gemini (Google AI Studio) — free-tier fallback for when OpenRouter's free
+  // models hit a 402/429, or as the preferred provider if an org orders it
+  // first (see Settings → AI). Native Google Search grounding, no separate
+  // "web" plugin fee unlike OpenRouter.
+  GEMINI_API_KEY: z.string().optional(),
+  GEMINI_MODEL: z.string().default('gemini-2.0-flash'),
 
   // Artist enrichment fallback sources — used when Wikidata has no unambiguous
   // art-world match. The Met and AIC APIs are keyless; the rest are free but

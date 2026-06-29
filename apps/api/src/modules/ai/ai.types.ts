@@ -93,6 +93,8 @@ export interface AiAttemptLog {
   success: boolean;
   /** Human-readable, e.g. "Clé API invalide ou refusée (401)" or "Réponse reçue avec succès". */
   message: string;
+  /** Which provider made this attempt ("openrouter" | "gemini" | ...) — set when multiple providers may be chained, so usage logging attributes calls correctly. */
+  provider?: string;
 }
 
 export interface AiAutofillMeta {

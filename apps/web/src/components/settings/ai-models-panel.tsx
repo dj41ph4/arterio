@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Save, X, Sparkles, Check, Search, Image as ImageIcon } from 'lucide-react';
+import { Save, X, Sparkles, Check, Search, Image as ImageIcon, ArrowRightLeft } from 'lucide-react';
 import { settingsApi } from '@/lib/data/admin';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -27,22 +27,35 @@ export function AiModelsPanel() {
   const [enabled, setEnabled] = React.useState<boolean | null>(null);
   const [apiKey, setApiKey] = React.useState<string | undefined>(undefined);
   const [wikiartApiKey, setWikiartApiKey] = React.useState<string | undefined>(undefined);
+  const [geminiApiKey, setGeminiApiKey] = React.useState<string | undefined>(undefined);
+  const [providerOrder, setProviderOrder] = React.useState<('openrouter' | 'gemini')[] | null>(null);
   const [models, setModels] = React.useState<string[] | null>(null);
   const [search, setSearch] = React.useState('');
   const [freeOnly, setFreeOnly] = React.useState(true);
 
   const effectiveEnabled = enabled ?? data?.enabled ?? false;
   const effectiveModels = models ?? data?.models ?? [];
-  const hasChanges = enabled !== null || apiKey !== undefined || wikiartApiKey !== undefined || models !== null;
+  const effectiveOrder = providerOrder ?? data?.providerOrder ?? ['openrouter', 'gemini'];
+  const hasChanges =
+    enabled !== null || apiKey !== undefined || wikiartApiKey !== undefined || geminiApiKey !== undefined || providerOrder !== null || models !== null;
 
   const mutation = useMutation({
     mutationFn: () =>
-      settingsApi.updateAiSettings({ enabled: enabled ?? undefined, apiKey, wikiartApiKey, models: models ?? undefined }),
+      settingsApi.updateAiSettings({
+        enabled: enabled ?? undefined,
+        apiKey,
+        wikiartApiKey,
+        geminiApiKey,
+        providerOrder: providerOrder ?? undefined,
+        models: models ?? undefined,
+      }),
     onSuccess: () => {
       toast.success('Réglages IA enregistrés');
       setEnabled(null);
       setApiKey(undefined);
       setWikiartApiKey(undefined);
+      setGeminiApiKey(undefined);
+      setProviderOrder(null);
       setModels(null);
       qc.invalidateQueries({ queryKey: ['ai-settings'] });
     },
@@ -71,7 +84,7 @@ export function AiModelsPanel() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-primary" /> Intelligence artificielle (OpenRouter)
+          <Sparkles className="h-4 w-4 text-primary" /> Intelligence artificielle (OpenRouter + Gemini)
         </CardTitle>
         <CardDescription>
           Activez l'enrichissement IA et choisissez jusqu'à {MAX_MODELS} modèles. Les modèles configurés sont
@@ -209,6 +222,62 @@ export function AiModelsPanel() {
             <code>abc123:xyz789</code>).
           </p>
         </div>
+
+        <div>
+          <label className="mb-1 flex items-center gap-2 text-sm font-medium text-foreground">
+            Clé API Gemini (optionnel — secours gratuit)
+            {data.hasGeminiKey && (
+              <span className="flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400">
+                <Check className="h-3 w-3" /> Configurée
+              </span>
+            )}
+          </label>
+          <input
+            type="password"
+            value={geminiApiKey ?? ''}
+            onChange={(e) => setGeminiApiKey(e.target.value)}
+            placeholder={data.hasGeminiKey ? '••••••••••••••••' : 'Coller la clé API Gemini ici'}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            Si OpenRouter ne renvoie rien d'utilisable (quota épuisé, erreur 402…), Gemini prend automatiquement le
+            relais — recherche web native incluse, sans frais supplémentaire. Clé gratuite sur{' '}
+            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-primary hover:underline">
+              aistudio.google.com/apikey
+            </a>
+            .
+          </p>
+        </div>
+
+        {(data.hasApiKey || apiKey) && (data.hasGeminiKey || geminiApiKey) && (
+          <div>
+            <p className="mb-2 flex items-center gap-1.5 text-sm font-medium text-foreground">
+              <ArrowRightLeft className="h-3.5 w-3.5 text-primary" /> Ordre de priorité
+            </p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setProviderOrder(['openrouter', 'gemini'])}
+                className={cn(
+                  'rounded-lg border px-3 py-2 text-left text-xs font-medium transition-colors',
+                  effectiveOrder[0] === 'openrouter' ? 'border-primary bg-primary/10 text-primary' : 'border-border text-foreground hover:bg-muted',
+                )}
+              >
+                OpenRouter en priorité, Gemini en secours
+              </button>
+              <button
+                type="button"
+                onClick={() => setProviderOrder(['gemini', 'openrouter'])}
+                className={cn(
+                  'rounded-lg border px-3 py-2 text-left text-xs font-medium transition-colors',
+                  effectiveOrder[0] === 'gemini' ? 'border-primary bg-primary/10 text-primary' : 'border-border text-foreground hover:bg-muted',
+                )}
+              >
+                Gemini en priorité, OpenRouter en secours
+              </button>
+            </div>
+          </div>
+        )}
 
         <button
           onClick={() => mutation.mutate()}
