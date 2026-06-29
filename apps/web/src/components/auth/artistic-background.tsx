@@ -3,12 +3,16 @@
 import * as React from 'react';
 
 /**
- * Generative line-art background for the auth/setup screens — replaces a
- * static blurred-blob image with a few flowing contour lines that drift
- * smoothly (sine-driven control points, not random jitter), like a slow
- * brush stroke. Mutates path `d` attributes directly via refs instead of
- * going through React state every frame — a render loop at 60fps through
- * setState would otherwise re-render the whole tree for nothing.
+ * Generative line-art background for the auth/setup screens — a handful of
+ * soft, flowing brush-stroke-like ribbons instead of thin uniform sine
+ * lines: each stroke is the sum of two sine harmonics (not a single clean
+ * period, so the motion never looks mechanical), rendered twice — a wide,
+ * blurred "glow" pass underneath a crisp pass on top — for the soft-edged
+ * depth of an actual brush stroke, with a warmer 3-colour indigo/violet/rose
+ * palette instead of a flat two-tone. Mutates path `d` attributes directly
+ * via refs instead of going through React state every frame — a render loop
+ * at 60fps through setState would otherwise re-render the whole tree for
+ * nothing.
  */
 
 interface LineSpec {
@@ -17,21 +21,32 @@ interface LineSpec {
   frequency: number;
   phase: number;
   speed: number;
+  /** Secondary harmonic — smaller, faster or slower, different phase — is what keeps the curve from reading as a perfect, mechanical sine wave. */
+  amplitude2: number;
+  frequency2: number;
+  phase2: number;
+  speed2: number;
   width: number;
-  color: 'primary' | 'violet';
+  color: 'indigo' | 'violet' | 'rose';
   opacity: number;
 }
 
 const LINES: LineSpec[] = [
-  { baseY: 18, amplitude: 8, frequency: 1.3, phase: 0, speed: 0.18, width: 1.5, color: 'primary', opacity: 0.5 },
-  { baseY: 34, amplitude: 11, frequency: 0.9, phase: 1.4, speed: 0.13, width: 1, color: 'violet', opacity: 0.35 },
-  { baseY: 50, amplitude: 14, frequency: 1.1, phase: 2.6, speed: 0.21, width: 1.25, color: 'primary', opacity: 0.4 },
-  { baseY: 64, amplitude: 9, frequency: 1.6, phase: 0.7, speed: 0.16, width: 1, color: 'violet', opacity: 0.3 },
-  { baseY: 78, amplitude: 13, frequency: 0.8, phase: 3.3, speed: 0.11, width: 1.5, color: 'primary', opacity: 0.35 },
-  { baseY: 90, amplitude: 7, frequency: 1.4, phase: 1.9, speed: 0.19, width: 1, color: 'violet', opacity: 0.25 },
+  { baseY: 14, amplitude: 7, frequency: 1.1, phase: 0, speed: 0.1, amplitude2: 2.5, frequency2: 2.7, phase2: 1.1, speed2: 0.16, width: 2.2, color: 'indigo', opacity: 0.45 },
+  { baseY: 30, amplitude: 10, frequency: 0.8, phase: 1.4, speed: 0.08, amplitude2: 3, frequency2: 2.1, phase2: 2.3, speed2: 0.13, width: 1.6, color: 'rose', opacity: 0.3 },
+  { baseY: 47, amplitude: 13, frequency: 0.95, phase: 2.6, speed: 0.12, amplitude2: 4, frequency2: 1.9, phase2: 0.4, speed2: 0.1, width: 2, color: 'violet', opacity: 0.38 },
+  { baseY: 63, amplitude: 8, frequency: 1.3, phase: 0.7, speed: 0.09, amplitude2: 2.5, frequency2: 2.4, phase2: 3.1, speed2: 0.15, width: 1.6, color: 'indigo', opacity: 0.28 },
+  { baseY: 78, amplitude: 12, frequency: 0.7, phase: 3.3, speed: 0.07, amplitude2: 3.5, frequency2: 2.2, phase2: 1.7, speed2: 0.11, width: 2, color: 'rose', opacity: 0.3 },
+  { baseY: 92, amplitude: 6, frequency: 1.2, phase: 1.9, speed: 0.1, amplitude2: 2, frequency2: 2.8, phase2: 0.9, speed2: 0.14, width: 1.4, color: 'violet', opacity: 0.22 },
 ];
 
-const POINTS = 9; // control points per line across the width
+const STROKE = {
+  indigo: 'hsl(var(--primary))',
+  violet: 'hsl(259 84% 67%)',
+  rose: 'hsl(330 75% 70%)',
+};
+
+const POINTS = 11; // control points per line across the width
 const VIEW_W = 100;
 const VIEW_H = 100;
 
@@ -52,8 +67,18 @@ function buildPath(ys: number[]): string {
   return d;
 }
 
+function curveY(line: LineSpec, x: number, elapsed: number): number {
+  return (
+    line.baseY +
+    Math.sin(x * line.frequency * Math.PI * 2 + line.phase + elapsed * line.speed) * line.amplitude +
+    Math.sin(x * line.frequency2 * Math.PI * 2 + line.phase2 + elapsed * line.speed2) * line.amplitude2
+  );
+}
+
 export function ArtisticBackground() {
-  const pathRefs = React.useRef<(SVGPathElement | null)[]>([]);
+  // Two refs per line: the soft blurred glow pass, and the crisp pass on top.
+  const glowRefs = React.useRef<(SVGPathElement | null)[]>([]);
+  const sharpRefs = React.useRef<(SVGPathElement | null)[]>([]);
 
   React.useEffect(() => {
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -63,17 +88,13 @@ export function ArtisticBackground() {
     const render = (t: number) => {
       const elapsed = (t - start) / 1000;
       LINES.forEach((line, i) => {
-        const el = pathRefs.current[i];
-        if (!el) return;
         const ys: number[] = [];
         for (let p = 0; p < POINTS; p++) {
-          const x = p / (POINTS - 1);
-          const y =
-            line.baseY +
-            Math.sin(x * line.frequency * Math.PI * 2 + line.phase + elapsed * line.speed) * line.amplitude;
-          ys.push(y);
+          ys.push(curveY(line, p / (POINTS - 1), elapsed));
         }
-        el.setAttribute('d', buildPath(ys));
+        const d = buildPath(ys);
+        glowRefs.current[i]?.setAttribute('d', d);
+        sharpRefs.current[i]?.setAttribute('d', d);
       });
       if (!reduceMotion) raf = requestAnimationFrame(render);
     };
@@ -99,16 +120,36 @@ export function ArtisticBackground() {
         <mask id="line-mask">
           <rect width={VIEW_W} height={VIEW_H} fill="url(#line-fade)" />
         </mask>
+        <filter id="brush-blur" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="1.1" />
+        </filter>
       </defs>
       <g mask="url(#line-mask)">
+        {/* Soft glow pass — wide, blurred, faint; gives each stroke a painted edge instead of a hard vector line. */}
         {LINES.map((line, i) => (
           <path
-            key={i}
+            key={`glow-${i}`}
             ref={(el) => {
-              pathRefs.current[i] = el;
+              glowRefs.current[i] = el;
             }}
             fill="none"
-            stroke={line.color === 'primary' ? 'hsl(var(--primary))' : 'hsl(259 84% 67%)'}
+            stroke={STROKE[line.color]}
+            strokeOpacity={line.opacity * 0.55}
+            strokeWidth={line.width * 3.2}
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+            filter="url(#brush-blur)"
+          />
+        ))}
+        {/* Crisp pass on top — the actual visible stroke. */}
+        {LINES.map((line, i) => (
+          <path
+            key={`sharp-${i}`}
+            ref={(el) => {
+              sharpRefs.current[i] = el;
+            }}
+            fill="none"
+            stroke={STROKE[line.color]}
             strokeOpacity={line.opacity}
             strokeWidth={line.width}
             strokeLinecap="round"

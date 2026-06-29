@@ -226,7 +226,12 @@
     "backToLogin": "Volver al inicio de sesión",
     "noAccount": "¿No tienes cuenta?",
     "requestAccess": "Solicitar acceso",
-    "secured": "Protegido con cifrado de extremo a extremo y MFA"
+    "secured": "Protegido con cifrado de extremo a extremo y MFA",
+    "tagline": "Cuide su colección como lo haría un conservador de museo.",
+    "taglineSubtitle": "Catalogue cada obra, siga su valor y su historia, y presente su colección con el rigor de las grandes instituciones.",
+    "featureCatalogue": "Cada obra, con su ficha completa — técnica, procedencia, valor, fotos.",
+    "featureSecurity": "Sus datos, protegidos como una obra bajo vitrina.",
+    "featureAi": "Una asistencia que encuentra por usted la historia de un artista o una obra."
   },
   "setup": {
     "apiServerQuestion": "¿El servidor API está en esta misma máquina?",
@@ -249,9 +254,9 @@
     "passwordTooShort": "Mínimo 8 caracteres",
     "submitButton": "Crear mi cuenta de administrador",
     "redirecting": "Ya configurado, redirigiendo…",
-    "featureSearch": "100.000+ obras, millones de imágenes, búsqueda instantánea",
-    "featureSecurity": "MFA, llaves de seguridad, AES-256, registro de auditoría inmutable",
-    "featureAi": "Enriquecimiento listo para IA, seis idiomas, núcleo modular",
+    "featureSearch": "Cada obra, con su ficha completa — técnica, procedencia, valor, fotos.",
+    "featureSecurity": "Sus datos, protegidos como una obra bajo vitrina.",
+    "featureAi": "Una asistencia que encuentra por usted la historia de un artista o una obra.",
     "modeNew": "Nueva organización",
     "modeImport": "Importar una migración",
     "importHint": "Restaure un archivo .zip exportado desde otra instalación de Arterio (Configuración → Migración → Exportar). Todo se restaura tal cual, incluidas las cuentas y contraseñas existentes.",

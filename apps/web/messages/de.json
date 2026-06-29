@@ -226,7 +226,12 @@
     "backToLogin": "Zurück zur Anmeldung",
     "noAccount": "Noch kein Konto?",
     "requestAccess": "Zugang anfragen",
-    "secured": "Gesichert mit Ende-zu-Ende-Verschlüsselung und MFA"
+    "secured": "Gesichert mit Ende-zu-Ende-Verschlüsselung und MFA",
+    "tagline": "Pflegen Sie Ihre Sammlung wie ein Museumskurator.",
+    "taglineSubtitle": "Katalogisieren Sie jedes Kunstwerk, verfolgen Sie seinen Wert und seine Geschichte, und präsentieren Sie Ihre Sammlung mit der Sorgfalt großer Institutionen.",
+    "featureCatalogue": "Jedes Werk, vollständig dokumentiert — Technik, Provenienz, Wert, Fotos.",
+    "featureSecurity": "Ihre Daten, geschützt wie ein Werk hinter Glas.",
+    "featureAi": "Eine Unterstützung, die für Sie die Geschichte eines Künstlers oder Werks findet."
   },
   "setup": {
     "apiServerQuestion": "Läuft der API-Server auf derselben Maschine?",
@@ -249,9 +254,9 @@
     "passwordTooShort": "Mindestens 8 Zeichen",
     "submitButton": "Administratorkonto erstellen",
     "redirecting": "Bereits eingerichtet, Weiterleitung…",
-    "featureSearch": "100.000+ Kunstwerke, Millionen Bilder, sofortige Suche",
-    "featureSecurity": "MFA, Sicherheitsschlüssel, AES-256, unveränderliches Prüfprotokoll",
-    "featureAi": "KI-bereite Anreicherung, sechs Sprachen, modularer Kern",
+    "featureSearch": "Jedes Werk, vollständig dokumentiert — Technik, Provenienz, Wert, Fotos.",
+    "featureSecurity": "Ihre Daten, geschützt wie ein Werk hinter Glas.",
+    "featureAi": "Eine Unterstützung, die für Sie die Geschichte eines Künstlers oder Werks findet.",
     "modeNew": "Neue Organisation",
     "modeImport": "Migration importieren",
     "importHint": "Stellen Sie eine .zip-Datei wieder her, die aus einer anderen Arterio-Installation exportiert wurde (Einstellungen → Migration → Exportieren). Alles wird unverändert wiederhergestellt, einschließlich vorhandener Konten und Passwörter.",

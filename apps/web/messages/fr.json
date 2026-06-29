@@ -226,7 +226,12 @@
     "backToLogin": "Retour à la connexion",
     "noAccount": "Pas encore de compte ?",
     "requestAccess": "Demander un accès",
-    "secured": "Sécurisé par chiffrement de bout en bout et MFA"
+    "secured": "Sécurisé par chiffrement de bout en bout et MFA",
+    "tagline": "Prenez soin de votre collection comme un conservateur de musée.",
+    "taglineSubtitle": "Cataloguez chaque œuvre, suivez sa valeur et son parcours, et présentez votre collection avec la rigueur des plus grandes institutions.",
+    "featureCatalogue": "Chaque œuvre, sa fiche complète — technique, provenance, valeur, photos.",
+    "featureSecurity": "Vos données protégées comme une œuvre sous vitrine.",
+    "featureAi": "Une assistance qui retrouve pour vous l'histoire d'un artiste ou d'une œuvre."
   },
   "setup": {
     "apiServerQuestion": "Le serveur API est-il sur cette même machine ?",
@@ -249,9 +254,9 @@
     "passwordTooShort": "8 caractères minimum",
     "submitButton": "Créer mon compte administrateur",
     "redirecting": "Déjà configuré, redirection…",
-    "featureSearch": "100 000+ œuvres, millions d'images, recherche instantanée",
-    "featureSecurity": "MFA, clés de sécurité, AES-256, journal d'audit immuable",
-    "featureAi": "Enrichissement IA, six langues, cœur modulaire",
+    "featureSearch": "Chaque œuvre, sa fiche complète — technique, provenance, valeur, photos.",
+    "featureSecurity": "Vos données protégées comme une œuvre sous vitrine.",
+    "featureAi": "Une assistance qui retrouve pour vous l'histoire d'un artiste ou d'une œuvre.",
     "modeNew": "Nouvelle organisation",
     "modeImport": "Importer une migration",
     "importHint": "Restaurez un fichier .zip exporté depuis une autre installation d'Arterio (Paramètres → Migration → Exporter). Tout est restauré tel quel, y compris les comptes et mots de passe existants.",

@@ -41,30 +41,27 @@ export default async function LoginPage({
 
         <div className="relative max-w-md">
           <h2 className="font-display text-4xl font-semibold leading-tight tracking-tight text-balance">
-            The collection management platform for serious institutions.
+            {t('tagline')}
           </h2>
-          <p className="mt-4 text-white/70">
-            Catalogue, value, track and exhibit with the rigour of the world's leading
-            museums and auction houses.
-          </p>
+          <p className="mt-4 text-white/70">{t('taglineSubtitle')}</p>
           <ul className="mt-8 space-y-3 text-sm text-white/80">
             <li className="flex items-center gap-3">
               <span className="flex size-8 items-center justify-center rounded-lg bg-white/10">
                 <Layers className="size-4" />
               </span>
-              100 000+ artworks, millions of images, instant search
+              {t('featureCatalogue')}
             </li>
             <li className="flex items-center gap-3">
               <span className="flex size-8 items-center justify-center rounded-lg bg-white/10">
                 <ShieldCheck className="size-4" />
               </span>
-              MFA, passkeys, AES-256, immutable audit trail
+              {t('featureSecurity')}
             </li>
             <li className="flex items-center gap-3">
               <span className="flex size-8 items-center justify-center rounded-lg bg-white/10">
                 <Sparkles className="size-4" />
               </span>
-              AI-ready enrichment, six languages, modular core
+              {t('featureAi')}
             </li>
           </ul>
         </div>

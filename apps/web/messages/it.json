@@ -226,7 +226,12 @@
     "backToLogin": "Torna all'accesso",
     "noAccount": "Non hai un account?",
     "requestAccess": "Richiedi accesso",
-    "secured": "Protetto con crittografia end-to-end e MFA"
+    "secured": "Protetto con crittografia end-to-end e MFA",
+    "tagline": "Prendetevi cura della vostra collezione come un curatore di museo.",
+    "taglineSubtitle": "Catalogate ogni opera, seguite il suo valore e la sua storia, e presentate la vostra collezione con il rigore delle grandi istituzioni.",
+    "featureCatalogue": "Ogni opera, con la sua scheda completa — tecnica, provenienza, valore, foto.",
+    "featureSecurity": "I vostri dati, protetti come un'opera sotto vetro.",
+    "featureAi": "Un'assistenza che ritrova per voi la storia di un artista o di un'opera."
   },
   "setup": {
     "apiServerQuestion": "Il server API è sulla stessa macchina?",
@@ -249,9 +254,9 @@
     "passwordTooShort": "Almeno 8 caratteri",
     "submitButton": "Crea il mio account amministratore",
     "redirecting": "Già configurato, reindirizzamento…",
-    "featureSearch": "100.000+ opere, milioni di immagini, ricerca istantanea",
-    "featureSecurity": "MFA, chiavi di sicurezza, AES-256, registro di controllo immutabile",
-    "featureAi": "Arricchimento pronto per l'IA, sei lingue, nucleo modulare",
+    "featureSearch": "Ogni opera, con la sua scheda completa — tecnica, provenienza, valore, foto.",
+    "featureSecurity": "I vostri dati, protetti come un'opera sotto vetro.",
+    "featureAi": "Un'assistenza che ritrova per voi la storia di un artista o di un'opera.",
     "modeNew": "Nuova organizzazione",
     "modeImport": "Importa una migrazione",
     "importHint": "Ripristina un file .zip esportato da un'altra installazione di Arterio (Impostazioni → Migrazione → Esporta). Tutto viene ripristinato così com'è, inclusi account e password esistenti.",

@@ -226,7 +226,12 @@
     "backToLogin": "Back to sign in",
     "noAccount": "Don't have an account?",
     "requestAccess": "Request access",
-    "secured": "Secured with end-to-end encryption & MFA"
+    "secured": "Secured with end-to-end encryption & MFA",
+    "tagline": "Care for your collection like a museum curator.",
+    "taglineSubtitle": "Catalogue every artwork, track its value and history, and present your collection with the rigour of the world's leading institutions.",
+    "featureCatalogue": "Every artwork, fully documented — technique, provenance, value, photos.",
+    "featureSecurity": "Your data, protected like a piece behind glass.",
+    "featureAi": "An assistant that finds the story behind an artist or a work."
   },
   "setup": {
     "apiServerQuestion": "Is the API server on this same machine?",
@@ -249,9 +254,9 @@
     "passwordTooShort": "At least 8 characters",
     "submitButton": "Create my administrator account",
     "redirecting": "Already set up, redirecting…",
-    "featureSearch": "100,000+ artworks, millions of images, instant search",
-    "featureSecurity": "MFA, security keys, AES-256, immutable audit trail",
-    "featureAi": "AI-ready enrichment, six languages, modular core",
+    "featureSearch": "Every artwork, fully documented — technique, provenance, value, photos.",
+    "featureSecurity": "Your data, protected like a piece behind glass.",
+    "featureAi": "An assistant that finds the story behind an artist or a work.",
     "modeNew": "New organization",
     "modeImport": "Import a migration",
     "importHint": "Restore a .zip file exported from another Arterio installation (Settings → Migration → Export). Everything is restored as-is, including existing accounts and passwords.",

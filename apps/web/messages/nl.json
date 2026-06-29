@@ -226,7 +226,12 @@
     "backToLogin": "Terug naar inloggen",
     "noAccount": "Nog geen account?",
     "requestAccess": "Toegang aanvragen",
-    "secured": "Beveiligd met end-to-end-encryptie en MFA"
+    "secured": "Beveiligd met end-to-end-encryptie en MFA",
+    "tagline": "Verzorg uw collectie zoals een museumconservator.",
+    "taglineSubtitle": "Catalogiseer elk kunstwerk, volg zijn waarde en geschiedenis, en presenteer uw collectie met de zorgvuldigheid van de grote instellingen.",
+    "featureCatalogue": "Elk kunstwerk, volledig gedocumenteerd — techniek, herkomst, waarde, foto's.",
+    "featureSecurity": "Uw gegevens, beschermd als een werk achter glas.",
+    "featureAi": "Een assistent die voor u het verhaal van een kunstenaar of werk terugvindt."
   },
   "setup": {
     "apiServerQuestion": "Draait de API-server op dezelfde machine?",
@@ -249,9 +254,9 @@
     "passwordTooShort": "Minimaal 8 tekens",
     "submitButton": "Mijn beheerdersaccount aanmaken",
     "redirecting": "Al ingesteld, doorverwijzen…",
-    "featureSearch": "100.000+ kunstwerken, miljoenen afbeeldingen, instant zoeken",
-    "featureSecurity": "MFA, beveiligingssleutels, AES-256, onveranderlijk auditlogboek",
-    "featureAi": "AI-klare verrijking, zes talen, modulaire kern",
+    "featureSearch": "Elk kunstwerk, volledig gedocumenteerd — techniek, herkomst, waarde, foto's.",
+    "featureSecurity": "Uw gegevens, beschermd als een werk achter glas.",
+    "featureAi": "Een assistent die voor u het verhaal van een kunstenaar of werk terugvindt.",
     "modeNew": "Nieuwe organisatie",
     "modeImport": "Migratie importeren",
     "importHint": "Herstel een .zip-bestand dat is geëxporteerd vanuit een andere Arterio-installatie (Instellingen → Migratie → Exporteren). Alles wordt ongewijzigd herstelt, inclusief bestaande accounts en wachtwoorden.",
