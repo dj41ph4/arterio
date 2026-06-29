@@ -1,23 +1,27 @@
 import * as cheerio from 'cheerio';
 
 /**
- * Last-resort biography sources for contemporary/regional artists who have
- * no Wikidata entry and never show up in any museum collection API (the
- * existing fallback chain in artist-enrichment.service.ts) — small gallery
- * marketplace sites that list working artists with a bio page, but expose
- * no public read API (Artmajeur's API is seller-side gallery management
- * only; Artsper blocks plain HTTP requests with a 403). i-CAC and Artmajeur
- * were verified by hand to be reachable and to have a predictable URL slug
- * for a given name — but a guessed slug is inherently best-effort, so every
- * function here only ever returns null on a miss, never throws.
+ * Last-resort biography scrapers for contemporary/regional artists who have
+ * no Wikidata entry and are absent from museum collection APIs.
  *
- * Each result is sanity-checked against the searched name before being
- * trusted, since a guessed slug landing on an unrelated/wrong page is worse
- * than finding nothing.
+ * Scraped sources:
+ *  - Singulart: curated contemporary art platform (~100k artists), accessible
+ *  - i-CAC: French painter cotation site, accessible but slug format varies
+ *  - Artmajeur: large gallery marketplace; tries browser-like headers to work
+ *    around their bot-detection (returns 403 to bare bot User-Agents)
+ *
+ * Each function returns null on any miss/error — never throws.
+ * Results are sanity-checked against the searched name (pageMentionsName)
+ * before being trusted.
  */
 
-const HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (compatible; ArterioBot/1.0; +self-hosted art collection catalogue)',
+const BROWSER_HEADERS = {
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
+  'Accept-Encoding': 'gzip, deflate, br',
+  'Cache-Control': 'no-cache',
 };
 
 function slugify(s: string): string {
@@ -39,7 +43,6 @@ function nameTokens(name: string): string[] {
     .filter((t) => t.length > 1);
 }
 
-/** True only if every significant token of the searched name appears in the page text — guards against a guessed slug landing on a homonym or an unrelated page. */
 function pageMentionsName(pageText: string, fullName: string): boolean {
   const lower = pageText.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   return nameTokens(fullName).every((t) => lower.includes(t));
@@ -47,7 +50,11 @@ function pageMentionsName(pageText: string, fullName: string): boolean {
 
 async function fetchHtml(url: string): Promise<string | null> {
   try {
-    const res = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(8_000) });
+    const res = await fetch(url, {
+      headers: BROWSER_HEADERS,
+      signal: AbortSignal.timeout(10_000),
+      redirect: 'follow',
+    });
     if (!res.ok) return null;
     return await res.text();
   } catch {
@@ -60,13 +67,69 @@ export interface ScrapedBio {
   sourceUrl: string;
 }
 
-/** i-CAC ("Cotation Artiste Peintre") — URL pattern verified by hand: /artiste/{lastname}-{firstname}.html, bio under an "<h2>Ma biographie…" heading. */
+/**
+ * Singulart — curated contemporary art marketplace (~100k artists worldwide).
+ * URL pattern: /en/artist/{firstname-lastname}
+ * Bio is in a <p> or <div> inside the artist description section.
+ */
+export async function scrapeSingulart(fullName: string): Promise<ScrapedBio | null> {
+  const tokens = nameTokens(fullName);
+  if (tokens.length < 1) return null;
+  const slug = tokens.join('-');
+
+  // Try both name orders
+  const [first, ...rest] = tokens;
+  const reversed = rest.length ? `${rest.join('-')}-${first}` : slug;
+  const candidates = Array.from(new Set([slug, reversed]));
+
+  for (const s of candidates) {
+    const url = `https://www.singulart.com/en/artist/${s}`;
+    const html = await fetchHtml(url);
+    if (!html) continue;
+    try {
+      const $ = cheerio.load(html);
+      if (!pageMentionsName($('body').text(), fullName)) continue;
+
+      // Bio is usually in a section with class containing "biography" or "description"
+      const bioSelectors = [
+        '[class*="biography"] p',
+        '[class*="description"] p',
+        '[class*="about"] p',
+        'article p',
+      ];
+      for (const sel of bioSelectors) {
+        const parts = $(sel)
+          .map((_, el) => $(el).text().trim())
+          .get()
+          .filter((t) => t.length > 50);
+        if (parts.length) {
+          const biography = parts.join('\n\n').trim();
+          if (biography.length > 80) return { biography, sourceUrl: url };
+        }
+      }
+    } catch {
+      // malformed page
+    }
+  }
+  return null;
+}
+
+/**
+ * i-CAC — French painter cotation/listing site.
+ * URL pattern: /artiste/{lastname}-{firstname}.html (various orders tried).
+ */
 export async function scrapeICAC(fullName: string): Promise<ScrapedBio | null> {
   const tokens = nameTokens(fullName);
   if (tokens.length < 2) return null;
+
   const [first, ...rest] = tokens;
   const last = rest.join('-');
-  const slugCandidates = [`${last}-${first}`, `${first}-${last}`];
+  // Try both orders and the full-slug variant
+  const slugCandidates = Array.from(new Set([
+    `${last}-${first}`,
+    `${first}-${last}`,
+    slugify(fullName),
+  ]));
 
   for (const slug of slugCandidates) {
     const url = `https://www.i-cac.fr/artiste/${slug}.html`;
@@ -76,51 +139,84 @@ export async function scrapeICAC(fullName: string): Promise<ScrapedBio | null> {
       const $ = cheerio.load(html);
       if (!pageMentionsName($('body').text(), fullName)) continue;
 
-      const bioHeading = $('h2').filter((_, el) => /biographie/i.test($(el).text())).first();
-      if (!bioHeading.length) continue;
-
+      const bioHeading = $('h2, h3').filter((_, el) => /biographie/i.test($(el).text())).first();
       const parts: string[] = [];
-      let node = bioHeading.next();
-      while (node.length && node.is('p')) {
-        const text = node.text().trim();
-        if (text) parts.push(text);
-        node = node.next();
+      if (bioHeading.length) {
+        let node = bioHeading.next();
+        while (node.length && node.is('p')) {
+          const text = node.text().trim();
+          if (text) parts.push(text);
+          node = node.next();
+        }
+      }
+      if (!parts.length) {
+        // Fallback: take any substantial paragraph on the page
+        $('p').each((_, el) => {
+          const t = $(el).text().trim();
+          if (t.length > 80) parts.push(t);
+        });
       }
       const biography = parts.join('\n\n').trim();
       if (biography.length > 40) return { biography, sourceUrl: url };
     } catch {
-      // malformed page — try the next slug candidate
+      // malformed page
     }
   }
   return null;
 }
 
-/** Artmajeur — URL pattern verified by hand: /{firstname-lastname}/{locale}, bio under a "biography" section. */
+/**
+ * Artmajeur — large international gallery marketplace.
+ * Uses browser-like headers to bypass basic bot-detection.
+ * URL pattern: /{firstname-lastname}/en (or /en/{firstname-lastname})
+ */
 export async function scrapeArtmajeur(fullName: string): Promise<ScrapedBio | null> {
   const tokens = nameTokens(fullName);
   if (tokens.length < 2) return null;
   const slug = tokens.join('-');
 
-  for (const url of [`https://www.artmajeur.com/${slug}/en`, `https://www.artmajeur.com/en/${slug}`]) {
-    const html = await fetchHtml(url);
-    if (!html) continue;
-    try {
-      const $ = cheerio.load(html);
-      if (!pageMentionsName($('body').text(), fullName)) continue;
+  const [first, ...rest] = tokens;
+  const reversed = `${rest.join('-')}-${first}`;
+  const candidates = Array.from(new Set([slug, reversed]));
 
-      // No stable class name to rely on — take the longest contiguous run of
-      // <p> text on the page, which in practice is the biography block (lot
-      // descriptions and navigation are short fragments by comparison).
-      const paragraphs = $('p')
-        .map((_, el) => $(el).text().trim())
-        .get()
-        .filter((t) => t.length > 30);
-      if (!paragraphs.length) continue;
+  const locales = ['en', 'fr'];
+  for (const s of candidates) {
+    for (const locale of locales) {
+      const url = `https://www.artmajeur.com/${s}/${locale}`;
+      const html = await fetchHtml(url);
+      if (!html) continue;
+      try {
+        const $ = cheerio.load(html);
+        if (!pageMentionsName($('body').text(), fullName)) continue;
 
-      const biography = paragraphs.sort((a, b) => b.length - a.length)[0]!;
-      if (biography.length > 60) return { biography, sourceUrl: url };
-    } catch {
-      // malformed page — try the next URL candidate
+        const bioSelectors = [
+          '[class*="bio"] p',
+          '[class*="description"] p',
+          '[class*="about"] p',
+          'article p',
+        ];
+        for (const sel of bioSelectors) {
+          const parts = $(sel)
+            .map((_, el) => $(el).text().trim())
+            .get()
+            .filter((t) => t.length > 50);
+          if (parts.length) {
+            const biography = parts.join('\n\n').trim();
+            if (biography.length > 60) return { biography, sourceUrl: url };
+          }
+        }
+        // Last resort: longest paragraph
+        const paragraphs = $('p')
+          .map((_, el) => $(el).text().trim())
+          .get()
+          .filter((t) => t.length > 60);
+        if (paragraphs.length) {
+          const biography = paragraphs.sort((a, b) => b.length - a.length)[0]!;
+          if (biography.length > 80) return { biography, sourceUrl: url };
+        }
+      } catch {
+        // malformed page — try next URL
+      }
     }
   }
   return null;

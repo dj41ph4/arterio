@@ -5,7 +5,7 @@ import type { Env } from '../../core/config/configuration';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { CryptoService } from '../../core/crypto/crypto.service';
 import { AI_PROVIDER, type AiProvider } from '../ai/ai.types';
-import { scrapeICAC, scrapeArtmajeur } from '../../common/gallery-site-scraper.util';
+import { scrapeICAC, scrapeArtmajeur, scrapeSingulart } from '../../common/gallery-site-scraper.util';
 import { TtlCache } from '../../common/ttl-cache.util';
 
 // ---------------------------------------------------------------------------
@@ -40,7 +40,7 @@ export interface WikidataArtist {
   influencedByLabels?: string[];
 }
 
-export type FallbackSource = 'met' | 'aic' | 'wikiart' | 'europeana' | 'rijksmuseum' | 'harvard' | 'smithsonian' | 'icac' | 'artmajeur';
+export type FallbackSource = 'met' | 'aic' | 'wikiart' | 'europeana' | 'rijksmuseum' | 'harvard' | 'smithsonian' | 'dbpedia' | 'singulart' | 'icac' | 'artmajeur';
 
 /** A hit from a museum collection API — used when Wikidata has no match. */
 export interface FallbackHit {
@@ -602,28 +602,38 @@ WHERE {
 
   private async fetchFallbackChain(name: string, organizationId?: string): Promise<FallbackHit | null> {
     const keys = await this.resolveSourceKeys(organizationId);
-    const providers: Array<() => Promise<FallbackHit | null>> = [
-      () => this.fetchFromAic(name),
-      () => this.fetchFromMet(name),
-      () => this.fetchFromWikiArt(name),
-      () => this.fetchFromEuropeana(name, keys.europeana),
-      () => this.fetchFromRijksmuseum(name, keys.rijksmuseum),
-      () => this.fetchFromHarvard(name, keys.harvard),
-      () => this.fetchFromSmithsonian(name, keys.smithsonian),
-      // Last resort, lowest authority: small gallery marketplace pages with
-      // no public API, reached via a guessed URL slug — only useful for
-      // contemporary/regional artists no museum or Wikidata entry covers.
-      () => this.fetchFromICAC(name),
-      () => this.fetchFromArtmajeur(name),
+    const providers: Array<[string, () => Promise<FallbackHit | null>]> = [
+      ['aic', () => this.fetchFromAic(name)],
+      ['met', () => this.fetchFromMet(name)],
+      ['wikiart', () => this.fetchFromWikiArt(name)],
+      ['europeana', () => this.fetchFromEuropeana(name, keys.europeana)],
+      ['rijksmuseum', () => this.fetchFromRijksmuseum(name, keys.rijksmuseum)],
+      ['harvard', () => this.fetchFromHarvard(name, keys.harvard)],
+      ['smithsonian', () => this.fetchFromSmithsonian(name, keys.smithsonian)],
+      // DBpedia: Wikipedia's Linked Data endpoint — catches artists indexed in
+      // Wikipedia but missed by the Wikidata search (different index, different
+      // coverage for less-famous artists). No API key required, multilingual.
+      ['dbpedia', () => this.fetchFromDBpedia(name)],
+      // Gallery marketplace scrapers — last resort for contemporary/regional
+      // artists absent from all encyclopedic/museum sources above.
+      ['singulart', () => this.fetchFromSingulart(name)],
+      ['icac', () => this.fetchFromICAC(name)],
+      ['artmajeur', () => this.fetchFromArtmajeur(name)],
     ];
-    for (const provider of providers) {
+    this.logger.log(`Fallback chain start for "${name}" (Wikidata: no match)`);
+    for (const [sourceName, provider] of providers) {
       try {
+        this.logger.debug(`Fallback trying ${sourceName} for "${name}"`);
         const hit = await provider();
-        if (hit) return hit;
+        if (hit) {
+          this.logger.log(`Fallback HIT: "${name}" found via ${sourceName}`);
+          return hit;
+        }
       } catch (err) {
-        this.logger.warn(`Fallback provider failed for "${name}": ${String(err)}`);
+        this.logger.warn(`Fallback provider ${sourceName} failed for "${name}": ${String(err)}`);
       }
     }
+    this.logger.warn(`Fallback chain exhausted for "${name}" — no source returned a match`);
     return null;
   }
 
@@ -850,6 +860,109 @@ WHERE {
       imageUrl: content.online_media?.media?.[0]?.content,
       sourceUrl: content.title?.content,
     };
+  }
+
+  /**
+   * DBpedia SPARQL — Wikipedia's Linked Data export. Queried separately from
+   * Wikidata because the two indexes diverge: DBpedia parses Wikipedia infoboxes
+   * directly, while Wikidata is community-curated. For artists who have a
+   * Wikipedia page but whose Wikidata entry was never created (or has no
+   * art-related description), DBpedia is often the only structured source that
+   * confirms their identity and yields a multilingual abstract.
+   *
+   * Returns abstracts in every configured locale that has one — these are
+   * Wikipedia intro paragraphs, typically 2–5 sentences, reliable quality.
+   */
+  private async fetchFromDBpedia(name: string): Promise<FallbackHit | null> {
+    // DBpedia resource names follow Wikipedia's URL slug format
+    const slug = name.trim().replace(/\s+/g, '_');
+
+    const sparql = `
+SELECT ?abstract ?thumbnail ?birthDate ?deathDate ?nationality
+WHERE {
+  { <http://dbpedia.org/resource/${encodeURIComponent(slug)}> a dbo:Artist }
+  UNION
+  { <http://dbpedia.org/resource/${encodeURIComponent(slug)}> a dbo:Painter }
+  UNION
+  { <http://dbpedia.org/resource/${encodeURIComponent(slug)}> a dbo:Sculptor }
+  OPTIONAL { <http://dbpedia.org/resource/${encodeURIComponent(slug)}> dbo:abstract ?abstract . FILTER(LANG(?abstract) = 'en') }
+  OPTIONAL { <http://dbpedia.org/resource/${encodeURIComponent(slug)}> dbo:thumbnail ?thumbnail }
+  OPTIONAL { <http://dbpedia.org/resource/${encodeURIComponent(slug)}> dbo:birthDate ?birthDate }
+  OPTIONAL { <http://dbpedia.org/resource/${encodeURIComponent(slug)}> dbo:deathDate ?deathDate }
+  OPTIONAL { <http://dbpedia.org/resource/${encodeURIComponent(slug)}> dbo:nationality ?nat . ?nat rdfs:label ?nationality . FILTER(LANG(?nationality) = 'en') }
+}
+LIMIT 1
+`.trim();
+
+    try {
+      const res = await fetch(
+        `https://dbpedia.org/sparql?query=${encodeURIComponent(sparql)}&format=application%2Fsparql-results%2Bjson`,
+        {
+          headers: { Accept: 'application/sparql-results+json', 'User-Agent': 'Arterio/1.0' },
+          signal: AbortSignal.timeout(10_000),
+        },
+      );
+      if (!res.ok) return null;
+      const data = (await res.json()) as {
+        results: { bindings: Array<Record<string, { value: string }>> };
+      };
+      const b = data.results.bindings[0];
+      if (!b) return null;
+
+      // Fetch abstracts in all supported locales in parallel
+      const localeSparql = `
+SELECT ?lang ?abstract
+WHERE {
+  <http://dbpedia.org/resource/${encodeURIComponent(slug)}> dbo:abstract ?abstract .
+  BIND(LANG(?abstract) AS ?lang)
+  FILTER(?lang IN ('en','fr','it','es','de','nl'))
+}
+`.trim();
+      const localeRes = await fetch(
+        `https://dbpedia.org/sparql?query=${encodeURIComponent(localeSparql)}&format=application%2Fsparql-results%2Bjson`,
+        {
+          headers: { Accept: 'application/sparql-results+json', 'User-Agent': 'Arterio/1.0' },
+          signal: AbortSignal.timeout(10_000),
+        },
+      );
+      const localeData = localeRes.ok
+        ? ((await localeRes.json()) as { results: { bindings: Array<Record<string, { value: string }>> } })
+        : null;
+
+      const biographies: Record<string, string> = {};
+      for (const row of localeData?.results.bindings ?? []) {
+        if (row['lang']?.value && row['abstract']?.value) {
+          biographies[row['lang'].value] = row['abstract'].value;
+        }
+      }
+      if (!biographies['en'] && b['abstract']?.value) {
+        biographies['en'] = b['abstract'].value;
+      }
+
+      const biography = biographies['en'] ?? Object.values(biographies)[0] ?? '';
+      if (!biography) return null;
+
+      return {
+        source: 'dbpedia',
+        matchedName: name,
+        biography,
+        birthDate: b['birthDate']?.value?.slice(0, 10),
+        deathDate: b['deathDate']?.value?.slice(0, 10),
+        nationality: b['nationality']?.value,
+        imageUrl: b['thumbnail']?.value,
+        sourceUrl: `http://dbpedia.org/resource/${encodeURIComponent(slug)}`,
+      };
+    } catch (err) {
+      this.logger.warn(`DBpedia lookup failed for "${name}": ${String(err)}`);
+      return null;
+    }
+  }
+
+  /** Singulart — curated contemporary art marketplace (~100k artists). Scrape → extract → validate, never feeds into AI. */
+  private async fetchFromSingulart(name: string): Promise<FallbackHit | null> {
+    const hit = await scrapeSingulart(name);
+    if (!hit) return null;
+    return { source: 'singulart', matchedName: name, biography: hit.biography, sourceUrl: hit.sourceUrl };
   }
 
   /** i-CAC gallery listing — no API, reached via a guessed URL slug, sanity-checked against the name before being trusted. Scrape → extract → validate → merge only: never feeds a scraped result into an AI call. */
