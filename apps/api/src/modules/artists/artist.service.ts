@@ -277,6 +277,7 @@ export class ArtistService {
         m._count.artworks > best._count.artworks ? m : best,
       );
       const duplicates = members.filter((m) => m.id !== canonical.id);
+      const filled = this.mergeArtistFields(canonical, duplicates);
 
       await this.prisma.$transaction([
         this.prisma.artwork.updateMany({
@@ -286,11 +287,9 @@ export class ArtistService {
         this.prisma.artist.update({
           where: { id: canonical.id },
           data: {
+            ...filled,
             fullName: match.label,
-            externalIds: {
-              ...((canonical.externalIds as Record<string, string>) ?? {}),
-              wikidata: match.qid,
-            },
+            externalIds: { ...filled.externalIds, wikidata: match.qid },
           },
         }),
         this.prisma.artist.deleteMany({ where: { id: { in: duplicates.map((d) => d.id) } } }),
@@ -326,6 +325,55 @@ export class ArtistService {
       )
       .sort();
     return normalized.join(' ');
+  }
+
+  /**
+   * Auto-merge used to discard every field on the duplicate records except their artworks —
+   * a duplicate with a biography/photo/nationality the canonical record lacked simply lost
+   * that data the moment it was deleted. Folds every duplicate's fields into the canonical
+   * one first, gap-filling only: never overwrites a value the canonical record already has.
+   */
+  private mergeArtistFields(
+    canonical: { biography: unknown; externalIds: unknown; notableWorks: unknown; influencedBy: unknown; thumbnail: string | null; nationality: string | null; birthDate: string | null; deathDate: string | null; sortName: string | null },
+    duplicates: typeof canonical[],
+  ) {
+    const biography = { ...(canonical.biography as Record<string, string>) };
+    const externalIds = { ...(canonical.externalIds as Record<string, string>) };
+    const notableWorks = new Set(canonical.notableWorks as string[]);
+    const influencedBy = new Set(canonical.influencedBy as string[]);
+    let thumbnail = canonical.thumbnail;
+    let nationality = canonical.nationality;
+    let birthDate = canonical.birthDate;
+    let deathDate = canonical.deathDate;
+    let sortName = canonical.sortName;
+
+    for (const dup of duplicates) {
+      for (const [lang, text] of Object.entries((dup.biography as Record<string, string>) ?? {})) {
+        if (text && !biography[lang]) biography[lang] = text;
+      }
+      for (const [key, value] of Object.entries((dup.externalIds as Record<string, string>) ?? {})) {
+        if (value && !externalIds[key]) externalIds[key] = value;
+      }
+      for (const w of (dup.notableWorks as string[]) ?? []) notableWorks.add(w);
+      for (const w of (dup.influencedBy as string[]) ?? []) influencedBy.add(w);
+      thumbnail = thumbnail || dup.thumbnail;
+      nationality = nationality || dup.nationality;
+      birthDate = birthDate || dup.birthDate;
+      deathDate = deathDate || dup.deathDate;
+      sortName = sortName || dup.sortName;
+    }
+
+    return {
+      biography,
+      externalIds,
+      notableWorks: Array.from(notableWorks),
+      influencedBy: Array.from(influencedBy),
+      thumbnail,
+      nationality,
+      birthDate,
+      deathDate,
+      sortName,
+    };
   }
 
   // ---------------------------------------------------------------------------
