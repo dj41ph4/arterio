@@ -1,24 +1,13 @@
 import { API_HOST_OVERRIDE_KEY } from './client';
 
 /**
- * Builds a full API base URL from a bare host/IP the operator typed in the
- * setup wizard (e.g. "192.168.1.50" or "api.example.com:4000"). Mirrors the
- * same direct-port convention used everywhere else in the app: default to
- * port 4000 unless the operator already included one.
- */
-export function buildApiBaseFromHost(host: string): string {
-  const trimmed = host.trim().replace(/^https?:\/\//, '').replace(/\/+$/, '');
-  const hasPort = /:\d+$/.test(trimmed);
-  const protocol = typeof window !== 'undefined' ? window.location.protocol : 'http:';
-  return `${protocol}//${trimmed}${hasPort ? '' : ':4000'}/api/v1`;
-}
-
-/**
- * Same idea as buildApiBaseFromHost, but for an operator pasting a full URL
- * after the fact (e.g. from the login screen's "Modifier l'URL de l'API"),
- * not a bare host typed during first-run setup — so it must NOT force a
- * protocol or :4000 port onto something the operator already fully typed
- * out (a split-domain reverse-proxy setup is often on 443, not :4000).
+ * Builds a full API base URL from whatever the operator typed — a bare host
+ * ("192.168.1.50"), a bare domain, or a full URL with its own port — used by
+ * both the first-run setup wizard's "different server?" question and the
+ * login screen's "Modifier l'URL de l'API" link, so the two behave
+ * identically. Deliberately does NOT force a protocol or a :4000 port onto
+ * something already fully typed out: a split-domain reverse-proxy setup is
+ * commonly on 443, not :4000, and forcing :4000 there silently breaks it.
  */
 export function normalizeApiUrl(input: string): string {
   let url = input.trim().replace(/\/+$/, '');

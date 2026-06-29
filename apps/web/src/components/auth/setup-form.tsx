@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuthStore } from '@/stores/auth-store';
 import { API_BASE_URL } from '@/lib/api/client';
-import { buildApiBaseFromHost, saveApiHostOverride, getApiHostOverride } from '@/lib/api/setup-host';
+import { normalizeApiUrl, saveApiHostOverride, getApiHostOverride } from '@/lib/api/setup-host';
 import { cn } from '@/lib/utils';
 
 function ApiServerQuestion({
@@ -72,7 +72,7 @@ function ApiServerQuestion({
               type="button"
               disabled={!host.trim()}
               onClick={() => {
-                const apiBase = buildApiBaseFromHost(host);
+                const apiBase = normalizeApiUrl(host);
                 saveApiHostOverride(apiBase);
                 onAnswer(apiBase);
               }}
