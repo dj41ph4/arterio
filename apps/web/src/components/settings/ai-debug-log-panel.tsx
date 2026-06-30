@@ -116,7 +116,7 @@ export function AiDebugLogPanel() {
   const qc = useQueryClient();
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['ai-debug-log'],
-    queryFn: () => apiFetch<AiDebugEntry[]>('/ai/debug-log'),
+    queryFn: () => apiFetch<{ entries: AiDebugEntry[]; serverStarted: string }>('/ai/debug-log'),
     staleTime: 0,
     refetchInterval: 10_000,
   });
@@ -130,7 +130,7 @@ export function AiDebugLogPanel() {
     onError: () => toast.error('Échec de la suppression'),
   });
 
-  const entries = data ?? [];
+  const entries = data?.entries ?? [];
 
   return (
     <Card>
@@ -142,6 +142,11 @@ export function AiDebugLogPanel() {
           <CardDescription>
             Dernières opérations d'autofill — DDG, sources structurées, fournisseur utilisé, champs obtenus.
             Remis à zéro au redémarrage du serveur. Rafraîchi toutes les 10 s.
+            {data?.serverStarted && (
+              <span className="ml-1 text-[10px] text-muted-foreground/60">
+                · serveur démarré {new Date(data.serverStarted).toLocaleString()}
+              </span>
+            )}
           </CardDescription>
         </div>
         <div className="flex shrink-0 gap-2">

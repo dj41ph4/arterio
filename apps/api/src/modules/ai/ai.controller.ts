@@ -410,7 +410,7 @@ export class AiController {
   @RequirePermissions(PERMISSIONS.SETTINGS_MANAGE)
   @ApiOperation({ summary: 'Recent AI autofill debug log (in-memory, last 200 entries)' })
   getDebugLog() {
-    return this.debugLog.getAll();
+    return { entries: this.debugLog.getAll(), serverStarted: new Date().toISOString() };
   }
 
   @Delete('debug-log')
