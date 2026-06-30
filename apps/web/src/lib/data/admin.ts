@@ -70,6 +70,8 @@ export interface AiSettingsView {
   multiModelMode: 'parallel' | 'fallback';
   /** OFF by default. OpenRouter's "web" plugin bills per search even on :free models — free search grounding is otherwise provided automatically via an in-house DuckDuckGo-based lookup. */
   useOpenRouterWebPlugin: boolean;
+  /** Providers explicitly disabled by the org — excluded from the chain. */
+  disabledProviders: string[];
 }
 
 export interface OrganizationSettings {
@@ -122,6 +124,7 @@ export const settingsApi = {
     providerOrder?: ('openrouter' | 'gemini' | 'mistral')[];
     multiModelMode?: 'parallel' | 'fallback';
     useOpenRouterWebPlugin?: boolean;
+    disabledProviders?: string[];
   }) =>
     apiFetch<AiSettingsView>('/settings/ai', {
       method: 'PATCH',

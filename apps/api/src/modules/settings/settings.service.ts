@@ -29,6 +29,8 @@ interface AiOrgSettings {
   multiModelMode?: 'parallel' | 'fallback';
   /** OFF by default. OpenRouter's "web" plugin bills per search even on :free models — free search grounding instead comes from our own DuckDuckGo-based lookup. Explicit opt-in for users who accept the extra cost. */
   useOpenRouterWebPlugin?: boolean;
+  /** Providers explicitly disabled by the org — excluded from the fallback chain regardless of key/isEnabled. */
+  disabledProviders?: string[];
 }
 
 @Injectable()
@@ -101,6 +103,7 @@ export class SettingsService {
       })(),
       multiModelMode: ai.multiModelMode === 'fallback' ? 'fallback' : 'parallel',
       useOpenRouterWebPlugin: ai.useOpenRouterWebPlugin === true,
+      disabledProviders: ai.disabledProviders ?? [],
     };
   }
 
@@ -118,6 +121,7 @@ export class SettingsService {
       providerOrder?: string[];
       multiModelMode?: 'parallel' | 'fallback';
       useOpenRouterWebPlugin?: boolean;
+      disabledProviders?: string[];
     },
   ) {
     const org = await this.prisma.organization.findUniqueOrThrow({ where: { id: user.organizationId } });
@@ -156,6 +160,10 @@ export class SettingsService {
     }
     if (input.useOpenRouterWebPlugin !== undefined) {
       next.useOpenRouterWebPlugin = input.useOpenRouterWebPlugin;
+    }
+    if (input.disabledProviders !== undefined) {
+      const known = ['openrouter', 'gemini', 'mistral'];
+      next.disabledProviders = input.disabledProviders.filter((p) => known.includes(p));
     }
     if (input.models !== undefined) {
       next.models = input.models.map((m) => m.trim()).filter(Boolean).slice(0, 3);

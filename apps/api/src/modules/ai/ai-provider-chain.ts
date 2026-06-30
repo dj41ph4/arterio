@@ -17,6 +17,7 @@ import type { PrismaService } from '../../core/prisma/prisma.service';
 
 interface OrgAiSettings {
   providerOrder?: string[];
+  disabledProviders?: string[];
 }
 
 /**
@@ -43,8 +44,12 @@ export class AiProviderChain implements AiProvider {
     if (organizationId && this.prisma) {
       try {
         const org = await this.prisma.organization.findUnique({ where: { id: organizationId } });
-        const configured = ((org?.settings as Record<string, unknown>)?.ai as OrgAiSettings | undefined)?.providerOrder;
-        if (configured?.length) order = configured;
+        const ai = (org?.settings as Record<string, unknown>)?.ai as OrgAiSettings | undefined;
+        if (ai?.providerOrder?.length) order = ai.providerOrder;
+        if (ai?.disabledProviders?.length) {
+          const disabled = new Set(ai.disabledProviders);
+          order = order.filter((id) => !disabled.has(id));
+        }
       } catch {
         // fall back to default order
       }
@@ -82,7 +87,7 @@ export class AiProviderChain implements AiProvider {
       if (await p.isEnabled(organizationId)) enabled.push(p);
     }
     if (!enabled.length) {
-      const message = 'Aucun fournisseur IA configuré (ni OpenRouter, ni Gemini) pour cette organisation.';
+      const message = 'Aucun fournisseur IA activé pour cette organisation (Réglages → IA).';
       this.logger.warn(message);
       throw new ServiceUnavailableException(message);
     }

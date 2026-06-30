@@ -34,6 +34,7 @@ export function AiModelsPanel() {
   const [providerOrder, setProviderOrder] = React.useState<('openrouter' | 'gemini' | 'mistral')[] | null>(null);
   const [multiModelMode, setMultiModelMode] = React.useState<'parallel' | 'fallback' | null>(null);
   const [useOpenRouterWebPlugin, setUseOpenRouterWebPlugin] = React.useState<boolean | null>(null);
+  const [disabledProviders, setDisabledProviders] = React.useState<string[] | null>(null);
   const [models, setModels] = React.useState<string[] | null>(null);
   const [search, setSearch] = React.useState('');
   const [freeOnly, setFreeOnly] = React.useState(true);
@@ -43,6 +44,7 @@ export function AiModelsPanel() {
   const effectiveOrder = providerOrder ?? data?.providerOrder ?? ['openrouter', 'mistral', 'gemini'];
   const effectiveMultiModelMode = multiModelMode ?? data?.multiModelMode ?? 'parallel';
   const effectiveUseOpenRouterWebPlugin = useOpenRouterWebPlugin ?? data?.useOpenRouterWebPlugin ?? false;
+  const effectiveDisabledProviders = disabledProviders ?? data?.disabledProviders ?? [];
   const hasChanges =
     enabled !== null ||
     apiKey !== undefined ||
@@ -53,6 +55,7 @@ export function AiModelsPanel() {
     providerOrder !== null ||
     multiModelMode !== null ||
     useOpenRouterWebPlugin !== null ||
+    disabledProviders !== null ||
     models !== null;
 
   // Reads from whatever key is actually SAVED in the DB, not an unsaved value
@@ -79,6 +82,7 @@ export function AiModelsPanel() {
         providerOrder: providerOrder ?? undefined,
         multiModelMode: multiModelMode ?? undefined,
         useOpenRouterWebPlugin: useOpenRouterWebPlugin ?? undefined,
+        disabledProviders: disabledProviders ?? undefined,
         models: models ?? undefined,
       }),
     onSuccess: () => {
@@ -92,6 +96,7 @@ export function AiModelsPanel() {
       setProviderOrder(null);
       setMultiModelMode(null);
       setUseOpenRouterWebPlugin(null);
+      setDisabledProviders(null);
       setModels(null);
       qc.invalidateQueries({ queryKey: ['ai-settings'] });
     },
@@ -443,16 +448,30 @@ export function AiModelsPanel() {
             { id: 'gemini', label: 'Gemini', hasKey: Boolean(data.hasGeminiKey || geminiApiKey) },
           ];
           const configuredCount = available.filter((p) => p.hasKey).length;
-          if (configuredCount < 2) return null;
+          if (configuredCount < 1) return null;
+
+          const toggleProvider = (id: string, enabled: boolean) => {
+            const next = enabled
+              ? effectiveDisabledProviders.filter((p) => p !== id)
+              : [...effectiveDisabledProviders.filter((p) => p !== id), id];
+            setDisabledProviders(next);
+          };
 
           const move = (id: string, dir: -1 | 1) => {
-            const idx = effectiveOrder.indexOf(id as 'openrouter' | 'gemini' | 'mistral');
+            const enabledOrder = effectiveOrder.filter((p) => !effectiveDisabledProviders.includes(p));
+            const idx = enabledOrder.indexOf(id as 'openrouter' | 'gemini' | 'mistral');
             const swapWith = idx + dir;
-            if (idx === -1 || swapWith < 0 || swapWith >= effectiveOrder.length) return;
-            const next = [...effectiveOrder];
-            [next[idx], next[swapWith]] = [next[swapWith]!, next[idx]!];
-            setProviderOrder(next);
+            if (idx === -1 || swapWith < 0 || swapWith >= enabledOrder.length) return;
+            // Swap in the full order (which includes disabled ones between the two targets)
+            const fullNext = [...effectiveOrder];
+            const idxA = fullNext.indexOf(enabledOrder[idx]! as 'openrouter' | 'gemini' | 'mistral');
+            const idxB = fullNext.indexOf(enabledOrder[swapWith]! as 'openrouter' | 'gemini' | 'mistral');
+            [fullNext[idxA], fullNext[idxB]] = [fullNext[idxB]!, fullNext[idxA]!];
+            setProviderOrder(fullNext);
           };
+
+          // Position counter only counts enabled providers (disabled ones don't get a number)
+          let enabledPos = 0;
 
           return (
             <div>
@@ -460,44 +479,66 @@ export function AiModelsPanel() {
                 <ArrowRightLeft className="h-3.5 w-3.5 text-primary" /> Ordre de priorité
               </p>
               <p className="mb-2 text-xs text-muted-foreground">
-                Le premier fournisseur sans résultat exploitable bascule automatiquement sur le suivant.
+                Décochez un fournisseur pour le désactiver — il reste dans la liste pour ne pas perdre sa position,
+                mais est ignoré par la chaîne IA jusqu'à ce que vous le recochiez.
               </p>
               <ol className="space-y-2">
-                {effectiveOrder.map((id, i) => {
+                {effectiveOrder.map((id) => {
                   const meta = available.find((p) => p.id === id);
                   if (!meta) return null;
+                  const isDisabled = effectiveDisabledProviders.includes(id);
+                  const pos = isDisabled ? null : ++enabledPos;
+                  const enabledOrder = effectiveOrder.filter((p) => !effectiveDisabledProviders.includes(p));
+                  const enabledIdx = enabledOrder.indexOf(id as 'openrouter' | 'gemini' | 'mistral');
                   return (
                     <li
                       key={id}
-                      className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2"
+                      className={cn(
+                        'flex items-center justify-between gap-3 rounded-lg border px-3 py-2 transition-opacity',
+                        isDisabled ? 'border-border/50 bg-muted/40 opacity-50' : 'border-border bg-card',
+                      )}
                     >
-                      <span className="flex items-center gap-2 text-sm">
-                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-                          {i + 1}
+                      <label className="flex flex-1 cursor-pointer items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={!isDisabled}
+                          onChange={(e) => toggleProvider(id, e.target.checked)}
+                          className="h-4 w-4 accent-primary"
+                        />
+                        {pos !== null && (
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                            {pos}
+                          </span>
+                        )}
+                        <span className={cn('font-medium', isDisabled ? 'text-muted-foreground' : 'text-foreground')}>
+                          {meta.label}
                         </span>
-                        <span className="font-medium text-foreground">{meta.label}</span>
-                        {!meta.hasKey && <span className="text-xs text-muted-foreground">(aucune clé — ignoré)</span>}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => move(id, -1)}
-                          disabled={i === 0}
-                          className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30"
-                          title="Monter"
-                        >
-                          <ChevronUp className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => move(id, 1)}
-                          disabled={i === effectiveOrder.length - 1}
-                          className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30"
-                          title="Descendre"
-                        >
-                          <ChevronDown className="h-4 w-4" />
-                        </button>
-                      </span>
+                        {!meta.hasKey && !isDisabled && (
+                          <span className="text-xs text-muted-foreground">(aucune clé — ignoré)</span>
+                        )}
+                      </label>
+                      {!isDisabled && (
+                        <span className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => move(id, -1)}
+                            disabled={enabledIdx === 0}
+                            className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30"
+                            title="Monter"
+                          >
+                            <ChevronUp className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => move(id, 1)}
+                            disabled={enabledIdx === enabledOrder.length - 1}
+                            className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30"
+                            title="Descendre"
+                          >
+                            <ChevronDown className="h-4 w-4" />
+                          </button>
+                        </span>
+                      )}
                     </li>
                   );
                 })}

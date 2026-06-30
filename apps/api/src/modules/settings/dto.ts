@@ -128,6 +128,12 @@ export class UpdateAiSettingsDto {
   @IsOptional()
   @IsBoolean()
   useOpenRouterWebPlugin?: boolean;
+
+  @ApiPropertyOptional({ type: [String], description: 'Providers explicitly disabled — excluded from the fallback chain regardless of key configuration.' })
+  @IsOptional()
+  @IsArray()
+  @IsIn(['openrouter', 'gemini', 'mistral'], { each: true })
+  disabledProviders?: string[];
 }
 
 export class UploadCertificateDto {
