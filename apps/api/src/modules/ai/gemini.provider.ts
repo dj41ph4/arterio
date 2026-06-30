@@ -242,6 +242,21 @@ Return ONLY a JSON object: {"imageUrls": ["...", ...]}`;
     }
   }
 
+  /** Settings → AI "Tester la connexion" — exactly one minimal request, no JSON parsing, no web search, real error surfaced instead of swallowed. */
+  async testConnection(organizationId?: string): Promise<{ success: boolean; message: string }> {
+    const org = await this.resolveOrgSettings(organizationId);
+    const apiKey = await this.resolveApiKey(org);
+    if (!apiKey) {
+      return { success: false, message: 'Aucune clé API Gemini configurée.' };
+    }
+    try {
+      const text = await this.callModel(apiKey, 'Reply with exactly: OK', 'Test.', false);
+      return { success: true, message: `Connexion Gemini réussie (modèle : ${this.model}). Réponse : "${text.trim().slice(0, 60)}"` };
+    } catch (e) {
+      return { success: false, message: `Échec Gemini (modèle : ${this.model}) : ${describeError(e)}` };
+    }
+  }
+
   async ocr(_imageUrl: string): Promise<string> {
     throw new ServiceUnavailableException('OCR not supported by Gemini provider');
   }

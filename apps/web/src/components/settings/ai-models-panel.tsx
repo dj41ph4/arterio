@@ -3,8 +3,9 @@
 import * as React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Save, X, Sparkles, Check, Search, Image as ImageIcon, ArrowRightLeft } from 'lucide-react';
+import { Save, X, Sparkles, Check, Search, Image as ImageIcon, ArrowRightLeft, Zap, RefreshCw } from 'lucide-react';
 import { settingsApi } from '@/lib/data/admin';
+import { aiApi } from '@/lib/data/ai';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
@@ -48,6 +49,18 @@ export function AiModelsPanel() {
     providerOrder !== null ||
     multiModelMode !== null ||
     models !== null;
+
+  // Reads from whatever key is actually SAVED in the DB, not an unsaved value
+  // still sitting in the input — so the test button is disabled while a key
+  // edit hasn't been saved yet, to avoid testing the wrong (stale) key.
+  const testMutation = useMutation({
+    mutationFn: (provider: 'openrouter' | 'gemini') => aiApi.testProvider(provider),
+    onSuccess: (result) => {
+      if (result.success) toast.success(result.message);
+      else toast.error(result.message);
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : 'Échec du test de connexion'),
+  });
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -127,13 +140,29 @@ export function AiModelsPanel() {
               </span>
             )}
           </label>
-          <input
-            type="password"
-            value={apiKey ?? ''}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder={data.hasApiKey ? '••••••••••••••••' : 'Coller la clé API OpenRouter ici'}
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-          />
+          <div className="flex gap-2">
+            <input
+              type="password"
+              value={apiKey ?? ''}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={data.hasApiKey ? '••••••••••••••••' : 'Coller la clé API OpenRouter ici'}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+            <button
+              type="button"
+              onClick={() => testMutation.mutate('openrouter')}
+              disabled={!data.hasApiKey || apiKey !== undefined || testMutation.isPending}
+              title={apiKey !== undefined ? 'Enregistrez la nouvelle clé avant de la tester' : 'Envoie une seule requête minimale pour vérifier que la clé fonctionne'}
+              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+            >
+              {testMutation.isPending && testMutation.variables === 'openrouter' ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Zap className="h-3.5 w-3.5" />
+              )}
+              Tester
+            </button>
+          </div>
           <p className="mt-1 text-xs text-muted-foreground">
             Gratuite sur{' '}
             <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" className="text-primary hover:underline">
@@ -307,13 +336,29 @@ export function AiModelsPanel() {
               </span>
             )}
           </label>
-          <input
-            type="password"
-            value={geminiApiKey ?? ''}
-            onChange={(e) => setGeminiApiKey(e.target.value)}
-            placeholder={data.hasGeminiKey ? '••••••••••••••••' : 'Coller la clé API Gemini ici'}
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-          />
+          <div className="flex gap-2">
+            <input
+              type="password"
+              value={geminiApiKey ?? ''}
+              onChange={(e) => setGeminiApiKey(e.target.value)}
+              placeholder={data.hasGeminiKey ? '••••••••••••••••' : 'Coller la clé API Gemini ici'}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+            <button
+              type="button"
+              onClick={() => testMutation.mutate('gemini')}
+              disabled={!data.hasGeminiKey || geminiApiKey !== undefined || testMutation.isPending}
+              title={geminiApiKey !== undefined ? 'Enregistrez la nouvelle clé avant de la tester' : 'Envoie une seule requête minimale pour vérifier que la clé fonctionne'}
+              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+            >
+              {testMutation.isPending && testMutation.variables === 'gemini' ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Zap className="h-3.5 w-3.5" />
+              )}
+              Tester
+            </button>
+          </div>
           <p className="mt-1 text-xs text-muted-foreground">
             Si OpenRouter ne renvoie rien d'utilisable (quota épuisé, erreur 402…), Gemini prend automatiquement le
             relais — recherche web native incluse, sans frais supplémentaire. Clé gratuite sur{' '}

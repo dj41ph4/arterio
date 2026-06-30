@@ -130,4 +130,6 @@ export interface AiProvider {
   translate(input: TranslateInput): Promise<string | null>;
   /** Dedicated multi-image search (the "IA" image-search button) — separate from autofill's single best-effort imageUrl, this asks for as many real candidates as the search turns up. */
   findImages(input: FindImagesInput): Promise<AiAutofillResponse<FindImagesResult>>;
+  /** Settings → AI "Tester la connexion" button — exactly ONE minimal request to verify a key actually works, with the real success/error message surfaced (not swallowed like translate()'s null-on-failure contract). Optional: not every provider needs it. */
+  testConnection?(organizationId?: string): Promise<{ success: boolean; message: string }>;
 }

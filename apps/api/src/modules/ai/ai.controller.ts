@@ -2,6 +2,7 @@ import { BadRequestException, Body, Controller, Get, Inject, Logger, Post, Servi
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS, type Locale } from '@arterio/shared';
 import { AI_PROVIDER, type AiProvider, type AiAttemptLog } from './ai.types';
+import { AiProviderChain } from './ai-provider-chain';
 import { searchCommonsImage, searchCommonsImages } from '../../common/commons-image-search.util';
 import { searchWikiArtImage, searchWikiArtImages } from '../../common/wikiart-api.util';
 import { searchArtsyImage, searchArtsyImages } from '../../common/artsy-api.util';
@@ -262,6 +263,20 @@ export class AiController {
     this.logger.log(message);
     this.logUsage(user.organizationId, 'findImages.artist', meta.attempts);
     return { images: validated, message };
+  }
+
+  /** Settings → AI "Tester la connexion" — exactly one minimal request to the chosen provider, bypassing the fallback chain, so the result reflects the key just typed in rather than whichever provider happens to win normal usage. */
+  @Post('test')
+  @RequirePermissions(PERMISSIONS.SETTINGS_MANAGE)
+  @ApiOperation({ summary: 'Test a single AI provider with exactly one minimal request' })
+  async testProvider(@CurrentUser() user: AuthUser, @Body() body: { provider: 'openrouter' | 'gemini' }) {
+    if (!body.provider) throw new BadRequestException('provider is required');
+    if (!(this.ai instanceof AiProviderChain)) {
+      throw new ServiceUnavailableException('Le test de connexion nécessite la chaîne de fournisseurs IA standard.');
+    }
+    const result = await this.ai.testProvider(body.provider, user.organizationId);
+    this.logger.log(`Test de connexion IA — ${body.provider} — ${result.success ? 'succès' : 'échec'} : ${result.message}`);
+    return result;
   }
 
   @Post('autofill/artwork')

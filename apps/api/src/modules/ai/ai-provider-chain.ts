@@ -125,6 +125,14 @@ export class AiProviderChain implements AiProvider {
     return this.tryInOrder(input.organizationId, (p) => p.findImages(input));
   }
 
+  /** Settings → AI "Tester la connexion" — targets ONE specific provider by id directly, bypassing the fallback order entirely, so the test reflects exactly the key just typed in rather than whichever provider happens to win the chain. */
+  async testProvider(providerId: string, organizationId?: string): Promise<{ success: boolean; message: string }> {
+    const provider = this.providersById[providerId];
+    if (!provider) return { success: false, message: `Fournisseur "${providerId}" inconnu.` };
+    if (!provider.testConnection) return { success: false, message: `Le fournisseur "${providerId}" ne supporte pas le test de connexion.` };
+    return provider.testConnection(organizationId);
+  }
+
   async translate(input: TranslateInput): Promise<string | null> {
     const ordered = await this.resolveOrder(input.organizationId);
     for (const provider of ordered) {

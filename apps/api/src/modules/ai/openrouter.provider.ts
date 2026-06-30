@@ -449,6 +449,22 @@ export class OpenRouterAiProvider implements AiProvider {
     };
   }
 
+  /** Settings → AI "Tester la connexion" — exactly one minimal request against the FIRST configured model only (not the whole failover list), real error surfaced. */
+  async testConnection(organizationId?: string): Promise<{ success: boolean; message: string }> {
+    const org = await this.resolveOrgSettings(organizationId);
+    const apiKey = await this.resolveApiKey(org);
+    if (!apiKey) {
+      return { success: false, message: 'Aucune clé API OpenRouter configurée.' };
+    }
+    const [model] = this.resolveModels(org);
+    try {
+      const text = await this.callModel(model!, apiKey, 'Reply with exactly: OK', 'Test.');
+      return { success: true, message: `Connexion OpenRouter réussie (modèle : ${model}). Réponse : "${text.trim().slice(0, 60)}"` };
+    } catch (e) {
+      return { success: false, message: `Échec OpenRouter (modèle : ${model}) : ${describeError(e)}` };
+    }
+  }
+
   async describe(input: DescribeInput): Promise<DescribeResult> {
     const systemPrompt = `You are an expert art cataloguer. Respond in language code: ${input.locale}.
 Return ONLY a JSON object: {"description": "...", "keywords": [...], "suggestedCategory": "..."}`;
