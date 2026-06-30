@@ -98,26 +98,30 @@ export async function buildSearchContext(
   query: string,
   opts?: { resultLimit?: number; pagesToFetch?: number; maxTotalChars?: number },
 ): Promise<string | null> {
-  const resultLimit = opts?.resultLimit ?? 5;
-  const pagesToFetch = opts?.pagesToFetch ?? 3;
-  const maxTotalChars = opts?.maxTotalChars ?? 6000;
+  try {
+    const resultLimit = opts?.resultLimit ?? 5;
+    const pagesToFetch = opts?.pagesToFetch ?? 3;
+    const maxTotalChars = opts?.maxTotalChars ?? 6000;
 
-  const results = await searchWeb(query, resultLimit);
-  if (!results.length) return null;
+    const results = await searchWeb(query, resultLimit);
+    if (!results.length) return null;
 
-  const resultsBlock = results
-    .map((r, i) => `[${i + 1}] ${r.title} (${r.url})${r.snippet ? `: ${r.snippet}` : ''}`)
-    .join('\n');
+    const resultsBlock = results
+      .map((r, i) => `[${i + 1}] ${r.title} (${r.url})${r.snippet ? `: ${r.snippet}` : ''}`)
+      .join('\n');
 
-  const pages = await Promise.all(
-    results.slice(0, pagesToFetch).map(async (r, i) => {
-      const text = await fetchPageText(r.url, Math.floor(maxTotalChars / pagesToFetch));
-      return text ? `[${i + 1}] ${r.url}:\n${text}` : null;
-    }),
-  );
-  const pagesBlock = pages.filter((p): p is string => Boolean(p)).join('\n\n');
+    const pages = await Promise.all(
+      results.slice(0, pagesToFetch).map(async (r, i) => {
+        const text = await fetchPageText(r.url, Math.floor(maxTotalChars / pagesToFetch));
+        return text ? `[${i + 1}] ${r.url}:\n${text}` : null;
+      }),
+    );
+    const pagesBlock = pages.filter((p): p is string => Boolean(p)).join('\n\n');
 
-  let context = `Search results for "${query}":\n${resultsBlock}`;
-  if (pagesBlock) context += `\n\nPage excerpts:\n${pagesBlock}`;
-  return context.slice(0, maxTotalChars + 1000);
+    let context = `Search results for "${query}":\n${resultsBlock}`;
+    if (pagesBlock) context += `\n\nPage excerpts:\n${pagesBlock}`;
+    return context.slice(0, maxTotalChars + 1000);
+  } catch {
+    return null;
+  }
 }
