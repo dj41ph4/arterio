@@ -45,10 +45,15 @@ function extractJsonBlock(text: string): string | null {
 function describeError(err: unknown): string {
   if (err instanceof Error) {
     if (err.name === 'TimeoutError' || err.name === 'AbortError') return 'Délai dépassé (timeout après 30s)';
-    if (err.message.includes('400')) return "Requête invalide ou clé API Gemini refusée (400)";
-    if (err.message.includes('403')) return 'Clé API Gemini invalide ou refusée (403)';
-    if (err.message.includes('429')) return 'Limite de requêtes Gemini atteinte (429)';
-    if (/^HTTP \d+/.test(err.message)) return err.message.replace(/^HTTP (\d+)$/, 'Le serveur Gemini a répondu avec une erreur ($1)');
+    // Keep whatever detail callModel() appended after "HTTP <code>" (Google's
+    // actual error body) instead of replacing it with a generic sentence —
+    // that detail is what tells a real exhausted quota apart from "this
+    // key/project isn't fully provisioned yet" or "billing required".
+    const detail = err.message.replace(/^HTTP \d+\s*/, '').replace(/^—\s*/, '');
+    if (err.message.includes('400')) return `Requête invalide ou clé API Gemini refusée (400)${detail ? ` — ${detail}` : ''}`;
+    if (err.message.includes('403')) return `Clé API Gemini invalide ou refusée (403)${detail ? ` — ${detail}` : ''}`;
+    if (err.message.includes('429')) return `Limite de requêtes Gemini atteinte (429)${detail ? ` — ${detail}` : ''}`;
+    if (/^HTTP \d+/.test(err.message)) return err.message.replace(/^HTTP (\d+)/, 'Le serveur Gemini a répondu avec une erreur ($1)');
     return err.message;
   }
   return String(err);
@@ -133,7 +138,19 @@ export class GeminiAiProvider implements AiProvider {
       },
     );
     if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
+      // Google's error body carries the actual reason (e.g. quota metric/limit
+      // exceeded, API not enabled for this project, billing required) — the
+      // bare HTTP status alone ("429") isn't enough to tell a real exhausted
+      // quota apart from "this key/project isn't fully provisioned yet".
+      const errorBody = await res.text().catch(() => '');
+      let detail = '';
+      try {
+        const parsed = JSON.parse(errorBody) as { error?: { message?: string } };
+        if (parsed.error?.message) detail = ` — ${parsed.error.message}`;
+      } catch {
+        if (errorBody) detail = ` — ${errorBody.slice(0, 200)}`;
+      }
+      throw new Error(`HTTP ${res.status}${detail}`);
     }
     const data = (await res.json()) as any;
     const text = data?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text).filter(Boolean).join('\n');
