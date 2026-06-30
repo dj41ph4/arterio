@@ -118,7 +118,22 @@ export class GeminiAiProvider implements AiProvider {
     return { describe: true, tag: false, ocr: false, signature: false, compare: false, similar: false, classify: false };
   }
 
-  private async callModel(apiKey: string, systemPrompt: string, userMessage: string, webSearch: boolean): Promise<string> {
+  /** Parses Google's RESOURCE_EXHAUSTED error body for the RetryInfo.retryDelay hint (e.g. "21s") it includes when the limit is about to reset — falls back to a fixed backoff when absent. */
+  private parseRetryDelayMs(errorBody: string): number | null {
+    try {
+      const parsed = JSON.parse(errorBody) as {
+        error?: { details?: Array<{ '@type'?: string; retryDelay?: string }> };
+      };
+      const retryInfo = parsed.error?.details?.find((d) => d['@type']?.includes('RetryInfo'));
+      const match = retryInfo?.retryDelay?.match(/^(\d+(?:\.\d+)?)s$/);
+      if (match) return Math.ceil(parseFloat(match[1]!) * 1000);
+    } catch {
+      // no structured retry hint — caller falls back to a fixed delay
+    }
+    return null;
+  }
+
+  private async callModelOnce(apiKey: string, systemPrompt: string, userMessage: string, webSearch: boolean): Promise<string> {
     const body: Record<string, unknown> = {
       contents: [{ parts: [{ text: userMessage }] }],
       systemInstruction: { parts: [{ text: systemPrompt }] },
@@ -150,7 +165,9 @@ export class GeminiAiProvider implements AiProvider {
       } catch {
         if (errorBody) detail = ` — ${errorBody.slice(0, 200)}`;
       }
-      throw new Error(`HTTP ${res.status}${detail}`);
+      const err = new Error(`HTTP ${res.status}${detail}`);
+      if (res.status === 429) (err as Error & { retryDelayMs?: number }).retryDelayMs = this.parseRetryDelayMs(errorBody) ?? undefined;
+      throw err;
     }
     const data = (await res.json()) as any;
     const text = data?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text).filter(Boolean).join('\n');
@@ -158,6 +175,26 @@ export class GeminiAiProvider implements AiProvider {
       throw new Error('Réponse reçue mais format inattendu (candidates[0].content manquant)');
     }
     return text;
+  }
+
+  /**
+   * One retry on a 429, honoring Google's own RetryInfo.retryDelay hint when
+   * present (capped at 10s to keep a single user-facing call responsive) or a
+   * fixed 3s backoff otherwise — covers the common case of a transient burst
+   * limit rather than a genuinely exhausted daily quota, instead of failing
+   * the whole enrichment on the first rate-limit blip.
+   */
+  private async callModel(apiKey: string, systemPrompt: string, userMessage: string, webSearch: boolean): Promise<string> {
+    try {
+      return await this.callModelOnce(apiKey, systemPrompt, userMessage, webSearch);
+    } catch (e) {
+      const retryDelayMs = (e as Error & { retryDelayMs?: number })?.retryDelayMs;
+      if (!(e instanceof Error) || !e.message.includes('429')) throw e;
+      const delay = Math.min(retryDelayMs ?? 3_000, 10_000);
+      this.logger.warn(`Gemini 429 — nouvelle tentative dans ${delay}ms.`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      return this.callModelOnce(apiKey, systemPrompt, userMessage, webSearch);
+    }
   }
 
   private async completeJson<T extends object>(
