@@ -22,7 +22,8 @@ interface AiOrgSettings {
   wikiartApiKeyEnc?: string;
   geminiApiKeyEnc?: string;
   artsyApiKeyEnc?: string;
-  /** Fallback order between configured providers, e.g. ['openrouter', 'gemini'] or reversed. */
+  mistralApiKeyEnc?: string;
+  /** Fallback order between configured providers, e.g. ['openrouter', 'mistral', 'gemini'] — any permutation of any subset. */
   providerOrder?: string[];
   /** 'parallel' (default): every configured OpenRouter model queried at once and merged. 'fallback': tried one at a time, cheaper. */
   multiModelMode?: 'parallel' | 'fallback';
@@ -85,12 +86,13 @@ export class SettingsService {
       hasWikiArtKey: Boolean(ai.wikiartApiKeyEnc),
       hasGeminiKey: Boolean(ai.geminiApiKeyEnc),
       hasArtsyKey: Boolean(ai.artsyApiKeyEnc),
-      providerOrder: ai.providerOrder?.length === 2 ? ai.providerOrder : ['openrouter', 'gemini'],
+      hasMistralKey: Boolean(ai.mistralApiKeyEnc),
+      providerOrder: ai.providerOrder?.length ? ai.providerOrder : ['openrouter', 'mistral', 'gemini'],
       multiModelMode: ai.multiModelMode === 'fallback' ? 'fallback' : 'parallel',
     };
   }
 
-  /** apiKey/wikiartApiKey/geminiApiKey: omit to keep unchanged, send "" to clear (falls back to the matching env var / Wikimedia Commons, respectively). */
+  /** apiKey/wikiartApiKey/geminiApiKey/mistralApiKey: omit to keep unchanged, send "" to clear (falls back to the matching env var / Wikimedia Commons, respectively). */
   async updateAiSettings(
     user: AuthUser,
     input: {
@@ -100,6 +102,7 @@ export class SettingsService {
       wikiartApiKey?: string;
       geminiApiKey?: string;
       artsyApiKey?: string;
+      mistralApiKey?: string;
       providerOrder?: string[];
       multiModelMode?: 'parallel' | 'fallback';
     },
@@ -126,9 +129,14 @@ export class SettingsService {
       if (input.geminiApiKey === '') delete next.geminiApiKeyEnc;
       else next.geminiApiKeyEnc = this.crypto.encrypt(input.geminiApiKey);
     }
+    if (input.mistralApiKey !== undefined) {
+      if (input.mistralApiKey === '') delete next.mistralApiKeyEnc;
+      else next.mistralApiKeyEnc = this.crypto.encrypt(input.mistralApiKey);
+    }
     if (input.providerOrder !== undefined) {
-      const valid = input.providerOrder.filter((p) => p === 'openrouter' || p === 'gemini');
-      if (valid.length === 2) next.providerOrder = valid;
+      const known = ['openrouter', 'gemini', 'mistral'];
+      const valid = input.providerOrder.filter((p) => known.includes(p));
+      if (valid.length) next.providerOrder = valid;
     }
     if (input.multiModelMode !== undefined) {
       next.multiModelMode = input.multiModelMode === 'fallback' ? 'fallback' : 'parallel';

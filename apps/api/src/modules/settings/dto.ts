@@ -98,13 +98,18 @@ export class UpdateAiSettingsDto {
   @IsString()
   geminiApiKey?: string;
 
+  @ApiPropertyOptional({ description: 'Leave out to keep unchanged, or send "" to clear (falls back to the server\'s MISTRAL_API_KEY env var, if set)' })
+  @IsOptional()
+  @IsString()
+  mistralApiKey?: string;
+
   @ApiPropertyOptional({
     type: [String],
-    description: 'Fallback order between configured providers, e.g. ["openrouter", "gemini"] or reversed.',
+    description: 'Fallback order between configured providers, e.g. ["openrouter", "mistral", "gemini"] — any permutation of any subset.',
   })
   @IsOptional()
   @IsArray()
-  @IsIn(['openrouter', 'gemini'], { each: true })
+  @IsIn(['openrouter', 'gemini', 'mistral'], { each: true })
   providerOrder?: string[];
 
   @ApiPropertyOptional({

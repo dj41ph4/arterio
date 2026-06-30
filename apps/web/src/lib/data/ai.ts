@@ -80,6 +80,6 @@ export const aiApi = {
     apiFetch<ImageSearchResult>('/ai/images/artist/ai', { method: 'POST', body: JSON.stringify(input) }),
   getUsage: () => apiFetch<AiUsageSummary>('/ai/usage'),
   /** Settings → AI "Tester la connexion" — exactly one minimal request to the chosen provider. */
-  testProvider: (provider: 'openrouter' | 'gemini') =>
+  testProvider: (provider: 'openrouter' | 'gemini' | 'mistral') =>
     apiFetch<{ success: boolean; message: string }>('/ai/test', { method: 'POST', body: JSON.stringify({ provider }) }),
 };

@@ -63,8 +63,9 @@ export interface AiSettingsView {
   hasWikiArtKey: boolean;
   hasGeminiKey: boolean;
   hasArtsyKey: boolean;
+  hasMistralKey: boolean;
   /** Order providers are tried in — the first with no usable result falls through to the next. */
-  providerOrder: ('openrouter' | 'gemini')[];
+  providerOrder: ('openrouter' | 'gemini' | 'mistral')[];
   /** "parallel": every configured OpenRouter model queried at once and merged. "fallback": one at a time, cheaper. */
   multiModelMode: 'parallel' | 'fallback';
 }
@@ -107,7 +108,7 @@ export const settingsApi = {
     apiFetch<OrganizationSettings>('/settings/external-sources', { method: 'PATCH', body: JSON.stringify(patch) }),
 
   getAiSettings: () => apiFetch<AiSettingsView>('/settings/ai'),
-  /** apiKey/wikiartApiKey/geminiApiKey: omit to keep unchanged, send "" to clear it. */
+  /** apiKey/wikiartApiKey/geminiApiKey/mistralApiKey: omit to keep unchanged, send "" to clear it. */
   updateAiSettings: (patch: {
     enabled?: boolean;
     apiKey?: string;
@@ -115,7 +116,8 @@ export const settingsApi = {
     wikiartApiKey?: string;
     geminiApiKey?: string;
     artsyApiKey?: string;
-    providerOrder?: ('openrouter' | 'gemini')[];
+    mistralApiKey?: string;
+    providerOrder?: ('openrouter' | 'gemini' | 'mistral')[];
     multiModelMode?: 'parallel' | 'fallback';
   }) =>
     apiFetch<AiSettingsView>('/settings/ai', {

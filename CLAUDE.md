@@ -205,6 +205,10 @@ Copy `.env.example` → `.env` for local dev. Critical values are defaulted — 
 | `AI_PROVIDER` | `none` | `anthropic` or `openrouter` — OpenRouter's own on/off + key + models are normally set per-org from Settings → AI instead |
 | `OPENROUTER_API_KEY` | — | server-wide fallback if an org hasn't set its own key in Settings → AI |
 | `OPENROUTER_MODEL` | `openrouter/auto` | comma-separated fallback model list, used if an org hasn't chosen its own |
+| `GEMINI_API_KEY` | — | server-wide fallback for the Gemini provider, if an org hasn't set its own key |
+| `GEMINI_MODEL` | `gemini-2.0-flash` | — |
+| `MISTRAL_API_KEY` | — | server-wide fallback for the Mistral provider, if an org hasn't set its own key |
+| `MISTRAL_MODEL` | `mistral-medium-latest` | used both for plain completions and as the websearch agent's model |
 
 ## Docker / deployment
 

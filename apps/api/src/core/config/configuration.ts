@@ -53,6 +53,11 @@ export const envSchema = z.object({
   // "web" plugin fee unlike OpenRouter.
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default('gemini-2.0-flash'),
+  // Mistral (La Plateforme) — native web_search grounding via the Conversations
+  // API, free-tier key available from console.mistral.ai. A third provider an
+  // org can mix into the fallback chain alongside OpenRouter/Gemini, in any order.
+  MISTRAL_API_KEY: z.string().optional(),
+  MISTRAL_MODEL: z.string().default('mistral-medium-latest'),
 
   // Artist enrichment fallback sources — used when Wikidata has no unambiguous
   // art-world match. The Met and AIC APIs are keyless; the rest are free but

@@ -269,7 +269,7 @@ export class AiController {
   @Post('test')
   @RequirePermissions(PERMISSIONS.SETTINGS_MANAGE)
   @ApiOperation({ summary: 'Test a single AI provider with exactly one minimal request' })
-  async testProvider(@CurrentUser() user: AuthUser, @Body() body: { provider: 'openrouter' | 'gemini' }) {
+  async testProvider(@CurrentUser() user: AuthUser, @Body() body: { provider: 'openrouter' | 'gemini' | 'mistral' }) {
     if (!body.provider) throw new BadRequestException('provider is required');
     if (!(this.ai instanceof AiProviderChain)) {
       throw new ServiceUnavailableException('Le test de connexion nécessite la chaîne de fournisseurs IA standard.');

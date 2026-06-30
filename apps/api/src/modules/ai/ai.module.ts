@@ -4,6 +4,7 @@ import { AI_PROVIDER } from './ai.types';
 import { AnthropicAiProvider } from './anthropic.provider';
 import { OpenRouterAiProvider } from './openrouter.provider';
 import { GeminiAiProvider } from './gemini.provider';
+import { MistralAiProvider } from './mistral.provider';
 import { AiProviderChain } from './ai-provider-chain';
 import { OpenRouterController } from './openrouter.controller';
 import { AiController } from './ai.controller';
@@ -38,15 +39,19 @@ import type { Env } from '../../core/config/configuration';
         const openRouterModel = config.get('OPENROUTER_MODEL', { infer: true });
         const geminiKey = config.get('GEMINI_API_KEY', { infer: true });
         const geminiModel = config.get('GEMINI_MODEL', { infer: true });
+        const mistralKey = config.get('MISTRAL_API_KEY', { infer: true });
+        const mistralModel = config.get('MISTRAL_MODEL', { infer: true });
         // Chained so a free-tier OpenRouter model that 402s/429s — or simply
-        // finds nothing — falls through to Gemini's free tier automatically,
-        // with the order itself swappable per-org from Settings → AI.
+        // finds nothing — falls through to the next provider automatically,
+        // with the order itself swappable per-org from Settings → AI (any
+        // permutation of the three).
         return new AiProviderChain(
           {
             openrouter: new OpenRouterAiProvider(openRouterKey ?? '', openRouterModel ?? '', prisma, crypto),
             gemini: new GeminiAiProvider(geminiKey ?? '', geminiModel ?? '', prisma, crypto),
+            mistral: new MistralAiProvider(mistralKey ?? '', mistralModel ?? '', prisma, crypto),
           },
-          ['openrouter', 'gemini'],
+          ['openrouter', 'mistral', 'gemini'],
           prisma,
         );
       },
