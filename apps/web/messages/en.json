@@ -346,6 +346,7 @@
     "notifications": "Notifications",
     "backups": "Backups",
     "migration": "Migration",
+    "debug": "Logs IA",
     "danger": "Danger zone",
     "language": "Language",
     "languageHint": "Choose the language for the interface."

@@ -19,6 +19,7 @@ import {
   AlertTriangle,
   Trash2,
   RefreshCw,
+  Bug,
 } from 'lucide-react';
 import { LOCALES, LOCALE_META, type Locale } from '@arterio/shared';
 import { usePathname, useRouter } from '@/i18n/navigation';
@@ -41,6 +42,7 @@ import { AuditLogPanel } from './audit-log-panel';
 import { TrashPanel } from './trash-panel';
 import { BackupsPanel } from './backups-panel';
 import { MigrationPanel } from './migration-panel';
+import { AiDebugLogPanel } from './ai-debug-log-panel';
 import { settingsApi } from '@/lib/data/admin';
 
 const SECTIONS = [
@@ -52,6 +54,7 @@ const SECTIONS = [
   { id: 'notifications', icon: Bell, key: 'notifications', danger: false },
   { id: 'backups', icon: DatabaseBackup, key: 'backups', danger: false },
   { id: 'migration', icon: PackageOpen, key: 'migration', danger: false },
+  { id: 'debug', icon: Bug, key: 'debug', danger: false },
   { id: 'danger', icon: AlertTriangle, key: 'danger', danger: true },
 ] as const;
 
@@ -439,6 +442,7 @@ export function SettingsView() {
           {section === 'notifications' && <NotificationsPanel />}
           {section === 'backups' && <BackupsPanel />}
           {section === 'migration' && <MigrationPanel />}
+          {section === 'debug' && <AiDebugLogPanel />}
           {section === 'danger' && (
             <>
               <TrashPanel />

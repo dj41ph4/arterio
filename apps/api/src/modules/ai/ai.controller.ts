@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Inject, Logger, Post, ServiceUnavailableException, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Inject, Logger, Post, ServiceUnavailableException, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PERMISSIONS, type Locale } from '@arterio/shared';
 import { AI_PROVIDER, type AiProvider, type AiAttemptLog } from './ai.types';
@@ -9,6 +9,7 @@ import { searchArtsyImage, searchArtsyImages } from '../../common/artsy-api.util
 import { isLikelyRealImage } from '../../common/download-image.util';
 import { buildSearchContext, buildArtworkSearchContext, buildArtistSearchContext } from '../../common/free-web-search.util';
 import { StructuredLookupService } from './structured-lookup.service';
+import { AiDebugLogService } from './ai-debug-log.service';
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { PrismaService } from '../../core/prisma/prisma.service';
@@ -28,6 +29,7 @@ export class AiController {
     private readonly prisma: PrismaService,
     private readonly crypto: CryptoService,
     private readonly structuredLookup: StructuredLookupService,
+    private readonly debugLog: AiDebugLogService,
   ) {}
 
   /**
@@ -304,10 +306,8 @@ export class AiController {
       this.logger.warn(message);
       throw new ServiceUnavailableException(message);
     }
+    const t0 = Date.now();
     const dedupeKey = `autofillArtwork:${user.organizationId}:${body.title ?? ''}:${body.artistName ?? ''}:${body.locale ?? 'en'}`;
-    // Structured museum lookup (StructuredLookupService — official JSON APIs,
-    // no scraping/LLM guesswork) runs in parallel with the free web search,
-    // not sequentially before it — both feed the AI call, neither blocks it.
     const [searchContext, structuredHit] = await Promise.all([
       buildArtworkSearchContext(body.artistName ?? '', body.title ?? ''),
       this.structuredLookup.searchArtworkByTitle(body.artistName, body.title, user.organizationId),
@@ -324,31 +324,20 @@ export class AiController {
         searchContext: combinedContext ?? undefined,
       }),
     );
-    // Cloned because two concurrent identical requests share the exact same
-    // dedupe()'d result object — mutating it in place below (data.imageUrl,
-    // meta.message) would otherwise let one caller's photo lookup corrupt
-    // the other's response.
     const data = { ...shared.data };
     const meta = { ...shared.meta, attempts: [...shared.meta.attempts] };
-    // A confirmed museum record beats an LLM guess for any field it actually
-    // covers — only defined fields override, so a museum hit missing e.g.
-    // signatureDescription never blanks out what the AI found for that field.
     if (structuredHit) {
       for (const [key, value] of Object.entries(structuredHit.result)) {
         if (value !== undefined && value !== null && value !== '') (data as Record<string, unknown>)[key] = value;
       }
       meta.message += ` Données confirmées via ${structuredHit.source} (${structuredHit.matchedTitle}).`;
     }
-    // A WikiArt/Commons hit is always preferred (dedicated art/media
-    // indexes), but the AI's own imageUrl is no longer discarded outright —
-    // autofill now runs with a real web search behind it, so its guess is
-    // often an actual photo found in a search result (an auction lot, the
-    // artist's own site). It's still HEAD-checked in findPhoto() before
-    // being trusted, so a hallucinated/broken URL never reaches the UI.
     const aiGuessedUrl = data.imageUrl;
+    let imageSource: 'wikiart' | 'commons' | 'artsy' | 'ai-search' | null = null;
     if (body.title) {
       const { url, source } = await this.findPhoto(`${body.artistName ?? ''} ${body.title}`.trim(), user.organizationId, aiGuessedUrl);
       data.imageUrl = url ?? undefined;
+      imageSource = source;
       if (source === 'wikiart') meta.message += ' Photo réelle trouvée via WikiArt.';
       else if (source === 'commons') meta.message += ' Photo réelle trouvée via Wikimedia Commons.';
       else if (source === 'artsy') meta.message += ' Photo réelle trouvée via Artsy.';
@@ -357,6 +346,17 @@ export class AiController {
     }
     this.logger.log(meta.message);
     this.logUsage(user.organizationId, 'autofillArtwork', meta.attempts);
+    this.debugLog.push({
+      op: 'autofill_artwork',
+      input: { artistName: body.artistName, title: body.title },
+      ddgContextBytes: searchContext ? searchContext.length : null,
+      structuredHit: structuredHit ? { source: structuredHit.source, matchedTitle: structuredHit.matchedTitle } : null,
+      provider: meta.attempts[0]?.model ?? null,
+      success: meta.hasUsableData,
+      fieldsFound: Object.entries(data).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k]) => k),
+      imageSource,
+      durationMs: Date.now() - t0,
+    });
     return { data, meta };
   }
 
@@ -370,6 +370,7 @@ export class AiController {
       this.logger.warn(message);
       throw new ServiceUnavailableException(message);
     }
+    const t0 = Date.now();
     const searchContext = await buildArtistSearchContext(body.fullName);
     const sharedArtist = await this.dedupe(`autofillArtist:${user.organizationId}:${body.fullName}:${body.locale ?? 'en'}`, () =>
       this.ai.autofillArtist({
@@ -379,8 +380,6 @@ export class AiController {
         searchContext: searchContext ?? undefined,
       }),
     );
-    // Cloned for the same reason as autofillArtwork above — avoids two
-    // concurrent identical requests mutating a shared response object.
     const data = { ...sharedArtist.data };
     const meta = { ...sharedArtist.meta, attempts: [...sharedArtist.meta.attempts] };
     const aiGuessedUrl = data.imageUrl;
@@ -393,6 +392,32 @@ export class AiController {
     else meta.message += ' Aucun portrait trouvé.';
     this.logger.log(meta.message);
     this.logUsage(user.organizationId, 'autofillArtist', meta.attempts);
+    this.debugLog.push({
+      op: 'autofill_artist',
+      input: { fullName: body.fullName },
+      ddgContextBytes: searchContext ? searchContext.length : null,
+      structuredHit: null,
+      provider: meta.attempts[0]?.model ?? null,
+      success: meta.hasUsableData,
+      fieldsFound: Object.entries(data).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k]) => k),
+      imageSource: source,
+      durationMs: Date.now() - t0,
+    });
     return { data, meta };
+  }
+
+  @Get('debug-log')
+  @RequirePermissions(PERMISSIONS.SETTINGS_MANAGE)
+  @ApiOperation({ summary: 'Recent AI autofill debug log (in-memory, last 200 entries)' })
+  getDebugLog() {
+    return this.debugLog.getAll();
+  }
+
+  @Delete('debug-log')
+  @RequirePermissions(PERMISSIONS.SETTINGS_MANAGE)
+  @ApiOperation({ summary: 'Clear the in-memory AI debug log' })
+  clearDebugLog() {
+    this.debugLog.clear();
+    return { ok: true };
   }
 }

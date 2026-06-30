@@ -9,6 +9,7 @@ import { AiProviderChain } from './ai-provider-chain';
 import { OpenRouterController } from './openrouter.controller';
 import { AiController } from './ai.controller';
 import { StructuredLookupService } from './structured-lookup.service';
+import { AiDebugLogService } from './ai-debug-log.service';
 import { PrismaModule } from '../../core/prisma/prisma.module';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { CryptoModule } from '../../core/crypto/crypto.module';
@@ -58,7 +59,8 @@ import type { Env } from '../../core/config/configuration';
       },
     },
     StructuredLookupService,
+    AiDebugLogService,
   ],
-  exports: [AI_PROVIDER],
+  exports: [AI_PROVIDER, AiDebugLogService],
 })
 export class AiModule {}

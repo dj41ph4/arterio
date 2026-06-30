@@ -346,6 +346,7 @@
     "notifications": "Meldingen",
     "backups": "Back-ups",
     "migration": "Migratie",
+    "debug": "Logs IA",
     "danger": "Gevarenzone",
     "language": "Taal",
     "languageHint": "Kies de taal van de interface."
