@@ -30,7 +30,9 @@ export class AiController {
     private readonly crypto: CryptoService,
     private readonly structuredLookup: StructuredLookupService,
     private readonly debugLog: AiDebugLogService,
-  ) {}
+  ) {
+    this.logger.log(`AiController initialisé — debugLog injecté: ${!!debugLog}`);
+  }
 
   /**
    * Coalesces identical concurrent calls into a single underlying AI call —
@@ -346,17 +348,21 @@ export class AiController {
     }
     this.logger.log(meta.message);
     this.logUsage(user.organizationId, 'autofillArtwork', meta.attempts);
-    this.debugLog.push({
-      op: 'autofill_artwork',
-      input: { artistName: body.artistName, title: body.title },
-      ddgContextBytes: searchContext ? searchContext.length : null,
-      structuredHit: structuredHit ? { source: structuredHit.source, matchedTitle: structuredHit.matchedTitle } : null,
-      provider: meta.attempts[0]?.model ?? null,
-      success: meta.hasUsableData,
-      fieldsFound: Object.entries(data).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k]) => k),
-      imageSource,
-      durationMs: Date.now() - t0,
-    });
+    try {
+      this.debugLog.push({
+        op: 'autofill_artwork',
+        input: { artistName: body.artistName, title: body.title },
+        ddgContextBytes: searchContext ? searchContext.length : null,
+        structuredHit: structuredHit ? { source: structuredHit.source, matchedTitle: structuredHit.matchedTitle } : null,
+        provider: meta.attempts[0]?.model ?? null,
+        success: meta.hasUsableData,
+        fieldsFound: Object.entries(data).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k]) => k),
+        imageSource,
+        durationMs: Date.now() - t0,
+      });
+    } catch (e) {
+      this.logger.error(`debugLog.push (artwork) a échoué : ${String(e)}`);
+    }
     return { data, meta };
   }
 
@@ -392,17 +398,21 @@ export class AiController {
     else meta.message += ' Aucun portrait trouvé.';
     this.logger.log(meta.message);
     this.logUsage(user.organizationId, 'autofillArtist', meta.attempts);
-    this.debugLog.push({
-      op: 'autofill_artist',
-      input: { fullName: body.fullName },
-      ddgContextBytes: searchContext ? searchContext.length : null,
-      structuredHit: null,
-      provider: meta.attempts[0]?.model ?? null,
-      success: meta.hasUsableData,
-      fieldsFound: Object.entries(data).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k]) => k),
-      imageSource: source,
-      durationMs: Date.now() - t0,
-    });
+    try {
+      this.debugLog.push({
+        op: 'autofill_artist',
+        input: { fullName: body.fullName },
+        ddgContextBytes: searchContext ? searchContext.length : null,
+        structuredHit: null,
+        provider: meta.attempts[0]?.model ?? null,
+        success: meta.hasUsableData,
+        fieldsFound: Object.entries(data).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k]) => k),
+        imageSource: source,
+        durationMs: Date.now() - t0,
+      });
+    } catch (e) {
+      this.logger.error(`debugLog.push (artist) a échoué : ${String(e)}`);
+    }
     return { data, meta };
   }
 
