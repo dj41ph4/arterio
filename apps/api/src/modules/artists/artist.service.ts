@@ -264,20 +264,41 @@ export class ArtistService {
         });
         continue;
       }
-      if (!match) {
-        flagged.push({
-          names: members.map((m) => m.fullName),
-          reason: `"${coreName}" has no Wikidata corroboration — merge needs manual confirmation`,
-        });
-        continue;
+
+      let confidence: number;
+      let wikidataQid: string | null = null;
+      let renameTo: string | null = null;
+
+      if (match) {
+        confidence = match.exact ? 90 : 80;
+        wikidataQid = match.qid;
+        renameTo = match.label;
+      } else {
+        // No Wikidata entry to corroborate this name — still safe to auto-merge
+        // locally as long as the records never actively disagree on nationality
+        // or dates (a real disagreement there means these are plausibly two
+        // different people who happen to share a name, not the same person with
+        // gaps — that case stays flagged for manual review).
+        if (this.fieldsContradict(members)) {
+          flagged.push({
+            names: members.map((m) => m.fullName),
+            reason: `"${coreName}" has conflicting nationality/dates across records — needs manual review`,
+          });
+          continue;
+        }
+        confidence = 60;
       }
 
-      const confidence = match.exact ? 90 : 80;
+      // The record with the richest local data — longest biography text, plus
+      // photo/nationality/dates/movement/notable-works — becomes canonical and
+      // wins on any genuine conflict; mergeArtistFields still gap-fills whatever
+      // it's missing from the others (e.g. only one record has a biography).
       const canonical = members.reduce((best, m) =>
-        m._count.artworks > best._count.artworks ? m : best,
+        this.completenessScore(m) > this.completenessScore(best) ? m : best,
       );
       const duplicates = members.filter((m) => m.id !== canonical.id);
       const filled = this.mergeArtistFields(canonical, duplicates);
+      const finalName = renameTo ?? canonical.fullName;
 
       await this.prisma.$transaction([
         this.prisma.artwork.updateMany({
@@ -288,24 +309,67 @@ export class ArtistService {
           where: { id: canonical.id },
           data: {
             ...filled,
-            fullName: match.label,
-            externalIds: { ...filled.externalIds, wikidata: match.qid },
+            fullName: finalName,
+            externalIds: { ...filled.externalIds, ...(wikidataQid ? { wikidata: wikidataQid } : {}) },
           },
         }),
         this.prisma.artist.deleteMany({ where: { id: { in: duplicates.map((d) => d.id) } } }),
       ]);
 
       merged.push({
-        canonicalName: match.label,
+        canonicalName: finalName,
         mergedNames: members.map((m) => m.fullName),
         confidence,
-        wikidataQid: match.qid,
+        wikidataQid,
       });
-      this.triggerEnrichment(user, canonical.id, match.label).catch(() => {/* no-op */});
+      this.triggerEnrichment(user, canonical.id, finalName).catch(() => {/* no-op */});
       void key;
     }
 
     return { merged, flagged };
+  }
+
+  /**
+   * "Points" used to pick which duplicate record is most complete and should
+   * become canonical: total biography text length (a longer bio outweighs an
+   * empty one) plus fixed bonuses for having a photo/nationality/dates/movement/
+   * notable-works/influences at all. Whoever scores highest wins ties and any
+   * genuine field conflict; mergeArtistFields then gap-fills anything missing
+   * from the other records on top of that.
+   */
+  private completenessScore(a: {
+    biography: unknown;
+    thumbnail: string | null;
+    nationality: string | null;
+    birthDate: string | null;
+    deathDate: string | null;
+    movementId: string | null;
+    notableWorks: unknown;
+    influencedBy: unknown;
+  }): number {
+    const bio = (a.biography as Record<string, string>) ?? {};
+    const bioLength = Object.values(bio).reduce((sum, text) => sum + (text?.length ?? 0), 0);
+    let score = bioLength;
+    if (a.thumbnail) score += 50;
+    if (a.nationality) score += 20;
+    if (a.birthDate) score += 20;
+    if (a.deathDate) score += 20;
+    if (a.movementId) score += 20;
+    score += ((a.notableWorks as string[] | null) ?? []).length * 5;
+    score += ((a.influencedBy as string[] | null) ?? []).length * 5;
+    return score;
+  }
+
+  /** True if two or more records in the group disagree on nationality/dates — i.e. they might be different people, not gaps in the same person's record. */
+  private fieldsContradict(
+    members: Array<{ nationality: string | null; birthDate: string | null; deathDate: string | null }>,
+  ): boolean {
+    const distinctNonEmpty = (vals: Array<string | null>) => new Set(vals.filter(Boolean)).size;
+    return (
+      distinctNonEmpty(members.map((m) => m.nationality)) > 1 ||
+      distinctNonEmpty(members.map((m) => m.birthDate)) > 1 ||
+      distinctNonEmpty(members.map((m) => m.deathDate)) > 1
+    );
   }
 
   private coreNameKey(fullName: string): string {
