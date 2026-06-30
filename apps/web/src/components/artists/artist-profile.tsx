@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useRouter, useParams } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { formatDate } from '@/lib/format';
 import { translateNationality } from '@/lib/nationality';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -222,6 +223,24 @@ function ArtistProfileContent({ artist, locale }: { artist: ArtistView; locale: 
   );
   const [editOpen, setEditOpen] = useState(false);
   const [createArtworkOpen, setCreateArtworkOpen] = useState(false);
+  const qc = useQueryClient();
+
+  // Same backend call as the list page's per-card retry — full bio + nationality
+  // + dates + photo + movement enrichment, exposed directly on the profile page
+  // instead of being buried inside the edit modal.
+  const enrichMutation = useMutation({
+    mutationFn: () => artistRepository.enrich(artist.id),
+    onSuccess: (updated) => {
+      qc.invalidateQueries({ queryKey: ['artist', artist.id] });
+      qc.invalidateQueries({ queryKey: ['artists-all'] });
+      if (updated.externalIds.wikidata || Object.keys(updated.externalIds).length > 0) {
+        toast.success(`${updated.fullName} — enrichissement mis à jour`);
+      } else {
+        toast.error('Aucune information trouvée (vérifiez l\'orthographe du nom)');
+      }
+    },
+    onError: () => toast.error("Échec de l'enrichissement — réessayez plus tard"),
+  });
 
   const initials = artist.fullName
     .split(' ')
@@ -252,6 +271,15 @@ function ArtistProfileContent({ artist, locale }: { artist: ArtistView; locale: 
           >
             <Plus className="h-3.5 w-3.5" />
             Nouvelle œuvre
+          </button>
+          <button
+            onClick={() => enrichMutation.mutate()}
+            disabled={enrichMutation.isPending}
+            title="Relance la recherche Wikidata/Wikipédia (+ sources de secours) et complète bio, nationalité, dates et photo manquantes"
+            className="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-60"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${enrichMutation.isPending ? 'animate-spin' : ''}`} />
+            {enrichMutation.isPending ? 'Recherche…' : 'Réessayer enrichissement'}
           </button>
           <button
             onClick={() => setEditOpen(true)}

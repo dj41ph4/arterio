@@ -310,6 +310,20 @@ export function ImportModal({ open, onClose }: ImportModalProps) {
         const found = await artistRepository.list({ search: normalized, limit: 5 });
         const exact = found.data.find((a) => artistDedupKey(a.fullName) === key);
         if (exact) {
+          // An existing artist matched in the file might predate enrichment (created
+          // by hand, or a prior enrichment attempt failed) — bring it up to the same
+          // bio/nationality/dates/photo completeness as a freshly created one, exactly
+          // like the manual "réessayer" button does. Only once per artist per import run.
+          const alreadyEnriched = Object.keys(exact.externalIds ?? {}).length > 0;
+          if (!alreadyEnriched) {
+            try {
+              const enriched = await artistRepository.enrich(exact.id);
+              artistCache.set(key, enriched);
+              return { id: enriched.id, name: normalized };
+            } catch {
+              // enrichment failed — still use the existing artist as-is
+            }
+          }
           artistCache.set(key, exact);
           return { id: exact.id, name: normalized };
         }
