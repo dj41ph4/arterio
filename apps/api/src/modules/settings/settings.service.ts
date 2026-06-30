@@ -87,7 +87,16 @@ export class SettingsService {
       hasGeminiKey: Boolean(ai.geminiApiKeyEnc),
       hasArtsyKey: Boolean(ai.artsyApiKeyEnc),
       hasMistralKey: Boolean(ai.mistralApiKeyEnc),
-      providerOrder: ai.providerOrder?.length ? ai.providerOrder : ['openrouter', 'mistral', 'gemini'],
+      // A provider order saved before Mistral existed (e.g. ['openrouter', 'gemini']) would
+      // otherwise silently drop it forever — both from this list and from the actual fallback
+      // chain, since AiProviderChain only tries providers present in this array. Any known
+      // provider missing from a stored order is appended at the end, never dropped.
+      providerOrder: (() => {
+        const known = ['openrouter', 'mistral', 'gemini'];
+        const stored = ai.providerOrder?.length ? ai.providerOrder : known;
+        const missing = known.filter((p) => !stored.includes(p));
+        return [...stored, ...missing];
+      })(),
       multiModelMode: ai.multiModelMode === 'fallback' ? 'fallback' : 'parallel',
     };
   }
