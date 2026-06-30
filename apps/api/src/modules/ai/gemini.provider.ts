@@ -246,36 +246,37 @@ Return ONLY a JSON object: {"description": "...", "keywords": [...], "suggestedC
   }
 
   async autofillArtwork(input: ArtworkAutofillInput): Promise<AiAutofillResponse<ArtworkAutofillResult>> {
-    const systemPrompt = `You are an expert art cataloguer with access to real-time Google Search results for this query.
-Respond in language code: ${input.locale}.
+    const systemPrompt = `You are an expert art cataloguer. Respond in language code: ${input.locale}.
 The most reliable sources for a specific, named work are: (1) the artist's own official website ("œuvres"/"catalogue raisonné" page); (2) auction house listings (Artnet, Invaluable, lot PDFs) — exact technique, dimensions, signature placement; (3) museum/gallery pages. Prefer these over your own memory.
 If a dimension is found (e.g. "46x38 cm"), split it into heightCm (first number) and widthCm (second number) in centimeters, alongside dimensionsNote with the raw text.
-If a real, working image URL for this exact work is found in a search result, include it as imageUrl — never invent one.
+If a real, working image URL for this exact work is found in the search results below, include it as imageUrl — never invent one.
 Only state facts you are actually confident about — leave a field out entirely rather than guessing.
 CRITICAL: if nothing useful is found for a field, OMIT that key entirely. Never write a sentence about not finding something as a field's value.
 Return ONLY a JSON object with any of: description, techniqueName, dateText, yearFrom (number), heightCm (number), widthCm (number), dimensionsNote, signatureDescription, condition, tags (string array), imageUrl.`;
-    const userMessage = `Title: ${input.title ?? '(unknown)'}\nArtist: ${input.artistName ?? '(unknown)'}`;
-    return this.completeJson<ArtworkAutofillResult>(input.organizationId, systemPrompt, userMessage, true);
+    const userMessage = `Title: ${input.title ?? '(unknown)'}\nArtist: ${input.artistName ?? '(unknown)'}` +
+      (input.searchContext ? `\n\n${input.searchContext}` : '');
+    return this.completeJson<ArtworkAutofillResult>(input.organizationId, systemPrompt, userMessage, false);
   }
 
   async autofillArtist(input: ArtistAutofillInput): Promise<AiAutofillResponse<ArtistAutofillResult>> {
-    const systemPrompt = `You are an art historian with access to real-time Google Search results for this query.
-Respond in language code: ${input.locale}.
-Ground your answer in actual sourced facts (Wikipedia, museum biographies, the artist's official site) rather than a generic guess.
-If a real photo/portrait of this specific person is found in a search result, include it as imageUrl — never invent one.
+    const systemPrompt = `You are an art historian. Respond in language code: ${input.locale}.
+Ground your answer in the search results provided below — actual sourced facts rather than a generic guess.
+If a real photo/portrait of this specific person is found in the search results, include it as imageUrl — never invent one.
 Only state facts you are actually confident about — leave a field out entirely rather than guessing.
 CRITICAL: if nothing useful is found, OMIT the key entirely. Never write a sentence about not finding something as a field's value.
 Return ONLY a JSON object with any of: biography, nationality, birthDate, deathDate, movement, imageUrl.`;
-    const userMessage = `Artist: ${input.fullName}`;
-    return this.completeJson<ArtistAutofillResult>(input.organizationId, systemPrompt, userMessage, true);
+    const userMessage = `Artist: ${input.fullName}` +
+      (input.searchContext ? `\n\n${input.searchContext}` : '');
+    return this.completeJson<ArtistAutofillResult>(input.organizationId, systemPrompt, userMessage, false);
   }
 
   async findImages(input: FindImagesInput): Promise<AiAutofillResponse<FindImagesResult>> {
-    const systemPrompt = `You have access to real-time Google Search results for this query.
-Find as many DIFFERENT real, working image URLs as you can (up to 6) showing the exact subject of this query — actual photos found in search results, never a generic stock photo, never invented.
+    const systemPrompt = `Extract real, working image URLs from the search results provided below.
+Find as many DIFFERENT image URLs as you can (up to 6) showing the exact subject of this query — actual photos found in the results, never a generic stock photo, never invented.
 CRITICAL: if nothing useful is found, OMIT the key entirely.
 Return ONLY a JSON object: {"imageUrls": ["...", ...]}`;
-    return this.completeJson<FindImagesResult>(input.organizationId, systemPrompt, input.query, true);
+    const userMessage = input.query + (input.searchContext ? `\n\n${input.searchContext}` : '');
+    return this.completeJson<FindImagesResult>(input.organizationId, systemPrompt, userMessage, false);
   }
 
   /** Best-effort text translation — never throws, returns null so the caller (enrichment) just skips that locale on failure. */
