@@ -73,8 +73,8 @@ export class HttpArtworkRepository implements ArtworkRepository {
       totalArtworks: total,
       totalInsuredValue,
       currency: 'EUR',
-      collections: facets.collection.length,
-      artists: facets.artist.length,
+      collections: facets.totalCollections ?? facets.collection.length,
+      artists: facets.totalArtists ?? facets.artist.length,
       onLoan: items.filter((a) => a.status === 'on_loan').length,
       onExhibition: items.filter((a) => a.status === 'on_exhibition').length,
       needsRestoration: items.filter(

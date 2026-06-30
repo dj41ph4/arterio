@@ -35,6 +35,9 @@ export interface ArtworkFacets {
   collection: FacetValue[];
   condition: FacetValue[];
   artist: FacetValue[];
+  /** Total artist/collection counts in the org — used by dashboard stats. Populated by the API; may be absent from older responses, default to artist/collection array lengths as fallback. */
+  totalArtists?: number;
+  totalCollections?: number;
 }
 
 /**

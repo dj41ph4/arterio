@@ -120,16 +120,24 @@ export class ArtworkService {
 
   async facets(user: AuthUser) {
     const where = { organizationId: user.organizationId, deletedAt: null };
-    const [byStatus, byCondition, byCollection] = await Promise.all([
+    const [byStatus, byCondition, byCollection, byArtist, totalArtists, totalCollections] = await Promise.all([
       this.prisma.artwork.groupBy({ by: ['status'], where, _count: true }),
       this.prisma.artwork.groupBy({ by: ['condition'], where, _count: true }),
       this.prisma.artwork.groupBy({ by: ['collectionId'], where, _count: true }),
+      this.prisma.artwork.groupBy({ by: ['artistId'], where: { ...where, NOT: { artistId: null } }, _count: true }),
+      this.prisma.artist.count({ where: { organizationId: user.organizationId } }),
+      this.prisma.collection.count({ where: { organizationId: user.organizationId } }),
     ]);
     // Collection has no `deletedAt` column — reusing the artwork `where`
     // object here (as before this session's soft-delete change) threw
     // PrismaClientValidationError and took the whole facets endpoint down,
     // which the Collection page depends on to render at all.
-    const collections = await this.prisma.collection.findMany({ where: { organizationId: user.organizationId } });
+    const [collections, artists] = await Promise.all([
+      this.prisma.collection.findMany({ where: { organizationId: user.organizationId } }),
+      byArtist.length
+        ? this.prisma.artist.findMany({ where: { id: { in: byArtist.map((a) => a.artistId!).filter(Boolean) } }, select: { id: true, fullName: true } })
+        : Promise.resolve([] as Array<{ id: string; fullName: string }>),
+    ]);
     return {
       status: byStatus.map((s) => ({ value: s.status, label: s.status, count: s._count })),
       condition: byCondition.map((c) => ({ value: c.condition, label: c.condition, count: c._count })),
@@ -139,7 +147,16 @@ export class ArtworkService {
           const col = collections.find((x) => x.id === c.collectionId);
           return { value: c.collectionId, label: col?.name ?? '', count: c._count, color: col?.color };
         }),
-      artist: [],
+      artist: byArtist
+        .filter((a) => a.artistId)
+        .map((a) => {
+          const art = artists.find((x) => x.id === a.artistId);
+          return { value: a.artistId!, label: art?.fullName ?? '', count: a._count };
+        }),
+      // Explicit totals for the dashboard stats — these count ALL artists/collections,
+      // not just those linked to at least one artwork via the groupBy above.
+      totalArtists,
+      totalCollections,
     };
   }
   /** Next candidate after a unique-constraint clash: bump the numeric suffix of a "PREFIX-00001"-style number, or fall back to "INV-NNNN". */
