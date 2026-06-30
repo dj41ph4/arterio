@@ -3,7 +3,6 @@
 import * as React from 'react';
 import { motion } from 'framer-motion';
 import { X, Sparkles, Check } from 'lucide-react';
-import { enrichArtistLive } from '@/lib/wikipedia-enrichment';
 import { artistRepository, type ArtistView } from '@/lib/data/artist-repository';
 import { aiApi } from '@/lib/data/ai';
 import { ApiError } from '@/lib/api/client';
@@ -35,64 +34,50 @@ export function AddArtistModal({ open, onClose, onAdded }: AddArtistModalProps) 
 
   const addLog = (msg: string) => setLog((l) => [...l, msg]);
 
+  /** Same backend pipeline as every other "réessayer enrichissement" button — Wikidata,
+   *  Wikipedia, museum APIs, DBpedia, gallery scrapers and AI translation, instead of the
+   *  old client-side Wikidata/Wikipedia-only lookup that skipped all of that. */
   const handleEnrich = async (): Promise<AutofillOutcome> => {
     if (!name.trim()) return { message: 'Entrez un nom.', success: false };
     setStatus('loading');
     setLog([]);
-    addLog(`Recherche de "${name}" sur Wikidata…`);
+    addLog(`Recherche de "${name.trim()}" via Wikidata/Wikipédia (+ sources de secours)…`);
     try {
-      const data = await enrichArtistLive(name.trim());
-      if (!data.qid) {
-        setStatus('notfound');
-        const message = 'Aucune entrée Wikidata trouvée pour ce nom.';
-        addLog(message);
-        return { message, success: false };
-      }
-      const canonicalName = data.label ?? name.trim();
-      if (canonicalName !== name.trim()) {
-        addLog(`Nom corrigé d'après Wikidata : "${canonicalName}"`);
-      }
-      addLog(`Trouvé : ${data.qid} — ${data.nationality ?? 'nationalité inconnue'}`);
-      addLog(`Récupération des biographies (${Object.keys(data.biographies).length} langues trouvées)…`);
-      if (data.imageUrl) addLog('Portrait récupéré depuis Wikimedia Commons.');
-      if (data.ulanId) addLog(`Identifiant Getty ULAN : ${data.ulanId}`);
-      if (data.viafId) addLog(`Identifiant VIAF : ${data.viafId}`);
-
-      const artist: ArtistView = {
-        id: `artist-${data.qid.toLowerCase()}`,
-        fullName: canonicalName,
-        sortName: canonicalName,
-        nationality: data.nationality,
-        birthDate: data.birthDate,
-        deathDate: data.deathDate,
-        biography: data.biographies,
-        movement: data.movement ? { id: data.movement.toLowerCase().replace(/\s+/g, '-'), name: data.movement } : undefined,
-        externalIds: {
-          wikidata: data.qid,
-          ulan: data.ulanId,
-          viaf: data.viafId,
-        },
-        externalUrls: {
-          wikipedia: data.sourceUrls.wikipedia,
-          wikidata: data.sourceUrls.wikidata,
-          ulan: data.ulanId ? `https://vocab.getty.edu/ulan/${data.ulanId}` : undefined,
-          viaf: data.viafId ? `https://viaf.org/viaf/${data.viafId}` : undefined,
-        },
-        thumbnail: data.imageUrl,
+      const created = await artistRepository.add({
+        id: '',
+        fullName: name.trim(),
+        sortName: name.trim(),
+        biography: {},
+        externalIds: {},
+        externalUrls: {},
         artworkCount: 0,
         artworkIds: [],
-        notableWorks: data.notableWorks,
-        influencedBy: data.influencedBy,
-      };
+      } as ArtistView);
 
-      await artistRepository.add(artist);
-      setResult(artist);
+      if (Object.keys(created.externalIds).length === 0) {
+        setStatus('notfound');
+        const message = 'Aucune information trouvée pour ce nom (Wikidata, musées, sources de secours).';
+        addLog(message);
+        setResult(created);
+        return { message, success: false };
+      }
+
+      if (created.fullName !== name.trim()) {
+        addLog(`Nom corrigé d'après les sources : "${created.fullName}"`);
+      }
+      addLog(`Trouvé — ${created.nationality ?? 'nationalité inconnue'}`);
+      addLog(`${Object.keys(created.biography).length} biographie(s) récupérée(s) (${Object.keys(created.biography).join(', ').toUpperCase()}).`);
+      if (created.thumbnail) addLog('Portrait récupéré.');
+      if (created.externalIds.ulan) addLog(`Identifiant Getty ULAN : ${created.externalIds.ulan}`);
+      if (created.externalIds.viaf) addLog(`Identifiant VIAF : ${created.externalIds.viaf}`);
+
+      setResult(created);
       setStatus('done');
       addLog('Fiche artiste créée avec succès.');
-      return { message: `${canonicalName} ajouté avec données Wikipedia en direct`, success: true };
+      return { message: `${created.fullName} ajouté avec enrichissement complet`, success: true };
     } catch (err) {
       setStatus('notfound');
-      const message = `Erreur : ${String(err)}`;
+      const message = `Erreur : ${err instanceof ApiError ? err.message : String(err)}`;
       addLog(message);
       return { message, success: false };
     }
