@@ -79,6 +79,19 @@ export interface ArtistRepository {
   autoMerge(): Promise<AutoMergeReport>;
   /** Manual portrait upload — overrides any auto-fetched Wikipedia image. */
   uploadPhoto(id: string, file: File): Promise<ArtistView>;
+  /** Starts (or, if one's already running, just reports the status of) a server-side bulk re-enrichment of every not-yet-enriched artist. Runs independently of this tab. */
+  startBulkEnrich(): Promise<BulkEnrichStatus>;
+  /** Polls the bulk re-enrichment job's progress — safe to call even if nothing was ever started. */
+  getBulkEnrichStatus(): Promise<BulkEnrichStatus>;
+}
+
+export interface BulkEnrichStatus {
+  running: boolean;
+  done: number;
+  total: number;
+  resolved: number;
+  startedAt: string | null;
+  finishedAt: string | null;
 }
 
 export interface AutoMergeReport {
@@ -332,6 +345,14 @@ export class MockArtistRepository implements ArtistRepository {
 
   async autoMerge(): Promise<AutoMergeReport> {
     return { merged: [], flagged: [] };
+  }
+
+  async startBulkEnrich(): Promise<BulkEnrichStatus> {
+    return { running: false, done: 0, total: 0, resolved: 0, startedAt: null, finishedAt: null };
+  }
+
+  async getBulkEnrichStatus(): Promise<BulkEnrichStatus> {
+    return { running: false, done: 0, total: 0, resolved: 0, startedAt: null, finishedAt: null };
   }
 }
 

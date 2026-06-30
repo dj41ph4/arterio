@@ -34,6 +34,8 @@ export interface ArtworkAutofillInput {
   artistName?: string;
   locale: Locale;
   organizationId?: string;
+  /** Free, key-less web-search context (see common/free-web-search.util.ts) — appended to the prompt so a provider with no native/paid search of its own still gets real grounding. Optional: providers ignore it if absent. */
+  searchContext?: string;
 }
 
 export interface ArtworkAutofillResult {
@@ -58,6 +60,8 @@ export interface ArtistAutofillInput {
   fullName: string;
   locale: Locale;
   organizationId?: string;
+  /** Free, key-less web-search context (see common/free-web-search.util.ts) — appended to the prompt so a provider with no native/paid search of its own still gets real grounding. Optional: providers ignore it if absent. */
+  searchContext?: string;
 }
 
 export interface ArtistAutofillResult {
@@ -80,6 +84,8 @@ export interface FindImagesInput {
   /** Free-text search-engine-style query, e.g. `Picasso "The Old Guitarist" photo painting image`. */
   query: string;
   organizationId?: string;
+  /** Free, key-less web-search context (see common/free-web-search.util.ts) — appended to the prompt so a provider with no native/paid search of its own still gets real grounding. Optional: providers ignore it if absent. */
+  searchContext?: string;
 }
 
 export interface FindImagesResult {

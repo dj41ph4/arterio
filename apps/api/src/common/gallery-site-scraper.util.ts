@@ -15,7 +15,7 @@ import * as cheerio from 'cheerio';
  * before being trusted.
  */
 
-const BROWSER_HEADERS = {
+export const BROWSER_HEADERS = {
   'User-Agent':
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
   Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -48,7 +48,7 @@ function pageMentionsName(pageText: string, fullName: string): boolean {
   return nameTokens(fullName).every((t) => lower.includes(t));
 }
 
-async function fetchHtml(url: string): Promise<string | null> {
+export async function fetchHtml(url: string): Promise<string | null> {
   try {
     const res = await fetch(url, {
       headers: BROWSER_HEADERS,

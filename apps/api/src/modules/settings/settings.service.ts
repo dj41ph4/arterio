@@ -27,6 +27,8 @@ interface AiOrgSettings {
   providerOrder?: string[];
   /** 'parallel' (default): every configured OpenRouter model queried at once and merged. 'fallback': tried one at a time, cheaper. */
   multiModelMode?: 'parallel' | 'fallback';
+  /** OFF by default. OpenRouter's "web" plugin bills per search even on :free models — free search grounding instead comes from our own DuckDuckGo-based lookup. Explicit opt-in for users who accept the extra cost. */
+  useOpenRouterWebPlugin?: boolean;
 }
 
 @Injectable()
@@ -98,6 +100,7 @@ export class SettingsService {
         return [...stored, ...missing];
       })(),
       multiModelMode: ai.multiModelMode === 'fallback' ? 'fallback' : 'parallel',
+      useOpenRouterWebPlugin: ai.useOpenRouterWebPlugin === true,
     };
   }
 
@@ -114,6 +117,7 @@ export class SettingsService {
       mistralApiKey?: string;
       providerOrder?: string[];
       multiModelMode?: 'parallel' | 'fallback';
+      useOpenRouterWebPlugin?: boolean;
     },
   ) {
     const org = await this.prisma.organization.findUniqueOrThrow({ where: { id: user.organizationId } });
@@ -149,6 +153,9 @@ export class SettingsService {
     }
     if (input.multiModelMode !== undefined) {
       next.multiModelMode = input.multiModelMode === 'fallback' ? 'fallback' : 'parallel';
+    }
+    if (input.useOpenRouterWebPlugin !== undefined) {
+      next.useOpenRouterWebPlugin = input.useOpenRouterWebPlugin;
     }
     if (input.models !== undefined) {
       next.models = input.models.map((m) => m.trim()).filter(Boolean).slice(0, 3);

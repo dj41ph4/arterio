@@ -5,6 +5,15 @@ import type { AuthUser } from '../../common/types';
 import type { CreateArtistDto, ListArtistsQueryDto, UpdateArtistDto } from './dto';
 import type { Locale } from '@arterio/shared';
 
+interface BulkEnrichJobState {
+  total: number;
+  done: number;
+  resolved: number;
+  running: boolean;
+  startedAt: Date;
+  finishedAt?: Date;
+}
+
 @Injectable()
 export class ArtistService {
   constructor(
@@ -153,6 +162,7 @@ export class ArtistService {
     if (result.wikidata?.qid) externalIds['wikidata'] = result.wikidata.qid;
     if (result.wikidata?.ulanId) externalIds['ulan'] = result.wikidata.ulanId;
     if (result.wikidata?.viafId) externalIds['viaf'] = result.wikidata.viafId;
+    if (result.externalUrls?.officialWebsite) externalIds['officialWebsite'] = result.externalUrls.officialWebsite;
     if (result.fallback) {
       externalIds['source'] = result.fallback.source;
       if (result.fallback.sourceUrl) externalIds[result.fallback.source] = result.fallback.sourceUrl;
@@ -201,6 +211,79 @@ export class ArtistService {
       thumbnail: result.thumbnail,
       externalUrls: result.externalUrls,
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Bulk re-enrichment — runs entirely server-side so it survives the caller
+  // navigating away or closing the tab; the frontend just polls status and
+  // picks the progress back up whenever it's next looking. In-memory only
+  // (one process, no Redis — see CLAUDE.md), so a server restart mid-run
+  // loses progress, same trade-off the rest of this appliance makes everywhere
+  // else there's no persistent job queue.
+  // ---------------------------------------------------------------------------
+
+  private static readonly bulkEnrichJobs = new Map<string, BulkEnrichJobState>();
+
+  private bulkEnrichStatusView(state: BulkEnrichJobState | undefined) {
+    if (!state) return { running: false, done: 0, total: 0, resolved: 0, startedAt: null, finishedAt: null };
+    return {
+      running: state.running,
+      done: state.done,
+      total: state.total,
+      resolved: state.resolved,
+      startedAt: state.startedAt.toISOString(),
+      finishedAt: state.finishedAt?.toISOString() ?? null,
+    };
+  }
+
+  /** Idempotent: if a job is already running for this org, just returns its current status instead of starting a second one. */
+  async startBulkEnrich(user: AuthUser) {
+    const orgId = user.organizationId;
+    const existing = ArtistService.bulkEnrichJobs.get(orgId);
+    if (existing?.running) return this.bulkEnrichStatusView(existing);
+
+    const all = await this.prisma.artist.findMany({
+      where: { organizationId: orgId },
+      select: { id: true, fullName: true, externalIds: true },
+    });
+    const targets = all.filter((a) => !((a.externalIds as Record<string, string> | null)?.wikidata));
+
+    const state: BulkEnrichJobState = {
+      total: targets.length,
+      done: 0,
+      resolved: 0,
+      running: true,
+      startedAt: new Date(),
+    };
+    ArtistService.bulkEnrichJobs.set(orgId, state);
+
+    if (targets.length) {
+      void (async () => {
+        for (const target of targets) {
+          try {
+            const result = await this.enrich(user, target.id);
+            if (result.wikidata?.qid) state.resolved++;
+          } catch {
+            // best-effort — move on to the next artist
+          }
+          state.done++;
+          // Same pacing as the previous client-driven loop — Wikidata/Wikipedia
+          // return empty (not erroring) results under rapid-fire traffic.
+          await new Promise((r) => setTimeout(r, 700));
+        }
+        state.running = false;
+        state.finishedAt = new Date();
+      })();
+    } else {
+      state.running = false;
+      state.finishedAt = new Date();
+    }
+
+    return this.bulkEnrichStatusView(state);
+  }
+
+  getBulkEnrichStatus(user: AuthUser) {
+    return this.bulkEnrichStatusView(ArtistService.bulkEnrichJobs.get(user.organizationId));
   }
 
   /** Finds or creates the ArtMovement matching a Wikidata movement label, with its name in every supported locale. */
@@ -460,6 +543,7 @@ export class ArtistService {
     if (result.wikidata?.qid) externalIds['wikidata'] = result.wikidata.qid;
     if (result.wikidata?.ulanId) externalIds['ulan'] = result.wikidata.ulanId;
     if (result.wikidata?.viafId) externalIds['viaf'] = result.wikidata.viafId;
+    if (result.externalUrls?.officialWebsite) externalIds['officialWebsite'] = result.externalUrls.officialWebsite;
     if (result.fallback) {
       externalIds['source'] = result.fallback.source;
       if (result.fallback.sourceUrl) externalIds[result.fallback.source] = result.fallback.sourceUrl;

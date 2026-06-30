@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useRouter, useParams } from 'next/navigation';
 import { motion } from 'framer-motion';
@@ -126,7 +126,6 @@ export function ArtistListView() {
   const [importOpen, setImportOpen] = useState(false);
   const [unenrichedOnly, setUnenrichedOnly] = useState(false);
   const [retryingId, setRetryingId] = useState<string | null>(null);
-  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
   const qc = useQueryClient();
 
   const pendingMerge = useMutationState({
@@ -210,28 +209,36 @@ export function ArtistListView() {
     onSettled: () => setRetryingId(null),
   });
 
-  const retryAllUnenriched = async () => {
-    const targets = allArtists.filter((a) => !a.externalIds.wikidata);
-    if (!targets.length) return;
+  // The bulk re-enrichment job itself runs entirely server-side (see
+  // ArtistService.startBulkEnrich) — this query just polls its progress, so
+  // navigating away and back (or even reloading) picks the same job back up
+  // instead of restarting or silently losing track of it. Polling itself
+  // only happens while this component is mounted; the job keeps running on
+  // the server regardless.
+  const { data: bulkStatus } = useQuery({
+    queryKey: ['artists-bulk-enrich-status'],
+    queryFn: () => artistRepository.getBulkEnrichStatus(),
+    refetchInterval: (query) => (query.state.data?.running ? 1500 : false),
+  });
 
-    setBulkProgress({ done: 0, total: targets.length });
-    let resolved = 0;
-    for (let i = 0; i < targets.length; i++) {
-      try {
-        const updated = await artistRepository.enrich(targets[i]!.id);
-        if (updated.externalIds.wikidata) resolved++;
-      } catch {
-        // best-effort — move on to the next artist
-      }
-      setBulkProgress({ done: i + 1, total: targets.length });
-      // Pace requests — Wikidata/Wikipedia return empty (not erroring) results
-      // under rapid-fire automated traffic, which looks identical to "not found".
-      await new Promise((r) => setTimeout(r, 700));
+  const startBulkMutation = useMutation({
+    mutationFn: () => artistRepository.startBulkEnrich(),
+    onSuccess: (status) => qc.setQueryData(['artists-bulk-enrich-status'], status),
+    onError: () => toast.error("Échec du lancement de l'enrichissement groupé"),
+  });
+
+  // Fires the "N / M retrouvés" summary toast exactly once, the moment the
+  // polled status flips from running to finished — works the same whether
+  // this component was mounted the whole time or just remounted on return.
+  const wasRunning = useRef(false);
+  useEffect(() => {
+    if (!bulkStatus) return;
+    if (wasRunning.current && !bulkStatus.running) {
+      qc.invalidateQueries({ queryKey: ['artists-all'] });
+      toast.success(`${bulkStatus.resolved} / ${bulkStatus.total} artiste${bulkStatus.total > 1 ? 's' : ''} retrouvé${bulkStatus.resolved > 1 ? 's' : ''}`);
     }
-    setBulkProgress(null);
-    qc.invalidateQueries({ queryKey: ['artists-all'] });
-    toast.success(`${resolved} / ${targets.length} artiste${targets.length > 1 ? 's' : ''} retrouvé${resolved > 1 ? 's' : ''}`);
-  };
+    wasRunning.current = bulkStatus.running;
+  }, [bulkStatus, qc]);
 
   return (
     <div className="flex h-full flex-col">
@@ -279,12 +286,13 @@ export function ArtistListView() {
         )}
         {unenrichedCount > 0 && (
           <button
-            onClick={retryAllUnenriched}
-            disabled={bulkProgress != null}
+            onClick={() => startBulkMutation.mutate()}
+            disabled={bulkStatus?.running || startBulkMutation.isPending}
+            title="Tourne en arrière-plan sur le serveur — continue même si vous changez de page"
             className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted disabled:opacity-60"
           >
-            <RefreshCw className={cn('h-4 w-4', bulkProgress != null && 'animate-spin')} />
-            {bulkProgress ? `${bulkProgress.done} / ${bulkProgress.total}…` : 'Tout réessayer'}
+            <RefreshCw className={cn('h-4 w-4', bulkStatus?.running && 'animate-spin')} />
+            {bulkStatus?.running ? `${bulkStatus.done} / ${bulkStatus.total}…` : 'Tout réessayer'}
           </button>
         )}
         <button

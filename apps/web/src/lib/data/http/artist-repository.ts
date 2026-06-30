@@ -1,6 +1,6 @@
 import { apiFetch, API_BASE_URL, toMediaUrl } from '@/lib/api/client';
 import { useAuthStore } from '@/stores/auth-store';
-import type { ArtistQuery, ArtistRepository, ArtistUpdateInput, ArtistView, AutoMergeReport, Paginated } from '../artist-repository';
+import type { ArtistQuery, ArtistRepository, ArtistUpdateInput, ArtistView, AutoMergeReport, BulkEnrichStatus, Paginated } from '../artist-repository';
 
 interface BackendArtistRow {
   id: string;
@@ -124,5 +124,13 @@ export class HttpArtistRepository implements ArtistRepository {
     }
     const row = await apiFetch<BackendArtistRow>(`/artists/${id}`);
     return toArtistView(row);
+  }
+
+  async startBulkEnrich(): Promise<BulkEnrichStatus> {
+    return apiFetch<BulkEnrichStatus>('/artists/enrich-all/start', { method: 'POST' });
+  }
+
+  async getBulkEnrichStatus(): Promise<BulkEnrichStatus> {
+    return apiFetch<BulkEnrichStatus>('/artists/enrich-all/status');
   }
 }

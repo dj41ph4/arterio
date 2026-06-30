@@ -7,6 +7,8 @@ import { searchCommonsImage, searchCommonsImages } from '../../common/commons-im
 import { searchWikiArtImage, searchWikiArtImages } from '../../common/wikiart-api.util';
 import { searchArtsyImage, searchArtsyImages } from '../../common/artsy-api.util';
 import { isLikelyRealImage } from '../../common/download-image.util';
+import { buildSearchContext } from '../../common/free-web-search.util';
+import { StructuredLookupService } from './structured-lookup.service';
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { PrismaService } from '../../core/prisma/prisma.service';
@@ -25,6 +27,7 @@ export class AiController {
     @Inject(AI_PROVIDER) private readonly ai: AiProvider,
     private readonly prisma: PrismaService,
     private readonly crypto: CryptoService,
+    private readonly structuredLookup: StructuredLookupService,
   ) {}
 
   /**
@@ -201,10 +204,12 @@ export class AiController {
     }
     const query = `${body.artistName ?? ''} ${body.title ?? ''}`.trim();
     if (!query) throw new BadRequestException('title or artistName is required');
+    const searchContext = await buildSearchContext(`${query} photo painting image`);
     const { data, meta } = await this.dedupe(`findImages.artwork:${user.organizationId}:${query}`, () =>
       this.ai.findImages({
         query: `Search query to run: ${body.artistName ?? ''} "${body.title ?? ''}" photo painting image`.trim(),
         organizationId: user.organizationId,
+        searchContext: searchContext ?? undefined,
       }),
     );
     const candidates = data.imageUrls ?? [];
@@ -244,10 +249,12 @@ export class AiController {
       throw new ServiceUnavailableException(message);
     }
     if (!body.fullName?.trim()) throw new BadRequestException('fullName is required');
+    const searchContext = await buildSearchContext(`${body.fullName} portrait photo`);
     const { data, meta } = await this.dedupe(`findImages.artist:${user.organizationId}:${body.fullName}`, () =>
       this.ai.findImages({
         query: `Search query to run: ${body.fullName} portrait photo`,
         organizationId: user.organizationId,
+        searchContext: searchContext ?? undefined,
       }),
     );
     const candidates = data.imageUrls ?? [];
@@ -293,12 +300,23 @@ export class AiController {
       throw new ServiceUnavailableException(message);
     }
     const dedupeKey = `autofillArtwork:${user.organizationId}:${body.title ?? ''}:${body.artistName ?? ''}:${body.locale ?? 'en'}`;
+    // Structured museum lookup (StructuredLookupService — official JSON APIs,
+    // no scraping/LLM guesswork) runs in parallel with the free web search,
+    // not sequentially before it — both feed the AI call, neither blocks it.
+    const [searchContext, structuredHit] = await Promise.all([
+      buildSearchContext(`${body.artistName ?? ''} "${body.title ?? ''}" catalogue raisonné dimensions technique signature`.trim()),
+      this.structuredLookup.searchArtworkByTitle(body.artistName, body.title, user.organizationId),
+    ]);
+    const combinedContext = structuredHit
+      ? `${searchContext ?? ''}\n\nConfirmed museum record (source: ${structuredHit.source}${structuredHit.sourceUrl ? `, ${structuredHit.sourceUrl}` : ''}): ${JSON.stringify(structuredHit.result)} — trust these values over your own search/memory for any field they cover.`.trim()
+      : searchContext;
     const shared = await this.dedupe(dedupeKey, () =>
       this.ai.autofillArtwork({
         title: body.title,
         artistName: body.artistName,
         locale: body.locale ?? 'en',
         organizationId: user.organizationId,
+        searchContext: combinedContext ?? undefined,
       }),
     );
     // Cloned because two concurrent identical requests share the exact same
@@ -307,6 +325,15 @@ export class AiController {
     // the other's response.
     const data = { ...shared.data };
     const meta = { ...shared.meta, attempts: [...shared.meta.attempts] };
+    // A confirmed museum record beats an LLM guess for any field it actually
+    // covers — only defined fields override, so a museum hit missing e.g.
+    // signatureDescription never blanks out what the AI found for that field.
+    if (structuredHit) {
+      for (const [key, value] of Object.entries(structuredHit.result)) {
+        if (value !== undefined && value !== null && value !== '') (data as Record<string, unknown>)[key] = value;
+      }
+      meta.message += ` Données confirmées via ${structuredHit.source} (${structuredHit.matchedTitle}).`;
+    }
     // A WikiArt/Commons hit is always preferred (dedicated art/media
     // indexes), but the AI's own imageUrl is no longer discarded outright —
     // autofill now runs with a real web search behind it, so its guess is
@@ -338,11 +365,13 @@ export class AiController {
       this.logger.warn(message);
       throw new ServiceUnavailableException(message);
     }
+    const searchContext = await buildSearchContext(`${body.fullName} biography portrait`);
     const sharedArtist = await this.dedupe(`autofillArtist:${user.organizationId}:${body.fullName}:${body.locale ?? 'en'}`, () =>
       this.ai.autofillArtist({
         fullName: body.fullName,
         locale: body.locale ?? 'en',
         organizationId: user.organizationId,
+        searchContext: searchContext ?? undefined,
       }),
     );
     // Cloned for the same reason as autofillArtwork above — avoids two

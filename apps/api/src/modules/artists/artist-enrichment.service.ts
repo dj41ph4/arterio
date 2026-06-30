@@ -34,13 +34,14 @@ export interface WikidataArtist {
   ulanId?: string;
   viafId?: string;
   wikipediaSitelinks: Partial<Record<string, string>>; // lang → page title
+  officialWebsite?: string;
   imageUrl?: string;
   signatureUrl?: string;
   notableWorkIds?: string[];
   influencedByLabels?: string[];
 }
 
-export type FallbackSource = 'met' | 'aic' | 'wikiart' | 'europeana' | 'rijksmuseum' | 'harvard' | 'smithsonian' | 'dbpedia' | 'singulart' | 'icac' | 'artmajeur';
+export type FallbackSource = 'met' | 'aic' | 'cleveland' | 'vam' | 'wikiart' | 'europeana' | 'rijksmuseum' | 'harvard' | 'smithsonian' | 'dbpedia' | 'singulart' | 'icac' | 'artmajeur';
 
 /** A hit from a museum collection API — used when Wikidata has no match. */
 export interface FallbackHit {
@@ -63,6 +64,7 @@ export interface ArtistEnrichmentResult {
     wikidata?: string;
     ulan?: string;
     viaf?: string;
+    officialWebsite?: string;
   };
   /** Set only when Wikidata found nothing and a museum collection API confirmed the artist instead. */
   fallback?: FallbackHit;
@@ -118,6 +120,7 @@ const P_IMAGE = 'P18';
 const P_SIGNATURE = 'P109';
 const P_INFLUENCED_BY = 'P737';
 const P_NOTABLE_WORK = 'P800';
+const P_WEBSITE = 'P856';
 
 // ---------------------------------------------------------------------------
 // Service
@@ -314,6 +317,7 @@ export class ArtistEnrichmentService {
         viaf: wikidata?.viafId
           ? `https://viaf.org/viaf/${wikidata.viafId}`
           : undefined,
+        officialWebsite: wikidata?.officialWebsite,
       },
     };
   }
@@ -432,7 +436,7 @@ export class ArtistEnrichmentService {
     // to the raw QID, e.g. "Q31" instead of "Belgium"). Splitting removes the
     // aggregation entirely from the scalar-field query, making it deterministic.
     const scalarSparql = `
-SELECT ?birthDate ?deathDate ?nationalityLabel ?movementLabel ?movement ?ulanId ?viafId ?image ?signature
+SELECT ?birthDate ?deathDate ?nationalityLabel ?movementLabel ?movement ?ulanId ?viafId ?image ?signature ?website
 WHERE {
   BIND(wd:${qid} AS ?item)
   OPTIONAL { ?item wdt:${P_BIRTH} ?birthDate }
@@ -443,6 +447,7 @@ WHERE {
   OPTIONAL { ?item wdt:${P_VIAF} ?viafId }
   OPTIONAL { ?item wdt:${P_IMAGE} ?image }
   OPTIONAL { ?item wdt:${P_SIGNATURE} ?signature }
+  OPTIONAL { ?item wdt:${P_WEBSITE} ?website }
 }
 LIMIT 1
 `.trim();
@@ -532,6 +537,7 @@ WHERE {
         notableWorkIds: binding['notableWorks']?.value?.split('|').filter(Boolean),
         influencedByLabels: binding['influenced']?.value?.split('|').filter(Boolean),
         wikipediaSitelinks: sitelinks,
+        officialWebsite: binding['website']?.value,
       };
     } catch (err) {
       this.logger.warn(`Wikidata entity fetch failed for ${qid}: ${String(err)}`);
@@ -611,6 +617,8 @@ WHERE {
     const providers: Array<[string, () => Promise<FallbackHit | null>]> = [
       ['aic', () => this.fetchFromAic(name)],
       ['met', () => this.fetchFromMet(name)],
+      ['cleveland', () => this.fetchFromCleveland(name)],
+      ['vam', () => this.fetchFromVam(name)],
       ['wikiart', () => this.fetchFromWikiArt(name)],
       ['europeana', () => this.fetchFromEuropeana(name, keys.europeana)],
       ['rijksmuseum', () => this.fetchFromRijksmuseum(name, keys.rijksmuseum)],
@@ -754,6 +762,56 @@ WHERE {
       };
     }
     return null;
+  }
+
+  /** Cleveland Museum of Art Open Access API — keyless, JSON, generous object coverage. */
+  private async fetchFromCleveland(name: string): Promise<FallbackHit | null> {
+    const res = await fetch(
+      `https://openaccess-api.clevelandart.org/api/artworks/?artists=${encodeURIComponent(name)}&limit=5`,
+      { signal: AbortSignal.timeout(8_000) },
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      data?: Array<{
+        creators?: Array<{ description?: string; biography?: string }>;
+        images?: { web?: { url?: string }; print?: { url?: string } };
+        url?: string;
+      }>;
+    };
+    for (const obj of data.data ?? []) {
+      const creator = obj.creators?.find((c) => this.matchesAllTokens(name, c.description ?? ''));
+      if (!creator) continue;
+      return {
+        source: 'cleveland',
+        matchedName: creator.description ?? name,
+        biography: creator.biography || undefined,
+        imageUrl: obj.images?.web?.url ?? obj.images?.print?.url,
+        sourceUrl: obj.url,
+      };
+    }
+    return null;
+  }
+
+  /** V&A (Victoria and Albert Museum) API — keyless, strong for decorative arts/design figures. */
+  private async fetchFromVam(name: string): Promise<FallbackHit | null> {
+    const res = await fetch(
+      `https://api.vam.ac.uk/v2/objects/search?q_actor=${encodeURIComponent(name)}&page_size=5`,
+      { signal: AbortSignal.timeout(8_000) },
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      records?: Array<{ _primaryMaker?: { name?: string }; _primaryImageId?: string; systemNumber?: string }>;
+    };
+    const record = data.records?.find((r) => this.matchesAllTokens(name, r._primaryMaker?.name ?? ''));
+    if (!record) return null;
+    return {
+      source: 'vam',
+      matchedName: record._primaryMaker?.name ?? name,
+      imageUrl: record._primaryImageId
+        ? `https://framemark.vam.ac.uk/collections/${record._primaryImageId}/full/full/0/default.jpg`
+        : undefined,
+      sourceUrl: record.systemNumber ? `https://collections.vam.ac.uk/item/${record.systemNumber}` : undefined,
+    };
   }
 
   /**

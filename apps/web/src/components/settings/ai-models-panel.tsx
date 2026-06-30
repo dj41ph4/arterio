@@ -33,6 +33,7 @@ export function AiModelsPanel() {
   const [mistralApiKey, setMistralApiKey] = React.useState<string | undefined>(undefined);
   const [providerOrder, setProviderOrder] = React.useState<('openrouter' | 'gemini' | 'mistral')[] | null>(null);
   const [multiModelMode, setMultiModelMode] = React.useState<'parallel' | 'fallback' | null>(null);
+  const [useOpenRouterWebPlugin, setUseOpenRouterWebPlugin] = React.useState<boolean | null>(null);
   const [models, setModels] = React.useState<string[] | null>(null);
   const [search, setSearch] = React.useState('');
   const [freeOnly, setFreeOnly] = React.useState(true);
@@ -41,6 +42,7 @@ export function AiModelsPanel() {
   const effectiveModels = models ?? data?.models ?? [];
   const effectiveOrder = providerOrder ?? data?.providerOrder ?? ['openrouter', 'mistral', 'gemini'];
   const effectiveMultiModelMode = multiModelMode ?? data?.multiModelMode ?? 'parallel';
+  const effectiveUseOpenRouterWebPlugin = useOpenRouterWebPlugin ?? data?.useOpenRouterWebPlugin ?? false;
   const hasChanges =
     enabled !== null ||
     apiKey !== undefined ||
@@ -50,6 +52,7 @@ export function AiModelsPanel() {
     mistralApiKey !== undefined ||
     providerOrder !== null ||
     multiModelMode !== null ||
+    useOpenRouterWebPlugin !== null ||
     models !== null;
 
   // Reads from whatever key is actually SAVED in the DB, not an unsaved value
@@ -75,6 +78,7 @@ export function AiModelsPanel() {
         mistralApiKey,
         providerOrder: providerOrder ?? undefined,
         multiModelMode: multiModelMode ?? undefined,
+        useOpenRouterWebPlugin: useOpenRouterWebPlugin ?? undefined,
         models: models ?? undefined,
       }),
     onSuccess: () => {
@@ -87,6 +91,7 @@ export function AiModelsPanel() {
       setMistralApiKey(undefined);
       setProviderOrder(null);
       setMultiModelMode(null);
+      setUseOpenRouterWebPlugin(null);
       setModels(null);
       qc.invalidateQueries({ queryKey: ['ai-settings'] });
     },
@@ -175,6 +180,22 @@ export function AiModelsPanel() {
             .
           </p>
         </div>
+
+        <label className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2.5">
+          <span className="text-sm text-foreground">
+            Utiliser le plugin de recherche web payant d'OpenRouter
+            <span className="block text-xs text-muted-foreground">
+              Désactivé par défaut — la recherche web gratuite maison (DuckDuckGo) sert de contexte à tous les
+              modèles à la place. Activez uniquement si vous acceptez le coût par recherche d'OpenRouter.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            checked={effectiveUseOpenRouterWebPlugin}
+            onChange={(e) => setUseOpenRouterWebPlugin(e.target.checked)}
+            className="h-4 w-4 shrink-0 accent-primary"
+          />
+        </label>
 
         <div>
           <p className="mb-2 flex items-center gap-1.5 text-sm font-medium text-foreground">

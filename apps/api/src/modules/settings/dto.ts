@@ -120,6 +120,14 @@ export class UpdateAiSettingsDto {
   @IsOptional()
   @IsIn(['parallel', 'fallback'])
   multiModelMode?: 'parallel' | 'fallback';
+
+  @ApiPropertyOptional({
+    description:
+      'OFF by default. OpenRouter\'s "web" plugin (Exa search) bills per search even on :free models — explicit opt-in for users who accept that extra cost. Free search grounding is otherwise provided automatically via an in-house DuckDuckGo-based lookup.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  useOpenRouterWebPlugin?: boolean;
 }
 
 export class UploadCertificateDto {

@@ -68,6 +68,8 @@ export interface AiSettingsView {
   providerOrder: ('openrouter' | 'gemini' | 'mistral')[];
   /** "parallel": every configured OpenRouter model queried at once and merged. "fallback": one at a time, cheaper. */
   multiModelMode: 'parallel' | 'fallback';
+  /** OFF by default. OpenRouter's "web" plugin bills per search even on :free models — free search grounding is otherwise provided automatically via an in-house DuckDuckGo-based lookup. */
+  useOpenRouterWebPlugin: boolean;
 }
 
 export interface OrganizationSettings {
@@ -119,6 +121,7 @@ export const settingsApi = {
     mistralApiKey?: string;
     providerOrder?: ('openrouter' | 'gemini' | 'mistral')[];
     multiModelMode?: 'parallel' | 'fallback';
+    useOpenRouterWebPlugin?: boolean;
   }) =>
     apiFetch<AiSettingsView>('/settings/ai', {
       method: 'PATCH',

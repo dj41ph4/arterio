@@ -26,6 +26,8 @@ interface OrgAiSettings {
   models?: string[];
   /** 'parallel' (default): every configured model is queried at once and merged — most complete answer, but spends a call per model every time. 'fallback': models are tried one at a time, stopping at the first usable result — cheaper, costs the same as a single call unless that model fails. */
   multiModelMode?: 'parallel' | 'fallback';
+  /** OFF by default. OpenRouter's "web" plugin (Exa search) bills per search even on :free models — the recurring 402 source. Free grounding instead comes from common/free-web-search.util.ts's searchContext, appended to the prompt. This flag is an explicit opt-in for users who accept the extra cost for OpenRouter's own search. */
+  useOpenRouterWebPlugin?: boolean;
 }
 
 interface CompletionOutcome {
@@ -501,8 +503,10 @@ Return ONLY a JSON object with any of: description, techniqueName, dateText, yea
     const userMessage =
       `Artist: ${input.artistName ?? '(unknown)'}\n` +
       `Title: ${input.title ?? '(unknown)'}\n` +
-      `Search query to run: ${input.artistName ?? ''} "${input.title ?? ''}" catalogue raisonné dimensions technique signature photo`.trim();
-    return this.completeMultiModel<ArtworkAutofillResult>(input.organizationId, systemPrompt, userMessage, { webSearch: true });
+      `Search query to run: ${input.artistName ?? ''} "${input.title ?? ''}" catalogue raisonné dimensions technique signature photo`.trim() +
+      (input.searchContext ? `\n\n${input.searchContext}` : '');
+    const useWebPlugin = await this.resolveUseWebPlugin(input.organizationId);
+    return this.completeMultiModel<ArtworkAutofillResult>(input.organizationId, systemPrompt, userMessage, { webSearch: useWebPlugin });
   }
 
   async autofillArtist(input: ArtistAutofillInput): Promise<AiAutofillResponse<ArtistAutofillResult>> {
@@ -513,8 +517,17 @@ If a real photo/portrait of this specific person is found in a search result, in
 Only state facts you are actually confident about for this specific person — leave a field out entirely rather than guessing.
 CRITICAL: if the search results contain nothing useful, OMIT the key entirely. Never write a sentence ABOUT not finding something (e.g. "No information was found for this person") as the VALUE of biography or any other field — an omitted key is the correct way to say "I found nothing".
 Return ONLY a JSON object with any of: biography, nationality, birthDate, deathDate, movement, imageUrl.`;
-    const userMessage = `Artist: ${input.fullName}\nSearch query to run: ${input.fullName} biography portrait photo`;
-    return this.completeMultiModel<ArtistAutofillResult>(input.organizationId, systemPrompt, userMessage, { webSearch: true });
+    const userMessage =
+      `Artist: ${input.fullName}\nSearch query to run: ${input.fullName} biography portrait photo` +
+      (input.searchContext ? `\n\n${input.searchContext}` : '');
+    const useWebPlugin = await this.resolveUseWebPlugin(input.organizationId);
+    return this.completeMultiModel<ArtistAutofillResult>(input.organizationId, systemPrompt, userMessage, { webSearch: useWebPlugin });
+  }
+
+  /** OFF by default — see OrgAiSettings.useOpenRouterWebPlugin. Free grounding instead comes from the caller's searchContext (common/free-web-search.util.ts), appended directly into the user message above. */
+  private async resolveUseWebPlugin(organizationId?: string): Promise<boolean> {
+    const org = await this.resolveOrgSettings(organizationId);
+    return org?.useOpenRouterWebPlugin === true;
   }
 
   /** Best-effort text translation — never throws, returns null so the caller (enrichment) just skips that locale on failure. */
@@ -539,7 +552,9 @@ Return ONLY a JSON object with any of: biography, nationality, birthDate, deathD
 Find as many DIFFERENT real, working image URLs as you can (up to 6) showing the exact subject of this query — actual photos found in search results (an auction lot photo, a museum/gallery page, the subject's own official website), never a generic stock photo, never a different work/person, and never an invented or guessed URL.
 CRITICAL: if nothing useful is found, OMIT the key entirely. Never write a sentence about not finding anything as a value.
 Return ONLY a JSON object: {"imageUrls": ["...", ...]}`;
-    return this.completeMultiModel<FindImagesResult>(input.organizationId, systemPrompt, input.query, { webSearch: true });
+    const userMessage = input.query + (input.searchContext ? `\n\n${input.searchContext}` : '');
+    const useWebPlugin = await this.resolveUseWebPlugin(input.organizationId);
+    return this.completeMultiModel<FindImagesResult>(input.organizationId, systemPrompt, userMessage, { webSearch: useWebPlugin });
   }
 
   // The other AI capabilities are not implemented for OpenRouter.

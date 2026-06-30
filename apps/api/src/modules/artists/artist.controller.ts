@@ -130,4 +130,24 @@ export class ArtistController {
   enrich(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.artists.enrich(user, id);
   }
+
+  @Post('enrich-all/start')
+  @RequirePermissions(PERMISSIONS.ARTWORK_UPDATE)
+  @ApiOperation({
+    summary: 'Start (or report the status of) a server-side bulk re-enrichment of every not-yet-enriched artist',
+    description:
+      'Runs entirely server-side — survives navigating away or closing the tab. Idempotent: ' +
+      'calling this while a job is already running for the organization just returns its current status ' +
+      'instead of starting a second one.',
+  })
+  startBulkEnrich(@CurrentUser() user: AuthUser) {
+    return this.artists.startBulkEnrich(user);
+  }
+
+  @Get('enrich-all/status')
+  @RequirePermissions(PERMISSIONS.ARTWORK_READ)
+  @ApiOperation({ summary: 'Poll the progress of the bulk re-enrichment job for this organization, if any' })
+  getBulkEnrichStatus(@CurrentUser() user: AuthUser) {
+    return this.artists.getBulkEnrichStatus(user);
+  }
 }
