@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useRouter, useParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Search, Users, Sparkles, RefreshCw, SearchX, Merge, Upload } from 'lucide-react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useMutationState } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { artistRepository } from '@/lib/data/artist-repository';
 import { PageHeader } from '@/components/app-shell/page-header';
@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import { AddArtistModal } from './add-artist-modal';
 import { ImportModal } from '@/components/import/import-modal';
 import { useQueryClient } from '@tanstack/react-query';
+import { ENRICH_ARTIST_MUTATION_KEY, MERGE_ARTISTS_MUTATION_KEY } from '@/lib/data/artist-mutation-keys';
 import type { ArtistView } from '@/lib/data/artist-repository';
 import type { Locale } from '@arterio/shared';
 import { resolveLocalized } from '@arterio/shared';
@@ -128,7 +129,12 @@ export function ArtistListView() {
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
   const qc = useQueryClient();
 
+  const pendingMerge = useMutationState({
+    filters: { mutationKey: MERGE_ARTISTS_MUTATION_KEY, status: 'pending' },
+  }).length > 0;
+
   const mergeMutation = useMutation({
+    mutationKey: MERGE_ARTISTS_MUTATION_KEY,
     mutationFn: () => artistRepository.autoMerge(),
     onSuccess: (report) => {
       qc.invalidateQueries({ queryKey: ['artists-all'] });
@@ -179,7 +185,17 @@ export function ArtistListView() {
     );
   });
 
+  // pendingEnrichIds reflects the shared mutation cache, which survives this
+  // component unmounting/remounting (e.g. navigating away and back) — so a
+  // retry triggered before navigating still shows as in-progress on return,
+  // instead of resetting to idle just because the component was recreated.
+  const pendingEnrichIds = useMutationState({
+    filters: { mutationKey: ENRICH_ARTIST_MUTATION_KEY, status: 'pending' },
+    select: (m) => m.state.variables as string,
+  });
+
   const retryMutation = useMutation({
+    mutationKey: ENRICH_ARTIST_MUTATION_KEY,
     mutationFn: (id: string) => artistRepository.enrich(id),
     onMutate: (id) => setRetryingId(id),
     onSuccess: (updated) => {
@@ -273,12 +289,12 @@ export function ArtistListView() {
         )}
         <button
           onClick={() => mergeMutation.mutate()}
-          disabled={mergeMutation.isPending}
+          disabled={mergeMutation.isPending || pendingMerge}
           className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted disabled:opacity-60"
           title="Détecte les artistes en double (variantes de nom) et les fusionne après vérification Wikidata"
         >
-          <Merge className={cn('h-4 w-4', mergeMutation.isPending && 'animate-pulse')} />
-          {mergeMutation.isPending ? 'Analyse…' : 'Fusionner les doublons'}
+          <Merge className={cn('h-4 w-4', (mergeMutation.isPending || pendingMerge) && 'animate-pulse')} />
+          {mergeMutation.isPending || pendingMerge ? 'Analyse…' : 'Fusionner les doublons'}
         </button>
         <button
           onClick={() => setImportOpen(true)}
@@ -315,7 +331,7 @@ export function ArtistListView() {
                 locale={locale as Locale}
                 onClick={() => router.push(`/${locale}/artists/${artist.id}`)}
                 onRetryEnrich={(e) => { e.stopPropagation(); retryMutation.mutate(artist.id); }}
-                retrying={retryingId === artist.id}
+                retrying={retryingId === artist.id || pendingEnrichIds.includes(artist.id)}
               />
             ))}
           </motion.div>

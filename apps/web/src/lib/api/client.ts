@@ -86,7 +86,26 @@ export async function apiFetch<T>(path: string, init?: RequestInit, _retried = f
   return res.json() as Promise<T>;
 }
 
+// Refresh tokens are one-time-use (rotating) with reuse-detection on the server:
+// presenting an already-rotated token kills the whole token family and forces a
+// real logout. A page that fires several requests at once (e.g. multiple
+// react-query queries) can get several 401s back-to-back when the access token
+// expires — each one independently calling tryRefresh() would send the SAME
+// (soon-to-be-stale) refresh token to the server in parallel, and the server
+// honestly can't tell that apart from a stolen-token replay. Sharing one
+// in-flight refresh promise across all concurrent 401s means only the first
+// caller actually hits /auth/refresh; everyone else just awaits its result.
+let refreshPromise: Promise<boolean> | null = null;
+
 async function tryRefresh(): Promise<boolean> {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = doRefresh().finally(() => {
+    refreshPromise = null;
+  });
+  return refreshPromise;
+}
+
+async function doRefresh(): Promise<boolean> {
   const { refreshToken, setTokens, clear } = useAuthStore.getState();
   if (!refreshToken) return false;
   try {
