@@ -125,3 +125,133 @@ export async function buildSearchContext(
     return null;
   }
 }
+
+/**
+ * Art-specific multi-query search context builder. Runs several targeted DDG
+ * queries in parallel — one aimed at auction/market sites (most reliable for
+ * dimensions and technique, especially for lesser-known artists), one at museum
+ * sites, and the original broad query. Deduplicates URLs, fetches the most
+ * relevant pages, and returns a single merged context block.
+ *
+ * Why multiple queries: a single generic query works for famous artists
+ * (Wikipedia/museum pages rank high) but fails for regional or private-collection
+ * works where the only factual data lives on auction catalogues or niche
+ * databases. Targeting those domains explicitly with site: operators surfaces
+ * results a generic query never would.
+ */
+export async function buildArtworkSearchContext(artistName: string, title: string, maxTotalChars = 8000): Promise<string | null> {
+  try {
+    const quoted = (s: string) => `"${s.replace(/"/g, '')}"`;
+    const a = artistName.trim();
+    const t = title.trim();
+    if (!a && !t) return null;
+
+    // Three complementary queries run in parallel:
+    // 1. Auction/market sites — most reliable source for dimensions, technique,
+    //    and signature info, even for obscure artists (lot descriptions are
+    //    verified by professionals before each sale).
+    // 2. Museum sites — authoritative for works in public collections.
+    // 3. Broad art-specific query — catches catalogues raisonnés, monographies,
+    //    gallery pages, and artist websites.
+    const queries = [
+      `${a ? quoted(a) : ''} ${t ? quoted(t) : ''} site:interencheres.com OR site:drouot.com OR site:artprice.com OR site:invaluable.com OR site:liveauctioneers.com OR site:mutualart.com`.trim(),
+      `${a ? quoted(a) : ''} ${t ? quoted(t) : ''} site:metmuseum.org OR site:artic.edu OR site:vam.ac.uk OR site:rkd.nl OR site:joconde.fr OR site:wikiart.org`.trim(),
+      `${a ? quoted(a) : ''} ${t ? quoted(t) : ''} catalogue raisonné dimensions technique signature`.trim(),
+    ];
+
+    const allResultSets = await Promise.all(queries.map((q) => searchWeb(q, 4)));
+
+    // Merge and deduplicate by URL, preserving order (auction results first).
+    const seen = new Set<string>();
+    const merged: WebSearchResult[] = [];
+    for (const set of allResultSets) {
+      for (const r of set) {
+        if (!seen.has(r.url)) {
+          seen.add(r.url);
+          merged.push(r);
+        }
+      }
+    }
+    if (!merged.length) return null;
+
+    const resultsBlock = merged
+      .slice(0, 8)
+      .map((r, i) => `[${i + 1}] ${r.title} (${r.url})${r.snippet ? `: ${r.snippet}` : ''}`)
+      .join('\n');
+
+    // Fetch page text for the top results. Auction pages tend to be dense with
+    // exactly the data we need, so give them a larger per-page budget.
+    const auctionDomains = ['interencheres.com', 'drouot.com', 'artprice.com', 'invaluable.com', 'liveauctioneers.com', 'mutualart.com'];
+    const pages = await Promise.all(
+      merged.slice(0, 5).map(async (r, i) => {
+        const isAuction = auctionDomains.some((d) => r.url.includes(d));
+        const charBudget = isAuction ? Math.floor(maxTotalChars / 3) : Math.floor(maxTotalChars / 5);
+        const text = await fetchPageText(r.url, charBudget);
+        return text ? `[${i + 1}] ${r.url}:\n${text}` : null;
+      }),
+    );
+    const pagesBlock = pages.filter((p): p is string => Boolean(p)).join('\n\n');
+
+    let context = `Web search results for "${a} ${t}".trim():\n${resultsBlock}`;
+    if (pagesBlock) context += `\n\nPage excerpts:\n${pagesBlock}`;
+    return context.slice(0, maxTotalChars + 1000);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Artist-specific multi-query context builder. For well-known artists, the first
+ * query (biography sites) will dominate. For regional or lesser-known artists,
+ * the auction/market query is the main fallback — auction catalogue bios are
+ * often the only existing machine-readable biography for an obscure painter.
+ */
+export async function buildArtistSearchContext(fullName: string, maxTotalChars = 6000): Promise<string | null> {
+  try {
+    const name = fullName.trim();
+    if (!name) return null;
+    const quoted = `"${name.replace(/"/g, '')}"`;
+
+    const queries = [
+      // 1. Encyclopaedia/biography sites
+      `${quoted} (biographie OR biography OR "date de naissance" OR "né à" OR "born") (peintre OR sculpteur OR artiste OR painter)`,
+      // 2. Auction/market sites — the only digital trace for many regional artists
+      `${quoted} site:artprice.com OR site:interencheres.com OR site:mutualart.com OR site:liveauctioneers.com`,
+      // 3. Authority databases
+      `${quoted} site:rkd.nl OR site:data.bnf.fr OR site:viaf.org OR site:wikiart.org`,
+    ];
+
+    const allResultSets = await Promise.all(queries.map((q) => searchWeb(q, 3)));
+
+    const seen = new Set<string>();
+    const merged: WebSearchResult[] = [];
+    for (const set of allResultSets) {
+      for (const r of set) {
+        if (!seen.has(r.url)) {
+          seen.add(r.url);
+          merged.push(r);
+        }
+      }
+    }
+    if (!merged.length) return null;
+
+    const resultsBlock = merged
+      .slice(0, 6)
+      .map((r, i) => `[${i + 1}] ${r.title} (${r.url})${r.snippet ? `: ${r.snippet}` : ''}`)
+      .join('\n');
+
+    const pages = await Promise.all(
+      merged.slice(0, 4).map(async (r, i) => {
+        const text = await fetchPageText(r.url, Math.floor(maxTotalChars / 4));
+        return text ? `[${i + 1}] ${r.url}:\n${text}` : null;
+      }),
+    );
+    const pagesBlock = pages.filter((p): p is string => Boolean(p)).join('\n\n');
+
+    let context = `Web search results for artist "${name}":\n${resultsBlock}`;
+    if (pagesBlock) context += `\n\nPage excerpts:\n${pagesBlock}`;
+    return context.slice(0, maxTotalChars + 1000);
+  } catch {
+    return null;
+  }
+}

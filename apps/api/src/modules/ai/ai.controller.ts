@@ -7,7 +7,7 @@ import { searchCommonsImage, searchCommonsImages } from '../../common/commons-im
 import { searchWikiArtImage, searchWikiArtImages } from '../../common/wikiart-api.util';
 import { searchArtsyImage, searchArtsyImages } from '../../common/artsy-api.util';
 import { isLikelyRealImage } from '../../common/download-image.util';
-import { buildSearchContext } from '../../common/free-web-search.util';
+import { buildSearchContext, buildArtworkSearchContext, buildArtistSearchContext } from '../../common/free-web-search.util';
 import { StructuredLookupService } from './structured-lookup.service';
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
@@ -127,24 +127,29 @@ export class AiController {
     organizationId: string,
     aiGuessedUrl?: string,
   ): Promise<{ url: string | null; source: 'wikiart' | 'commons' | 'artsy' | 'ai-search' | null }> {
-    const { wikiartKey, artsyKey } = await this.resolveImageSourceKeys(organizationId);
+    try {
+      const { wikiartKey, artsyKey } = await this.resolveImageSourceKeys(organizationId);
 
-    if (wikiartKey) {
-      const fromWikiArt = await searchWikiArtImage(wikiartKey, query);
-      if (fromWikiArt) return { url: fromWikiArt, source: 'wikiart' };
-    }
-    const fromCommons = await searchCommonsImage(query);
-    if (fromCommons) return { url: fromCommons, source: 'commons' };
+      if (wikiartKey) {
+        const fromWikiArt = await searchWikiArtImage(wikiartKey, query);
+        if (fromWikiArt) return { url: fromWikiArt, source: 'wikiart' };
+      }
+      const fromCommons = await searchCommonsImage(query);
+      if (fromCommons) return { url: fromCommons, source: 'commons' };
 
-    if (artsyKey) {
-      const fromArtsy = await searchArtsyImage(artsyKey, query);
-      if (fromArtsy) return { url: fromArtsy, source: 'artsy' };
-    }
+      if (artsyKey) {
+        const fromArtsy = await searchArtsyImage(artsyKey, query);
+        if (fromArtsy) return { url: fromArtsy, source: 'artsy' };
+      }
 
-    if (aiGuessedUrl && (await isLikelyRealImage(aiGuessedUrl))) {
-      return { url: aiGuessedUrl, source: 'ai-search' };
+      if (aiGuessedUrl && (await isLikelyRealImage(aiGuessedUrl))) {
+        return { url: aiGuessedUrl, source: 'ai-search' };
+      }
+      return { url: null, source: null };
+    } catch (err) {
+      this.logger.warn(`findPhoto — échec inattendu pour "${query}": ${String(err)}`);
+      return { url: null, source: null };
     }
-    return { url: null, source: null };
   }
 
   /**
@@ -304,7 +309,7 @@ export class AiController {
     // no scraping/LLM guesswork) runs in parallel with the free web search,
     // not sequentially before it — both feed the AI call, neither blocks it.
     const [searchContext, structuredHit] = await Promise.all([
-      buildSearchContext(`${body.artistName ?? ''} "${body.title ?? ''}" catalogue raisonné dimensions technique signature`.trim()),
+      buildArtworkSearchContext(body.artistName ?? '', body.title ?? ''),
       this.structuredLookup.searchArtworkByTitle(body.artistName, body.title, user.organizationId),
     ]);
     const combinedContext = structuredHit
@@ -365,7 +370,7 @@ export class AiController {
       this.logger.warn(message);
       throw new ServiceUnavailableException(message);
     }
-    const searchContext = await buildSearchContext(`${body.fullName} biography portrait`);
+    const searchContext = await buildArtistSearchContext(body.fullName);
     const sharedArtist = await this.dedupe(`autofillArtist:${user.organizationId}:${body.fullName}:${body.locale ?? 'en'}`, () =>
       this.ai.autofillArtist({
         fullName: body.fullName,
