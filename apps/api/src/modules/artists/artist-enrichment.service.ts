@@ -243,24 +243,30 @@ export class ArtistEnrichmentService {
       available.find(([lang]) => lang === 'en') ??
       available.reduce((longest, current) => (current[1].length > longest[1].length ? current : longest));
 
-    await Promise.allSettled(
-      missing.map(async (targetLocale) => {
-        try {
-          const translated = await this.aiProvider.translate({
-            text: sourceText,
-            targetLocale,
-            sourceLocale,
-            organizationId,
-          });
-          if (translated) {
-            result.biographies[targetLocale] = translated;
-            this.logger.log(`Biographie de "${fullName}" traduite ${sourceLocale} → ${targetLocale} via IA.`);
-          }
-        } catch (e) {
-          this.logger.warn(`Traduction de la biographie de "${fullName}" (${sourceLocale} → ${targetLocale}) échouée : ${String(e)}`);
+    // Sequential with a short stagger, NOT Promise.allSettled — firing one request
+    // per missing locale (up to 5) all at once routinely tripped a fresh/free-tier
+    // AI API key's per-second burst limit on the very first enrichment, well before
+    // any real daily quota was used. One locale failing to translate still never
+    // blocks the rest; it just no longer fires them all in the same instant.
+    for (const targetLocale of missing) {
+      try {
+        const translated = await this.aiProvider.translate({
+          text: sourceText,
+          targetLocale,
+          sourceLocale,
+          organizationId,
+        });
+        if (translated) {
+          result.biographies[targetLocale] = translated;
+          this.logger.log(`Biographie de "${fullName}" traduite ${sourceLocale} → ${targetLocale} via IA.`);
         }
-      }),
-    );
+      } catch (e) {
+        this.logger.warn(`Traduction de la biographie de "${fullName}" (${sourceLocale} → ${targetLocale}) échouée : ${String(e)}`);
+      }
+      if (targetLocale !== missing[missing.length - 1]) {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+    }
   }
 
   private async doEnrich(fullName: string, organizationId?: string): Promise<ArtistEnrichmentResult> {
