@@ -67,7 +67,7 @@ export function AutofillButtons({ onWiki, onAi, wikiLabel = 'Wiki', disabled }: 
           disabled={disabled || loading !== null}
           onClick={() => run('ai', onAi!)}
           title="Recherche par intelligence artificielle"
-          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
+          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
         >
           {loading === 'ai' ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
           IA

@@ -60,7 +60,7 @@ export function ImageSearchButtons({ onSearchWiki, onSearchAi, onPick, disabled 
             type="button"
             disabled={disabled || loading !== null}
             onClick={() => run('ai')}
-            className="flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
           >
             {loading === 'ai' ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
             IA
