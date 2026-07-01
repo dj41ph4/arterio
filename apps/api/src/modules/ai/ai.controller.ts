@@ -416,6 +416,173 @@ export class AiController {
     return { data, meta };
   }
 
+  // ---------------------------------------------------------------------------
+  // Bulk autofill — artwork collection
+  // ---------------------------------------------------------------------------
+
+  private static readonly bulkAutofillJobs = new Map<string, {
+    mode: 'ai' | 'wiki';
+    total: number;
+    done: number;
+    updated: number;
+    running: boolean;
+    startedAt: Date;
+    finishedAt: Date | undefined;
+  }>();
+
+  private bulkAutofillStatusView(orgId: string) {
+    const s = AiController.bulkAutofillJobs.get(orgId);
+    if (!s) return { running: false, done: 0, total: 0, updated: 0, mode: null, startedAt: null, finishedAt: null };
+    return { running: s.running, done: s.done, total: s.total, updated: s.updated, mode: s.mode, startedAt: s.startedAt.toISOString(), finishedAt: s.finishedAt?.toISOString() ?? null };
+  }
+
+  /**
+   * Returns only the fields from an autofill result that are actually missing on the
+   * current artwork, so existing curator work is never overwritten by bulk AI data.
+   */
+  private buildArtworkPatch(
+    artwork: {
+      description: unknown;
+      yearFrom: number | null;
+      dateText: string | null;
+      heightCm: number | null;
+      widthCm: number | null;
+      dimensionsNote: string | null;
+      signatureDescription: string | null;
+      condition: string;
+    },
+    data: import('./ai.types').ArtworkAutofillResult,
+    locale: string,
+  ): Record<string, unknown> {
+    const patch: Record<string, unknown> = {};
+
+    // Description (JSON field) — only add locale key if missing
+    const desc = artwork.description as Record<string, string> | null ?? {};
+    if (!desc[locale] && data.description) {
+      patch.description = { ...desc, [locale]: data.description };
+    }
+
+    if (!artwork.yearFrom && data.yearFrom) patch.yearFrom = data.yearFrom;
+    if (!artwork.dateText && data.dateText) patch.dateText = data.dateText;
+    if (!artwork.heightCm && data.heightCm) patch.heightCm = data.heightCm;
+    if (!artwork.widthCm && data.widthCm) patch.widthCm = data.widthCm;
+    if (!artwork.dimensionsNote && data.dimensionsNote) patch.dimensionsNote = data.dimensionsNote;
+    if (!artwork.signatureDescription && data.signatureDescription) patch.signatureDescription = data.signatureDescription;
+    const validConditions = ['excellent', 'good', 'fair', 'poor', 'critical'];
+    if (artwork.condition === 'unknown' && data.condition && validConditions.includes(data.condition)) {
+      patch.condition = data.condition;
+    }
+
+    return patch;
+  }
+
+  @Post('bulk-autofill/artwork')
+  @RequirePermissions(PERMISSIONS.ARTWORK_UPDATE)
+  @ApiOperation({ summary: 'Start a background job that autofills empty fields on artworks — AI mode uses the full LLM pipeline, wiki mode uses museum/structured sources only (no LLM)' })
+  async startBulkAutofillArtwork(
+    @CurrentUser() user: AuthUser,
+    @Body() body: { ids?: string[]; mode?: 'ai' | 'wiki' },
+  ) {
+    const orgId = user.organizationId;
+    const existing = AiController.bulkAutofillJobs.get(orgId);
+    if (existing?.running) return this.bulkAutofillStatusView(orgId);
+
+    const mode = body.mode ?? 'ai';
+
+    if (mode === 'ai' && !(await this.ai.isEnabled(orgId))) {
+      throw new ServiceUnavailableException('IA désactivée ou non configurée pour cette organisation (Réglages → IA).');
+    }
+
+    const whereIds = body.ids?.length ? { id: { in: body.ids } } : {};
+    const artworks = await this.prisma.artwork.findMany({
+      where: { organizationId: orgId, deletedAt: null, ...whereIds },
+      select: {
+        id: true,
+        title: true,
+        attribution: true,
+        description: true,
+        yearFrom: true,
+        dateText: true,
+        heightCm: true,
+        widthCm: true,
+        dimensionsNote: true,
+        signatureDescription: true,
+        condition: true,
+        artist: { select: { fullName: true } },
+      },
+    });
+
+    const state = { mode, total: artworks.length, done: 0, updated: 0, running: true, startedAt: new Date(), finishedAt: undefined as Date | undefined };
+    AiController.bulkAutofillJobs.set(orgId, state);
+
+    void (async () => {
+      for (const aw of artworks) {
+        try {
+          const titleMap = aw.title as Record<string, string> | null ?? {};
+          const title = titleMap['fr'] ?? titleMap['en'] ?? Object.values(titleMap).find((v) => v) ?? '';
+          const artistName = aw.artist?.fullName ?? aw.attribution ?? '';
+          const locale = titleMap['fr'] ? 'fr' : (titleMap['en'] ? 'en' : Object.keys(titleMap)[0] ?? 'fr');
+
+          if (!title) { state.done++; continue; }
+
+          let data: import('./ai.types').ArtworkAutofillResult = {};
+
+          if (mode === 'wiki') {
+            const hit = await this.structuredLookup.searchArtworkByTitle(artistName || undefined, title, orgId);
+            if (hit) data = hit.result as import('./ai.types').ArtworkAutofillResult;
+          } else {
+            const [searchContext, structuredHit] = await Promise.all([
+              buildArtworkSearchContext(artistName, title),
+              this.structuredLookup.searchArtworkByTitle(artistName || undefined, title, orgId),
+            ]);
+            const combinedContext = structuredHit
+              ? `${searchContext ?? ''}\n\nConfirmed museum record (${structuredHit.source}): ${JSON.stringify(structuredHit.result)}`.trim()
+              : searchContext;
+            const result = await this.ai.autofillArtwork({
+              title,
+              artistName: artistName || undefined,
+              locale: locale as import('@arterio/shared').Locale,
+              organizationId: orgId,
+              searchContext: combinedContext ?? undefined,
+            });
+            if (result.meta.hasUsableData) {
+              data = result.data;
+              if (structuredHit) {
+                for (const [k, v] of Object.entries(structuredHit.result)) {
+                  if (v !== undefined && v !== null && v !== '') (data as Record<string, unknown>)[k] = v;
+                }
+              }
+            }
+          }
+
+          const patch = this.buildArtworkPatch(aw, data, locale);
+          if (Object.keys(patch).length) {
+            await this.prisma.artwork.update({ where: { id: aw.id }, data: patch });
+            state.updated++;
+          }
+        } catch {
+          // best-effort — skip to next artwork on any error
+        }
+        state.done++;
+        // Pace calls to avoid hammering external APIs
+        await new Promise((r) => setTimeout(r, mode === 'ai' ? 1200 : 400));
+      }
+      state.running = false;
+      state.finishedAt = new Date();
+    })();
+
+    return this.bulkAutofillStatusView(orgId);
+  }
+
+  @Get('bulk-autofill/artwork/status')
+  @RequirePermissions(PERMISSIONS.ARTWORK_READ)
+  @ApiOperation({ summary: 'Current progress of the background artwork bulk-autofill job for this org' })
+  getBulkAutofillArtworkStatus(@CurrentUser() user: AuthUser) {
+    return this.bulkAutofillStatusView(user.organizationId);
+  }
+
+  // ---------------------------------------------------------------------------
+
   @Get('debug-log')
   @RequirePermissions(PERMISSIONS.SETTINGS_MANAGE)
   @ApiOperation({ summary: 'Recent AI autofill debug log (in-memory, last 200 entries)' })

@@ -82,4 +82,19 @@ export const aiApi = {
   /** Settings → AI "Tester la connexion" — exactly one minimal request to the chosen provider. */
   testProvider: (provider: 'openrouter' | 'gemini' | 'mistral') =>
     apiFetch<{ success: boolean; message: string }>('/ai/test', { method: 'POST', body: JSON.stringify({ provider }) }),
+  /** Bulk artwork autofill — starts a background job. ids=undefined → whole collection. */
+  startBulkAutofillArtwork: (input: { ids?: string[]; mode: 'ai' | 'wiki' }) =>
+    apiFetch<BulkAutofillStatus>('/ai/bulk-autofill/artwork', { method: 'POST', body: JSON.stringify(input) }),
+  getBulkAutofillArtworkStatus: () =>
+    apiFetch<BulkAutofillStatus>('/ai/bulk-autofill/artwork/status'),
 };
+
+export interface BulkAutofillStatus {
+  running: boolean;
+  done: number;
+  total: number;
+  updated: number;
+  mode: 'ai' | 'wiki' | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+}

@@ -12,8 +12,9 @@ import {
   type RowSelectionState,
 } from '@tanstack/react-table';
 import { useSearchParams } from 'next/navigation';
-import { Check, Star, Pencil, Trash2, X, LibraryBig, Upload, Plus, Merge } from 'lucide-react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Check, Star, Pencil, Trash2, X, LibraryBig, Upload, Plus, Merge, Sparkles, Globe } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { aiApi } from '@/lib/data/ai';
 import type { ArtworkView, Locale, ArtworkQuery } from '@arterio/shared';
 import { resolveLocalized } from '@arterio/shared';
 import { toast } from 'sonner';
@@ -124,6 +125,32 @@ export function CollectionView({ favoritesOnly = false }: { favoritesOnly?: bool
     },
     onError: () => toast.error('Échec de la fusion automatique'),
   });
+
+  // Bulk autofill — polls progress while job is running
+  const { data: bulkAutofillStatus, refetch: refetchBulkStatus } = useQuery({
+    queryKey: ['bulk-autofill-artwork-status'],
+    queryFn: aiApi.getBulkAutofillArtworkStatus,
+    refetchInterval: (q) => (q.state.data?.running ? 1500 : false),
+    staleTime: 0,
+  });
+
+  const wasAutofillRunning = React.useRef(false);
+  React.useEffect(() => {
+    if (!bulkAutofillStatus) return;
+    if (wasAutofillRunning.current && !bulkAutofillStatus.running) {
+      qc.invalidateQueries({ queryKey: ['artworks'] });
+      const label = bulkAutofillStatus.mode === 'ai' ? 'IA' : 'Wiki';
+      toast.success(`Autofill ${label} terminé — ${bulkAutofillStatus.updated} / ${bulkAutofillStatus.total} œuvre${bulkAutofillStatus.total > 1 ? 's' : ''} enrichie${bulkAutofillStatus.updated > 1 ? 's' : ''}`);
+    }
+    wasAutofillRunning.current = !!bulkAutofillStatus.running;
+  }, [bulkAutofillStatus, qc]);
+
+  const startBulkAutofill = (mode: 'ai' | 'wiki') => {
+    const ids = Object.keys(rowSelection);
+    aiApi.startBulkAutofillArtwork({ ids: ids.length ? ids : undefined, mode })
+      .then(() => refetchBulkStatus())
+      .catch(() => toast.error('Impossible de démarrer le job d\'autofill'));
+  };
 
   const { data: facets } = useFacets();
 
@@ -423,6 +450,38 @@ export function CollectionView({ favoritesOnly = false }: { favoritesOnly?: bool
               >
                 <Merge className={cn('h-4 w-4', dedupMutation.isPending && 'animate-pulse')} />
                 {dedupMutation.isPending ? 'Analyse…' : 'Fusionner les doublons'}
+              </Button>
+              {/* Bulk autofill — Wiki (museum APIs, no AI) */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => startBulkAutofill('wiki')}
+                disabled={bulkAutofillStatus?.running}
+                className="flex items-center gap-2"
+                title={Object.keys(rowSelection).length ? `Chercher les infos manquantes via musées/Wikipedia sur les ${Object.keys(rowSelection).length} œuvres sélectionnées (sans IA)` : 'Chercher les infos manquantes via musées/Wikipedia sur toute la collection (sans IA)'}
+              >
+                <Globe className={cn('h-4 w-4', bulkAutofillStatus?.running && bulkAutofillStatus.mode === 'wiki' && 'animate-spin')} />
+                {bulkAutofillStatus?.running && bulkAutofillStatus.mode === 'wiki'
+                  ? `Wiki ${bulkAutofillStatus.done}/${bulkAutofillStatus.total}…`
+                  : Object.keys(rowSelection).length
+                    ? `Wiki (${Object.keys(rowSelection).length})`
+                    : 'Autofill Wiki'}
+              </Button>
+              {/* Bulk autofill — IA */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => startBulkAutofill('ai')}
+                disabled={bulkAutofillStatus?.running}
+                className="flex items-center gap-2"
+                title={Object.keys(rowSelection).length ? `Remplir les champs manquants via IA sur les ${Object.keys(rowSelection).length} œuvres sélectionnées` : 'Remplir les champs manquants via IA sur toute la collection'}
+              >
+                <Sparkles className={cn('h-4 w-4', bulkAutofillStatus?.running && bulkAutofillStatus.mode === 'ai' && 'animate-pulse')} />
+                {bulkAutofillStatus?.running && bulkAutofillStatus.mode === 'ai'
+                  ? `IA ${bulkAutofillStatus.done}/${bulkAutofillStatus.total}…`
+                  : Object.keys(rowSelection).length
+                    ? `IA (${Object.keys(rowSelection).length})`
+                    : 'Autofill IA'}
               </Button>
               <Button
                 variant="outline"
