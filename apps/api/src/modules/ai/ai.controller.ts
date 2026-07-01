@@ -6,7 +6,7 @@ import { AiProviderChain } from './ai-provider-chain';
 import { searchCommonsImage, searchCommonsImages } from '../../common/commons-image-search.util';
 import { searchWikiArtImage, searchWikiArtImages } from '../../common/wikiart-api.util';
 import { searchArtsyImage, searchArtsyImages } from '../../common/artsy-api.util';
-import { isLikelyRealImage } from '../../common/download-image.util';
+import { isLikelyRealImage, downloadImageToUploads } from '../../common/download-image.util';
 import { buildSearchContext, buildArtworkSearchContext, buildArtistSearchContext, findArtistOfficialWebsite, ddgImageSearch } from '../../common/free-web-search.util';
 import { StructuredLookupService } from './structured-lookup.service';
 import { AiDebugLogService } from './ai-debug-log.service';
@@ -146,13 +146,24 @@ export class AiController {
         if (fromArtsy) return { url: fromArtsy, source: 'artsy' };
       }
 
-      // DDG image search — finds photos on any public page (gallery, auction, press)
-      // critical for contemporary artists and artworks not in Wikimedia/WikiArt/Artsy
+      // DDG image search — finds photos on any public page (gallery, auction, press).
+      // Gallery sites block hotlinking so we download the image to /uploads/ instead
+      // of returning the external URL directly — the browser then loads it from our
+      // own server with no CORS/Referer issues.
       const fromDdg = await ddgImageSearch(query, 4);
-      if (fromDdg.length) return { url: fromDdg[0]!.imageUrl, source: 'ddg' };
+      for (const img of fromDdg) {
+        try {
+          const { filename } = await downloadImageToUploads(img.imageUrl);
+          return { url: `/uploads/${filename}`, source: 'ddg' };
+        } catch { /* image blocked server-side too — try next */ }
+      }
 
-      if (aiGuessedUrl && (await isLikelyRealImage(aiGuessedUrl))) {
-        return { url: aiGuessedUrl, source: 'ai-search' };
+      // AI-guessed URL: same download approach for the same reason.
+      if (aiGuessedUrl) {
+        try {
+          const { filename } = await downloadImageToUploads(aiGuessedUrl);
+          return { url: `/uploads/${filename}`, source: 'ai-search' };
+        } catch { /* undownloadable */ }
       }
       return { url: null, source: null };
     } catch (err) {
