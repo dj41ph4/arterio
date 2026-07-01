@@ -127,6 +127,35 @@ export async function buildSearchContext(
 }
 
 /**
+ * Queries Wikipedia's search API in the given locales (FR first, then EN) for a
+ * person/artwork name and returns the plaintext extract of the best matching page.
+ * Never throws — returns null on any failure so callers can use it as optional context.
+ */
+async function fetchWikipediaExtract(name: string, locales = ['fr', 'en'], maxChars = 2500): Promise<string | null> {
+  for (const lang of locales) {
+    try {
+      const searchUrl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(name)}&srlimit=1&format=json&origin=*`;
+      const searchRes = await fetch(searchUrl, { signal: AbortSignal.timeout(6000) });
+      if (!searchRes.ok) continue;
+      const searchJson = await searchRes.json() as { query?: { search?: Array<{ title: string }> } };
+      const pageTitle = searchJson.query?.search?.[0]?.title;
+      if (!pageTitle) continue;
+
+      const summaryUrl = `https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(pageTitle)}`;
+      const summaryRes = await fetch(summaryUrl, { signal: AbortSignal.timeout(6000) });
+      if (!summaryRes.ok) continue;
+      const summary = await summaryRes.json() as { extract?: string; title?: string };
+      if (summary.extract && summary.extract.length > 80) {
+        return `Wikipedia (${lang}) — ${summary.title}:\n${summary.extract.slice(0, maxChars)}`;
+      }
+    } catch {
+      // try next locale
+    }
+  }
+  return null;
+}
+
+/**
  * Art-specific multi-query search context builder. Runs several targeted DDG
  * queries in parallel — one aimed at auction/market sites (most reliable for
  * dimensions and technique, especially for lesser-known artists), one at museum
@@ -192,8 +221,13 @@ export async function buildArtworkSearchContext(artistName: string, title: strin
     );
     const pagesBlock = pages.filter((p): p is string => Boolean(p)).join('\n\n');
 
-    let context = `Web search results for "${a} ${t}".trim():\n${resultsBlock}`;
+    // Wikipedia lookup for the artist — gives the AI artist identity context
+    // even when the specific artwork has no auction/museum record.
+    const wikiExtract = a ? await fetchWikipediaExtract(a) : null;
+
+    let context = `Web search results for "${[a, t].filter(Boolean).join(' ')}":\n${resultsBlock}`;
     if (pagesBlock) context += `\n\nPage excerpts:\n${pagesBlock}`;
+    if (wikiExtract) context += `\n\n${wikiExtract}`;
     return context.slice(0, maxTotalChars + 1000);
   } catch {
     return null;
@@ -248,8 +282,13 @@ export async function buildArtistSearchContext(fullName: string, maxTotalChars =
     );
     const pagesBlock = pages.filter((p): p is string => Boolean(p)).join('\n\n');
 
+    // Direct Wikipedia lookup — more reliable than DDG→Wikipedia for lesser-known
+    // artists whose pages don't rank high enough in general search results.
+    const wikiExtract = await fetchWikipediaExtract(name);
+
     let context = `Web search results for artist "${name}":\n${resultsBlock}`;
     if (pagesBlock) context += `\n\nPage excerpts:\n${pagesBlock}`;
+    if (wikiExtract) context += `\n\n${wikiExtract}`;
     return context.slice(0, maxTotalChars + 1000);
   } catch {
     return null;

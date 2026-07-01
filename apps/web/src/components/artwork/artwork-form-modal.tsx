@@ -26,6 +26,7 @@ interface ArtworkFormModalProps {
 
 interface FormState {
   title: string;
+  inventoryNumber: string;
   artistName: string;
   year: string;
   techniqueName: string;
@@ -45,7 +46,7 @@ interface FormState {
 
 function emptyForm(): FormState {
   return {
-    title: '', artistName: '', year: '', techniqueName: '', heightCm: '', widthCm: '', dimensionsNote: '', signatureDescription: '', collectionId: '',
+    title: '', inventoryNumber: '', artistName: '', year: '', techniqueName: '', heightCm: '', widthCm: '', dimensionsNote: '', signatureDescription: '', collectionId: '',
     status: 'draft', condition: 'unknown', currentValue: '', insuranceValue: '',
     currency: 'EUR', description: '', tags: '',
   };
@@ -54,6 +55,7 @@ function emptyForm(): FormState {
 function fromArtwork(art: ArtworkView, locale: Locale): FormState {
   return {
     title: resolveLocalized(art.title, locale),
+    inventoryNumber: art.inventoryNumber ?? '',
     artistName: art.artistName ?? '',
     year: art.yearFrom != null ? String(art.yearFrom) : '',
     techniqueName: art.techniqueName ?? '',
@@ -147,6 +149,7 @@ export function ArtworkFormModal({ open, onClose, artwork, defaultArtistId, defa
     const collection = collections.find((c) => c.id === form.collectionId);
     const payload: Partial<ArtworkView> = {
       title: { [locale]: form.title.trim() },
+      inventoryNumber: form.inventoryNumber.trim() || undefined,
       description: form.description.trim() ? { [locale]: form.description.trim() } : {},
       artistName: form.artistName.trim() || null,
       ...(!isEdit && defaultArtistId ? { artistId: defaultArtistId } : {}),
@@ -227,6 +230,11 @@ export function ArtworkFormModal({ open, onClose, artwork, defaultArtistId, defa
             <div className="col-span-2">
               <FieldLabel required>{t('artwork.fields.title')}</FieldLabel>
               <input autoFocus type="text" value={form.title} onChange={(e) => set('title', e.target.value)} className={inputClass} />
+            </div>
+
+            <div>
+              <FieldLabel>{t('artwork.fields.inventoryNumber')}</FieldLabel>
+              <input type="text" value={form.inventoryNumber} onChange={(e) => set('inventoryNumber', e.target.value)} className={inputClass} />
             </div>
 
             <div>
