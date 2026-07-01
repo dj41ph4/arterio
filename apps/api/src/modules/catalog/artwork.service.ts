@@ -6,6 +6,9 @@ import { PrismaService } from '../../core/prisma/prisma.service';
 import { CryptoService } from '../../core/crypto/crypto.service';
 import { AuditService } from '../../core/audit/audit.service';
 import { downloadImageToUploads } from '../../common/download-image.util';
+import { UPLOAD_DIR } from '../../core/config/paths';
+import { stat } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { AuthUser } from '../../common/types';
 import { ARTWORK_INCLUDE, toArtworkView } from './artwork.mapper';
 
@@ -335,8 +338,24 @@ export class ArtworkService {
     return toArtworkView(final as never, { crypto: this.crypto, canViewValuation: this.canViewValuation(user) });
   }
 
-  /** Downloads an AI-suggested image URL server-side and attaches it like a regular upload — the browser never fetches the (arbitrary, third-party) URL directly. */
+  /**
+   * Downloads an AI-suggested image URL server-side and attaches it like a regular upload — the browser never fetches the (arbitrary, third-party) URL directly.
+   * When the AI autofill already downloaded the image to /uploads/ (DDG/gallery
+   * hotlink case), the value passed here is a same-origin `/uploads/<file>` path,
+   * not an external URL — reference that existing file instead of trying (and
+   * failing) to re-download a relative path.
+   */
   async attachMediaFromUrl(user: AuthUser, id: string, url: string): Promise<ArtworkView> {
+    const local = url.match(/^\/uploads\/([A-Za-z0-9._-]+)$/);
+    if (local) {
+      const filename = local[1]!;
+      const path = join(UPLOAD_DIR, filename);
+      const info = await stat(path).catch(() => null);
+      if (!info) throw new BadRequestException('Fichier introuvable');
+      const ext = filename.split('.').pop()?.toLowerCase();
+      const mimetype = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
+      return this.attachMedia(user, id, { filename, mimetype, size: info.size });
+    }
     const file = await downloadImageToUploads(url);
     return this.attachMedia(user, id, file);
   }

@@ -130,20 +130,25 @@ export class AiController {
     query: string,
     organizationId: string,
     aiGuessedUrl?: string,
-  ): Promise<{ url: string | null; source: 'wikiart' | 'commons' | 'artsy' | 'ddg' | 'ai-search' | null }> {
+  ): Promise<{
+    url: string | null;
+    source: 'wikiart' | 'commons' | 'artsy' | 'ddg' | 'ai-search' | null;
+    /** Set only when the image was already downloaded server-side (DDG/ai-search) — lets a caller create a MediaAsset without re-downloading. Null for WikiArt/Commons/Artsy which return a hotlinkable external URL. */
+    file: { filename: string; mimetype: string; size: number } | null;
+  }> {
     try {
       const { wikiartKey, artsyKey } = await this.resolveImageSourceKeys(organizationId);
 
       if (wikiartKey) {
         const fromWikiArt = await searchWikiArtImage(wikiartKey, query);
-        if (fromWikiArt) return { url: fromWikiArt, source: 'wikiart' };
+        if (fromWikiArt) return { url: fromWikiArt, source: 'wikiart', file: null };
       }
       const fromCommons = await searchCommonsImage(query);
-      if (fromCommons) return { url: fromCommons, source: 'commons' };
+      if (fromCommons) return { url: fromCommons, source: 'commons', file: null };
 
       if (artsyKey) {
         const fromArtsy = await searchArtsyImage(artsyKey, query);
-        if (fromArtsy) return { url: fromArtsy, source: 'artsy' };
+        if (fromArtsy) return { url: fromArtsy, source: 'artsy', file: null };
       }
 
       // DDG image search — finds photos on any public page (gallery, auction, press).
@@ -153,22 +158,74 @@ export class AiController {
       const fromDdg = await ddgImageSearch(query, 4);
       for (const img of fromDdg) {
         try {
-          const { filename } = await downloadImageToUploads(img.imageUrl);
-          return { url: `/uploads/${filename}`, source: 'ddg' };
+          const file = await downloadImageToUploads(img.imageUrl);
+          return { url: `/uploads/${file.filename}`, source: 'ddg', file };
         } catch { /* image blocked server-side too — try next */ }
       }
 
       // AI-guessed URL: same download approach for the same reason.
       if (aiGuessedUrl) {
         try {
-          const { filename } = await downloadImageToUploads(aiGuessedUrl);
-          return { url: `/uploads/${filename}`, source: 'ai-search' };
+          const file = await downloadImageToUploads(aiGuessedUrl);
+          return { url: `/uploads/${file.filename}`, source: 'ai-search', file };
         } catch { /* undownloadable */ }
       }
-      return { url: null, source: null };
+      return { url: null, source: null, file: null };
     } catch (err) {
       this.logger.warn(`findPhoto — échec inattendu pour "${query}": ${String(err)}`);
-      return { url: null, source: null };
+      return { url: null, source: null, file: null };
+    }
+  }
+
+  /**
+   * Finds a photo for an EXISTING artwork and attaches it as a MediaAsset —
+   * the artwork equivalent of setting an artist's thumbnail. Skips artworks
+   * that already have media (never overwrites curator uploads). Returns the
+   * source used, or null if nothing was found/attached. Used by the bulk job
+   * (single-artwork autofill runs pre-save, so it returns the URL to the
+   * frontend instead — see the autofill/artwork endpoint).
+   */
+  private async attachArtworkPhoto(
+    orgId: string,
+    artworkId: string,
+    query: string,
+    aiGuessedUrl?: string,
+  ): Promise<'wikiart' | 'commons' | 'artsy' | 'ddg' | 'ai-search' | null> {
+    const existing = await this.prisma.mediaAsset.count({ where: { artworkId } });
+    if (existing > 0) return null;
+
+    const { url, source, file } = await this.findPhoto(query, orgId, aiGuessedUrl);
+    if (!url) return null;
+
+    // DDG/ai-search already downloaded; WikiArt/Commons/Artsy return an external URL we must fetch now.
+    let asset = file;
+    if (!asset) {
+      try {
+        asset = await downloadImageToUploads(url);
+      } catch {
+        return null;
+      }
+    }
+
+    try {
+      await this.prisma.mediaAsset.create({
+        data: {
+          organizationId: orgId,
+          artworkId,
+          type: 'image',
+          role: 'primary',
+          sortOrder: 0,
+          storageKey: asset.filename,
+          derivatives: {},
+          mimeType: asset.mimetype,
+          sizeBytes: asset.size,
+          exif: {},
+          caption: {},
+        },
+      });
+      return source;
+    } catch {
+      return null;
     }
   }
 
@@ -694,6 +751,13 @@ export class AiController {
             await this.prisma.artwork.update({ where: { id: aw.id }, data: patch });
             state.updated++;
           }
+
+          // Attach a real photo — WikiArt/Commons/Artsy/DDG, downloaded server-side.
+          // Mirrors the artist bulk path (which sets a thumbnail); artworks store
+          // images as MediaAsset instead. Skips artworks that already have media.
+          try {
+            await this.attachArtworkPhoto(orgId, aw.id, `${artistName} ${title}`.trim(), data.imageUrl);
+          } catch { /* image is best-effort — never fails the whole row */ }
         } catch (err) {
           this.logger.warn(`Bulk autofill — erreur sur "${aw.id}": ${String(err)}`);
         }
