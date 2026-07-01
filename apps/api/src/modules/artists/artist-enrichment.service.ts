@@ -140,6 +140,87 @@ const SEARCH_LANGUAGES = ['fr', 'nl', 'en', 'de', 'es', 'it'] as const;
 /** Priority order for picking a source biography to translate from. */
 const BIO_SOURCE_PRIORITY: string[] = ['fr', 'nl', 'en', 'de', 'es', 'it'];
 
+// ---------------------------------------------------------------------------
+// Free translation utilities (called before the AI to avoid wasting tokens)
+// ---------------------------------------------------------------------------
+
+/**
+ * Splits a long text into chunks of at most `maxChars` characters,
+ * breaking on sentence boundaries (". ") to avoid cutting mid-sentence.
+ */
+function splitIntoChunks(text: string, maxChars = 450): string[] {
+  if (text.length <= maxChars) return [text];
+  const sentences = text.match(/[^.!?]+[.!?]+(\s|$)/g) ?? [text];
+  const chunks: string[] = [];
+  let current = '';
+  for (const sentence of sentences) {
+    if ((current + sentence).length > maxChars && current) {
+      chunks.push(current.trim());
+      current = sentence;
+    } else {
+      current += sentence;
+    }
+  }
+  if (current.trim()) chunks.push(current.trim());
+  return chunks.length ? chunks : [text.slice(0, maxChars)];
+}
+
+/**
+ * MyMemory — free REST translation API, no key required for ≤1000 words/day
+ * per server IP (well within what artist enrichment generates).
+ * MyMemory chunks at 450 chars; we split longer texts and re-join.
+ */
+async function translateWithMyMemory(text: string, from: string, to: string): Promise<string | null> {
+  const chunks = splitIntoChunks(text, 450);
+  const translated: string[] = [];
+  for (const chunk of chunks) {
+    try {
+      const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(chunk)}&langpair=${from}|${to}`;
+      const res = await fetch(url, { headers: { 'User-Agent': 'Arterio/1.0' }, signal: AbortSignal.timeout(8_000) });
+      if (!res.ok) return null;
+      const data = (await res.json()) as { responseStatus: number; responseData?: { translatedText?: string } };
+      const t = data.responseData?.translatedText;
+      if (!t || data.responseStatus !== 200) return null;
+      // Daily quota exceeded
+      if (t.includes('MYMEMORY WARNING')) return null;
+      translated.push(t);
+    } catch {
+      return null;
+    }
+  }
+  return translated.length ? translated.join(' ') : null;
+}
+
+/**
+ * Lingva Translate — open-source Google Translate frontend with a public
+ * REST API, no key required. Used as fallback when MyMemory fails.
+ */
+async function translateWithLingva(text: string, from: string, to: string): Promise<string | null> {
+  try {
+    const url = `https://lingva.ml/api/v1/${from}/${to}/${encodeURIComponent(text)}`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'Arterio/1.0' }, signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { translation?: string };
+    return data.translation ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Tries free translation services in order (MyMemory → Lingva), validates
+ * the result, and returns it — or null if both fail or return garbage.
+ */
+async function translateFree(text: string, from: string, to: string): Promise<string | null> {
+  const myMemory = await translateWithMyMemory(text, from, to);
+  if (myMemory && isRealBiography(myMemory)) return myMemory;
+
+  const lingva = await translateWithLingva(text, from, to);
+  if (lingva && isRealBiography(lingva)) return lingva;
+
+  return null;
+}
+
 /**
  * Returns true only if the text looks like a real artist biography.
  * Rejects AI refusals ("Je n'ai pas pu…"), empty stubs, and texts
@@ -320,22 +401,30 @@ export class ArtistEnrichmentService {
     for (const targetLocale of missing) {
       if (targetLocale === sourceLocale) continue;
       try {
+        // 1. Try free translation first (MyMemory → Lingva) — no token cost.
+        const free = await translateFree(sourceText, sourceLocale, targetLocale);
+        if (free) {
+          result.biographies[targetLocale] = free;
+          this.logger.log(`Biographie de "${fullName}" traduite ${sourceLocale} → ${targetLocale} via service gratuit.`);
+          continue;
+        }
+
+        // 2. Free services failed or returned garbage — fall back to AI.
+        if (!this.aiProvider || !(await this.aiProvider.isEnabled(organizationId))) continue;
         const translated = await this.aiProvider.translate({
           text: sourceText,
           targetLocale,
           sourceLocale,
           organizationId,
         });
-        // Validate the translation before storing — reject refusals or stubs
-        // that can happen when the AI lacks knowledge about an obscure artist.
         if (translated && isRealBiography(translated)) {
           result.biographies[targetLocale] = translated;
-          this.logger.log(`Biographie de "${fullName}" traduite ${sourceLocale} → ${targetLocale} via IA.`);
+          this.logger.log(`Biographie de "${fullName}" traduite ${sourceLocale} → ${targetLocale} via IA (fallback).`);
         } else if (translated) {
-          this.logger.warn(`Traduction ${sourceLocale} → ${targetLocale} pour "${fullName}" rejetée (contenu générique détecté).`);
+          this.logger.warn(`Traduction IA ${sourceLocale} → ${targetLocale} pour "${fullName}" rejetée (contenu générique).`);
         }
       } catch (e) {
-        this.logger.warn(`Traduction de la biographie de "${fullName}" (${sourceLocale} → ${targetLocale}) échouée : ${String(e)}`);
+        this.logger.warn(`Traduction de "${fullName}" (${sourceLocale} → ${targetLocale}) échouée : ${String(e)}`);
       }
       if (targetLocale !== missing[missing.length - 1]) {
         await new Promise((resolve) => setTimeout(resolve, 400));
