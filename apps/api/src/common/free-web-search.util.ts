@@ -60,8 +60,9 @@ async function ddgImageSearchUncached(query: string, limit: number): Promise<Ddg
     if (!searchPageRes.ok) return [];
     const html = await searchPageRes.text();
 
-    // vqd token is embedded in a script block as vqd='...' or vqd="..."
-    const vqdMatch = html.match(/vqd[='":\s]+['"]?([0-9-]+)/);
+    // vqd token is embedded in a script block — format varies across DDG versions:
+    // vqd='4-123...' or vqd="4-abc..." (alphanumeric + hyphens, not digits only)
+    const vqdMatch = html.match(/vqd[=\s'"]+['"]?([^'"&\s]{4,})/);
     if (!vqdMatch?.[1]) return [];
     const vqd = vqdMatch[1];
 
@@ -76,18 +77,20 @@ async function ddgImageSearchUncached(query: string, limit: number): Promise<Ddg
     const json = await imgRes.json() as {
       results?: Array<{ image: string; url: string; title: string; width: number; height: number }>;
     };
-    const raw = json.results ?? [];
+    const raw = (json.results ?? []).filter((r) => r.image?.startsWith('http'));
 
-    // Validate: HEAD-check each candidate and keep only real, reachable images
-    const validated: DdgImageResult[] = [];
-    for (const r of raw.slice(0, limit * 2)) {
-      if (validated.length >= limit) break;
-      if (!r.image || !r.image.startsWith('http')) continue;
-      if (await isLikelyRealImage(r.image)) {
-        validated.push({ imageUrl: r.image, pageUrl: r.url, title: r.title, width: r.width ?? 0, height: r.height ?? 0 });
-      }
-    }
-    return validated;
+    // Validate in parallel (short timeout) — DDG results are generally real but
+    // some are hotlink-blocked or dead. Cap at limit*2 candidates, return first `limit` valid.
+    const checks = await Promise.all(
+      raw.slice(0, limit * 2).map(async (r) => ({
+        r,
+        ok: await isLikelyRealImage(r.image),
+      })),
+    );
+    return checks
+      .filter((c) => c.ok)
+      .slice(0, limit)
+      .map((c) => ({ imageUrl: c.r.image, pageUrl: c.r.url, title: c.r.title, width: c.r.width ?? 0, height: c.r.height ?? 0 }));
   } catch {
     return [];
   }
