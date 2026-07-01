@@ -87,7 +87,21 @@ export const aiApi = {
     apiFetch<BulkAutofillStatus>('/ai/bulk-autofill/artwork', { method: 'POST', body: JSON.stringify(input) }),
   getBulkAutofillArtworkStatus: () =>
     apiFetch<BulkAutofillStatus>('/ai/bulk-autofill/artwork/status'),
+  /** Bulk artist AI autofill — starts a background job. ids=undefined → all artists. */
+  startBulkAutofillArtist: (input: { ids?: string[]; locale?: string }) =>
+    apiFetch<BulkAutofillArtistStatus>('/ai/bulk-autofill/artist', { method: 'POST', body: JSON.stringify(input) }),
+  getBulkAutofillArtistStatus: () =>
+    apiFetch<BulkAutofillArtistStatus>('/ai/bulk-autofill/artist/status'),
 };
+
+export interface BulkAutofillArtistStatus {
+  running: boolean;
+  done: number;
+  total: number;
+  updated: number;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
 
 export interface BulkAutofillStatus {
   running: boolean;

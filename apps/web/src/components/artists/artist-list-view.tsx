@@ -4,10 +4,11 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useRouter, useParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Search, Users, Sparkles, RefreshCw, SearchX, Merge, Upload } from 'lucide-react';
+import { Search, Users, Sparkles, RefreshCw, SearchX, Merge, Upload, Bot } from 'lucide-react';
 import { useQuery, useMutation, useMutationState } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { artistRepository } from '@/lib/data/artist-repository';
+import { aiApi } from '@/lib/data/ai';
 import { PageHeader } from '@/components/app-shell/page-header';
 import { translateNationality } from '@/lib/nationality';
 import { cn } from '@/lib/utils';
@@ -240,6 +241,28 @@ export function ArtistListView() {
     wasRunning.current = bulkStatus.running;
   }, [bulkStatus, qc]);
 
+  const { data: bulkAiStatus } = useQuery({
+    queryKey: ['artists-bulk-ai-status'],
+    queryFn: () => aiApi.getBulkAutofillArtistStatus(),
+    refetchInterval: (query) => (query.state.data?.running ? 2000 : false),
+  });
+
+  const startBulkAiMutation = useMutation({
+    mutationFn: () => aiApi.startBulkAutofillArtist({ locale }),
+    onSuccess: (status) => qc.setQueryData(['artists-bulk-ai-status'], status),
+    onError: () => toast.error("Échec du lancement de l'autofill IA groupé"),
+  });
+
+  const wasAiRunning = useRef(false);
+  useEffect(() => {
+    if (!bulkAiStatus) return;
+    if (wasAiRunning.current && !bulkAiStatus.running) {
+      qc.invalidateQueries({ queryKey: ['artists-all'] });
+      toast.success(`IA — ${bulkAiStatus.updated} / ${bulkAiStatus.total} artiste${bulkAiStatus.total > 1 ? 's' : ''} mis à jour`);
+    }
+    wasAiRunning.current = bulkAiStatus.running;
+  }, [bulkAiStatus, qc]);
+
   return (
     <div className="flex h-full flex-col">
       <div className="p-4 pb-3 md:px-6">
@@ -303,6 +326,15 @@ export function ArtistListView() {
         >
           <Merge className={cn('h-4 w-4', (mergeMutation.isPending || pendingMerge) && 'animate-pulse')} />
           {mergeMutation.isPending || pendingMerge ? 'Analyse…' : 'Fusionner les doublons'}
+        </button>
+        <button
+          onClick={() => startBulkAiMutation.mutate()}
+          disabled={bulkAiStatus?.running || startBulkAiMutation.isPending}
+          title="Autofill IA — remplit bio, dates, nationalité et portrait pour tous les artistes sans données (tourne en arrière-plan)"
+          className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted disabled:opacity-60"
+        >
+          <Bot className={cn('h-4 w-4', bulkAiStatus?.running && 'animate-pulse')} />
+          {bulkAiStatus?.running ? `IA ${bulkAiStatus.done} / ${bulkAiStatus.total}…` : 'Autofill IA'}
         </button>
         <button
           onClick={() => setImportOpen(true)}

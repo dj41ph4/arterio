@@ -334,42 +334,43 @@ export class AiController {
     return { data, meta };
   }
 
-  @Post('autofill/artist')
-  @RequirePermissions(PERMISSIONS.ARTWORK_CREATE)
-  @ApiOperation({ summary: 'AI-suggested artist bio/dates/nationality from a full name (OpenRouter-backed)' })
-  async autofillArtist(@CurrentUser() user: AuthUser, @Body() body: { fullName: string; locale?: Locale }) {
-    this.logger.log(`Clic "IA" reçu pour un artiste — nom="${body.fullName}"`);
-    if (!(await this.ai.isEnabled(user.organizationId))) {
-      const message = "IA désactivée ou non configurée pour cette organisation (Réglages → IA).";
-      this.logger.warn(message);
-      throw new ServiceUnavailableException(message);
-    }
+  /**
+   * Core artist autofill logic shared between the single-artist endpoint and the
+   * bulk background job. Builds DDG context, calls the AI, searches a portrait,
+   * logs to the debug log, and tracks usage.
+   * Throws on AI failure — callers decide whether to surface or swallow the error.
+   */
+  private async runArtistAutofillCore(
+    orgId: string,
+    fullName: string,
+    locale: string,
+  ): Promise<{
+    data: import('./ai.types').ArtistAutofillResult;
+    meta: import('./ai.types').AiAutofillResponse<import('./ai.types').ArtistAutofillResult>['meta'];
+  }> {
     const t0 = Date.now();
-    const searchContext = await buildArtistSearchContext(body.fullName);
-    const sharedArtist = await this.dedupe(`autofillArtist:${user.organizationId}:${body.fullName}:${body.locale ?? 'en'}`, () =>
-      this.ai.autofillArtist({
-        fullName: body.fullName,
-        locale: body.locale ?? 'en',
-        organizationId: user.organizationId,
-        searchContext: searchContext ?? undefined,
-      }),
-    );
-    const data = { ...sharedArtist.data };
-    const meta = { ...sharedArtist.meta, attempts: [...sharedArtist.meta.attempts] };
+    const searchContext = await buildArtistSearchContext(fullName);
+    const result = await this.ai.autofillArtist({
+      fullName,
+      locale: locale as Locale,
+      organizationId: orgId,
+      searchContext: searchContext ?? undefined,
+    });
+    const data = { ...result.data };
+    const meta = { ...result.meta, attempts: [...result.meta.attempts] };
     const aiGuessedUrl = data.imageUrl;
-    const { url, source } = await this.findPhoto(`${body.fullName} portrait`, user.organizationId, aiGuessedUrl);
+    const { url, source } = await this.findPhoto(`${fullName} portrait`, orgId, aiGuessedUrl);
     data.imageUrl = url ?? undefined;
     if (source === 'wikiart') meta.message += ' Portrait trouvé via WikiArt.';
     else if (source === 'commons') meta.message += ' Portrait trouvé via Wikimedia Commons.';
     else if (source === 'artsy') meta.message += ' Portrait trouvé via Artsy.';
     else if (source === 'ai-search') meta.message += " Portrait trouvé par l'IA via recherche web et vérifié.";
     else meta.message += ' Aucun portrait trouvé.';
-    this.logger.log(meta.message);
-    this.logUsage(user.organizationId, 'autofillArtist', meta.attempts);
+    this.logUsage(orgId, 'autofillArtist', meta.attempts);
     try {
       this.debugLog.push({
         op: 'autofill_artist',
-        input: { fullName: body.fullName },
+        input: { fullName },
         ddgContextBytes: searchContext ? searchContext.length : null,
         structuredHit: null,
         provider: meta.attempts[0]?.model ?? null,
@@ -381,6 +382,24 @@ export class AiController {
     } catch (e) {
       this.logger.error(`debugLog.push (artist) a échoué : ${String(e)}`);
     }
+    return { data, meta };
+  }
+
+  @Post('autofill/artist')
+  @RequirePermissions(PERMISSIONS.ARTWORK_CREATE)
+  @ApiOperation({ summary: 'AI-suggested artist bio/dates/nationality from a full name (OpenRouter-backed)' })
+  async autofillArtist(@CurrentUser() user: AuthUser, @Body() body: { fullName: string; locale?: Locale }) {
+    this.logger.log(`Clic "IA" reçu pour un artiste — nom="${body.fullName}"`);
+    if (!(await this.ai.isEnabled(user.organizationId))) {
+      const message = "IA désactivée ou non configurée pour cette organisation (Réglages → IA).";
+      this.logger.warn(message);
+      throw new ServiceUnavailableException(message);
+    }
+    const { data, meta } = await this.dedupe(
+      `autofillArtist:${user.organizationId}:${body.fullName}:${body.locale ?? 'en'}`,
+      () => this.runArtistAutofillCore(user.organizationId, body.fullName, body.locale ?? 'en'),
+    );
+    this.logger.log(meta.message);
     return { data, meta };
   }
 
@@ -585,6 +604,102 @@ export class AiController {
   @ApiOperation({ summary: 'Current progress of the background artwork bulk-autofill job for this org' })
   getBulkAutofillArtworkStatus(@CurrentUser() user: AuthUser) {
     return this.bulkAutofillStatusView(user.organizationId);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Bulk autofill — artists
+  // ---------------------------------------------------------------------------
+
+  private static readonly bulkAutofillArtistJobs = new Map<string, {
+    total: number;
+    done: number;
+    updated: number;
+    running: boolean;
+    startedAt: Date;
+    finishedAt: Date | undefined;
+  }>();
+
+  private bulkAutofillArtistStatusView(orgId: string) {
+    const s = AiController.bulkAutofillArtistJobs.get(orgId);
+    if (!s) return { running: false, done: 0, total: 0, updated: 0, startedAt: null, finishedAt: null };
+    return { running: s.running, done: s.done, total: s.total, updated: s.updated, startedAt: s.startedAt.toISOString(), finishedAt: s.finishedAt?.toISOString() ?? null };
+  }
+
+  private buildArtistPatch(
+    artist: {
+      nationality: string | null;
+      birthDate: string | null;
+      deathDate: string | null;
+      biography: unknown;
+      thumbnail: string | null;
+    },
+    data: import('./ai.types').ArtistAutofillResult,
+    locale: string,
+  ): Record<string, unknown> {
+    const patch: Record<string, unknown> = {};
+    if (!artist.nationality && data.nationality) patch.nationality = data.nationality;
+    if (!artist.birthDate && data.birthDate) patch.birthDate = data.birthDate;
+    if (!artist.deathDate && data.deathDate) patch.deathDate = data.deathDate;
+    if (!artist.thumbnail && data.imageUrl) patch.thumbnail = data.imageUrl;
+    const bio = artist.biography as Record<string, string> | null ?? {};
+    if (!bio[locale] && data.biography) patch.biography = { ...bio, [locale]: data.biography };
+    return patch;
+  }
+
+  @Post('bulk-autofill/artist')
+  @RequirePermissions(PERMISSIONS.ARTWORK_UPDATE)
+  @ApiOperation({ summary: 'Start a background job that AI-autofills empty fields on artists (bio, dates, nationality, portrait)' })
+  async startBulkAutofillArtist(
+    @CurrentUser() user: AuthUser,
+    @Body() body: { ids?: string[]; locale?: string },
+  ) {
+    const orgId = user.organizationId;
+    const existing = AiController.bulkAutofillArtistJobs.get(orgId);
+    if (existing?.running) return this.bulkAutofillArtistStatusView(orgId);
+
+    if (!(await this.ai.isEnabled(orgId))) {
+      throw new ServiceUnavailableException('IA désactivée ou non configurée pour cette organisation (Réglages → IA).');
+    }
+
+    const whereIds = body.ids?.length ? { id: { in: body.ids } } : {};
+    const artists = await this.prisma.artist.findMany({
+      where: { organizationId: orgId, ...whereIds },
+      select: { id: true, fullName: true, nationality: true, birthDate: true, deathDate: true, biography: true, thumbnail: true },
+    });
+
+    const locale = body.locale ?? 'fr';
+    const state = { total: artists.length, done: 0, updated: 0, running: true, startedAt: new Date(), finishedAt: undefined as Date | undefined };
+    AiController.bulkAutofillArtistJobs.set(orgId, state);
+
+    void (async () => {
+      for (const artist of artists) {
+        try {
+          const result = await this.runArtistAutofillCore(orgId, artist.fullName, locale);
+          if (result.meta.hasUsableData) {
+            const patch = this.buildArtistPatch(artist, result.data, locale);
+            if (Object.keys(patch).length) {
+              await this.prisma.artist.update({ where: { id: artist.id }, data: patch });
+              state.updated++;
+            }
+          }
+        } catch (err) {
+          this.logger.warn(`Bulk autofill artist — erreur sur "${artist.id}": ${String(err)}`);
+        }
+        state.done++;
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+      state.running = false;
+      state.finishedAt = new Date();
+    })();
+
+    return this.bulkAutofillArtistStatusView(orgId);
+  }
+
+  @Get('bulk-autofill/artist/status')
+  @RequirePermissions(PERMISSIONS.ARTWORK_READ)
+  @ApiOperation({ summary: 'Current progress of the background artist bulk-autofill job for this org' })
+  getBulkAutofillArtistStatus(@CurrentUser() user: AuthUser) {
+    return this.bulkAutofillArtistStatusView(user.organizationId);
   }
 
   // ---------------------------------------------------------------------------
