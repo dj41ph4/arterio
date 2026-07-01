@@ -375,7 +375,7 @@ export class AiController {
       }
     } catch { /* non-blocking */ }
 
-    const searchContext = await buildArtistSearchContext(fullName, officialWebsite);
+    const { context: searchContext, debug: searchDebug } = await buildArtistSearchContext(fullName, officialWebsite);
     const result = await this.ai.autofillArtist({
       fullName,
       locale: locale as Locale,
@@ -424,6 +424,8 @@ export class AiController {
         op: 'autofill_artist',
         input: { fullName },
         ddgContextBytes: searchContext ? searchContext.length : null,
+        ddgQueries: searchDebug.queries,
+        ddgReason: searchDebug.reason,
         structuredHit: null,
         provider: meta.attempts[0]?.model ?? null,
         success: meta.hasUsableData,

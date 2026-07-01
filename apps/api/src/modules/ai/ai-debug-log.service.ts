@@ -5,10 +5,12 @@ export interface AiDebugEntry {
   ts: string;
   op: 'autofill_artwork' | 'autofill_artist' | 'find_images' | 'enrichment';
   input: { artistName?: string; title?: string; fullName?: string };
-  /** null = DDG returned nothing; string = context was built (shows byte length) */
+  /** null = DDG returned nothing; number = byte length of context built */
   ddgContextBytes: number | null;
-  /** Queries actually sent to DDG — undefined if old single-query path */
-  ddgQueries?: string[];
+  /** Per-query hit counts for the DDG search — undefined on old artwork path */
+  ddgQueries?: Array<{ q: string; hits: number }>;
+  /** One-sentence diagnosis of why context is empty or partial */
+  ddgReason?: string;
   structuredHit: { source: string; matchedTitle: string } | null;
   provider: string | null;
   success: boolean;

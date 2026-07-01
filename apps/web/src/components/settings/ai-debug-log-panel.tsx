@@ -13,6 +13,8 @@ interface AiDebugEntry {
   op: 'autofill_artwork' | 'autofill_artist' | 'find_images' | 'enrichment';
   input: { artistName?: string; title?: string; fullName?: string };
   ddgContextBytes: number | null;
+  ddgQueries?: Array<{ q: string; hits: number }>;
+  ddgReason?: string;
   structuredHit: { source: string; matchedTitle: string } | null;
   provider: string | null;
   success: boolean;
@@ -96,6 +98,17 @@ function EntryRow({ entry }: { entry: AiDebugEntry }) {
             value={entry.fieldsFound.length ? entry.fieldsFound.map((f) => FIELD_LABELS[f] ?? f).join(', ') : 'aucun'}
             warn={entry.fieldsFound.length === 0}
           />
+          {!entry.success && entry.ddgReason && (
+            <Detail label="Cause échec" value={entry.ddgReason} warn full />
+          )}
+          {!entry.success && entry.ddgQueries && entry.ddgQueries.length > 0 && (
+            <Detail
+              label="Requêtes DDG"
+              value={entry.ddgQueries.map((q) => `${q.hits > 0 ? '✓' : '✗'} ${q.hits} — ${q.q.length > 60 ? q.q.slice(0, 60) + '…' : q.q}`).join('\n')}
+              warn={entry.ddgQueries.every((q) => q.hits === 0)}
+              full
+            />
+          )}
           {entry.error && <Detail label="Erreur" value={entry.error} warn />}
         </div>
       )}
@@ -103,11 +116,11 @@ function EntryRow({ entry }: { entry: AiDebugEntry }) {
   );
 }
 
-function Detail({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
+function Detail({ label, value, warn, full }: { label: string; value: string; warn?: boolean; full?: boolean }) {
   return (
-    <div>
+    <div className={full ? 'col-span-2 sm:col-span-3' : undefined}>
       <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
-      <span className={warn ? 'font-medium text-amber-500' : 'text-foreground'}>{value}</span>
+      <span className={`whitespace-pre-wrap break-words ${warn ? 'font-medium text-amber-500' : 'text-foreground'}`}>{value}</span>
     </div>
   );
 }

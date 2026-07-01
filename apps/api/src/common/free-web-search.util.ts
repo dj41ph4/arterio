@@ -261,87 +261,100 @@ export async function buildArtworkSearchContext(artistName: string, title: strin
   }
 }
 
+export interface ArtistSearchDebug {
+  /** One DDG query entry per query attempted, with the number of results returned. */
+  queries: Array<{ q: string; hits: number }>;
+  wikidataFound: boolean;
+  wikipediaFound: boolean;
+  officialSiteFound: boolean;
+  /** One-sentence diagnosis of why context is empty, or what was found. */
+  reason: string;
+}
+
 /**
  * Artist-specific multi-query context builder.
- *
- * Strategy: for well-known artists, biography/encyclopaedia sites dominate.
- * For regional or lesser-known artists, auction catalogues are often the only
- * machine-readable source. We run five complementary DDG queries in parallel,
- * also try the name inverted (Lastname Firstname → Firstname Lastname), fetch
- * the full text of the most promising pages, and inject Wikidata + Wikipedia
- * as authoritative anchors so the AI doesn't have to guess from thin context.
- *
- * If officialWebsite is provided (from DB or discovered by findArtistOfficialWebsite),
- * it is fetched first with a large budget and injected as the top-priority source —
- * the artist's own site contains the most authoritative biography.
+ * Returns both the context string (null if nothing useful found) and a debug
+ * object with per-query hit counts and a one-sentence reason — surfaced in
+ * the AI audit log so you can see exactly why a search failed.
  */
-export async function buildArtistSearchContext(fullName: string, officialWebsite?: string, maxTotalChars = 12000): Promise<string | null> {
+export async function buildArtistSearchContext(
+  fullName: string,
+  officialWebsite?: string,
+  maxTotalChars = 12000,
+): Promise<{ context: string | null; debug: ArtistSearchDebug }> {
+  const debug: ArtistSearchDebug = {
+    queries: [],
+    wikidataFound: false,
+    wikipediaFound: false,
+    officialSiteFound: false,
+    reason: '',
+  };
   try {
     const name = fullName.trim();
-    if (!name) return null;
+    if (!name) {
+      debug.reason = 'Nom vide — aucune recherche effectuée.';
+      return { context: null, debug };
+    }
     const q = (s: string) => `"${s.replace(/"/g, '')}"`;
     const inverted = reverseTokens(name);
-    // Both name orders: DB often stores "LASTNAME Firstname", web uses "Firstname Lastname"
     const nameA = q(name);
     const nameB = inverted !== name ? q(inverted) : null;
 
-    // Run queries sequentially with a small gap to avoid DDG rate-limiting.
-    // Parallel blasts (5 queries at once × N artists in bulk) reliably trigger
-    // DDG's bot-detection — sequential with 300 ms gap stays well under the limit.
-    //
-    // Query strategy — informed by testing across 4 artist categories:
-    //  - Famous/classical: any query works (Wikipedia/museum pages rank high)
-    //  - Contemporary regional: artsper/kazoart/artmajeur are the primary source;
-    //    NOT covered by generic "artiste peintre" or auction queries
-    //  - Photographers: magnumphotos/delpire rank high; avoid "peintre" qualifier
-    //  - Street art: street-art-avenue/bewaremag; avoid "peintre" qualifier
-    //  - Aboriginal: artsdaustralie/aborigene.fr; covered by bare name query
-    //
-    // Key lessons:
-    //  1. Query 1 uses bare name only (no genre suffix) — works for ALL artist types
-    //  2. Query 2 targets contemporary art marketplaces — critical for regional artists
-    //  3. Auction/photo/street art queries are separate so genre labels don't pollute
     const bothNames = `${nameA}${nameB ? ` OR ${nameB}` : ''}`;
     const queries = [
-      // 1. Bare name — no genre qualifier, highest hit rate across ALL artist types
-      //    (photographers, street artists, Aboriginal artists all lose results with "peintre")
       bothNames,
-      // 2. Contemporary art marketplaces — critical for regional/living artists not in auctions
       `${bothNames} site:artsper.com OR site:kazoart.com OR site:artmajeur.com`,
-      // 3. Auction/market — most reliable for confirmed dates/nationality in lot descriptions
       `${bothNames} site:artprice.com OR site:interencheres.com OR site:drouot.com`,
-      // 4. Authority databases + encyclopaedia sites
       `${bothNames} site:data.bnf.fr OR site:wikiart.org OR site:magnumphotos.com`,
-      // 5. Galleries, press, specialty arts media (covers street art, photography, catalogues)
       `${bothNames} galerie exposition artiste biographie`,
     ];
 
     const allResultSets: WebSearchResult[][] = [];
     for (const query of queries) {
-      allResultSets.push(await searchWeb(query, 5));
+      const results = await searchWeb(query, 5);
+      allResultSets.push(results);
+      debug.queries.push({ q: query, hits: results.length });
       await new Promise((r) => setTimeout(r, 300));
     }
 
-    // Merge and deduplicate — auction results first (they usually have the best data).
+    const totalHits = debug.queries.reduce((s, q) => s + q.hits, 0);
+
     const seen = new Set<string>();
     const merged: WebSearchResult[] = [];
     for (const set of allResultSets) {
       for (const r of set) {
-        if (!seen.has(r.url)) {
-          seen.add(r.url);
-          merged.push(r);
-        }
+        if (!seen.has(r.url)) { seen.add(r.url); merged.push(r); }
       }
     }
-    if (!merged.length) return null;
+
+    if (!merged.length) {
+      const allZero = debug.queries.every((q) => q.hits === 0);
+      debug.reason = allZero
+        ? 'DDG rate-limité ou artiste inconnu du web : toutes les requêtes ont retourné 0 résultat.'
+        : 'DDG a retourné des URLs mais toutes en double — contexte vide.';
+
+      // Still try Wikidata + Wikipedia even if DDG failed
+      const wikidataFacts = await fetchWikidataArtistFacts(name);
+      const wikiExtract = await fetchWikipediaFull(name);
+      debug.wikidataFound = !!wikidataFacts;
+      debug.wikipediaFound = !!wikiExtract;
+      if (wikidataFacts || wikiExtract) {
+        let ctx = '';
+        if (wikidataFacts) ctx += `${wikidataFacts}\n\n`;
+        if (wikiExtract) ctx += wikiExtract;
+        debug.reason += wikidataFacts
+          ? ' Wikidata trouvé malgré l\'absence DDG.'
+          : ' Wikipedia trouvé malgré l\'absence DDG.';
+        return { context: ctx.trim().slice(0, maxTotalChars + 2000), debug };
+      }
+      return { context: null, debug };
+    }
 
     const resultsBlock = merged
       .slice(0, 12)
       .map((r, i) => `[${i + 1}] ${r.title} (${r.url})${r.snippet ? `: ${r.snippet}` : ''}`)
       .join('\n');
 
-    // Fetch full page text for the top 7 results — auction pages get a larger
-    // budget because lot descriptions are dense with exactly the facts we need.
     const auctionDomains = ['interencheres.com', 'drouot.com', 'artprice.com', 'invaluable.com', 'liveauctioneers.com', 'mutualart.com', 'artnet.com'];
     const pages = await Promise.all(
       merged.slice(0, 7).map(async (r, i) => {
@@ -352,23 +365,20 @@ export async function buildArtistSearchContext(fullName: string, officialWebsite
       }),
     );
     const pagesBlock = pages.filter((p): p is string => Boolean(p)).join('\n\n');
+    const pagesFetched = pages.filter(Boolean).length;
 
-    // Wikipedia — try all 6 app locales, take the longest extract found.
     const wikiExtract = await fetchWikipediaFull(name);
-
-    // Wikidata structured facts — injected FIRST as the highest-priority anchor.
     const wikidataFacts = await fetchWikidataArtistFacts(name);
+    debug.wikidataFound = !!wikidataFacts;
+    debug.wikipediaFound = !!wikiExtract;
 
-    // Official website — fetched with a large budget (5 000 chars) and injected
-    // just after Wikidata as the most authoritative biographical source: the
-    // artist's own site contains the raw bio, CV, and statements that the AI
-    // then cleans up and structures. Excluded from the DDG page-fetch above to
-    // guarantee it always gets its own generous budget regardless of rank.
     let officialSiteBlock: string | null = null;
     if (officialWebsite) {
       const siteText = await fetchPageText(officialWebsite, 5000);
-      if (siteText) officialSiteBlock = `[SITE OFFICIEL — ${officialWebsite}]\n${siteText}`;
-      // Mark as seen so it doesn't get double-fetched in the pages loop
+      if (siteText) {
+        officialSiteBlock = `[SITE OFFICIEL — ${officialWebsite}]\n${siteText}`;
+        debug.officialSiteFound = true;
+      }
       seen.add(officialWebsite);
     }
 
@@ -377,9 +387,20 @@ export async function buildArtistSearchContext(fullName: string, officialWebsite
     if (wikiExtract) context += `\n\n${wikiExtract}`;
     if (officialSiteBlock) context = `${officialSiteBlock}\n\n${context}`;
     if (wikidataFacts) context = `${wikidataFacts}\n\n${context}`;
-    return context.slice(0, maxTotalChars + 2000);
-  } catch {
-    return null;
+
+    const sources: string[] = [];
+    if (debug.officialSiteFound) sources.push('site officiel');
+    if (debug.wikidataFound) sources.push('Wikidata');
+    if (debug.wikipediaFound) sources.push('Wikipedia');
+    if (totalHits > 0) sources.push(`${merged.length} URLs DDG (${pagesFetched} pages lues)`);
+    debug.reason = sources.length
+      ? `Contexte construit depuis : ${sources.join(', ')}.`
+      : `DDG a trouvé ${totalHits} résultats mais aucune page lisible.`;
+
+    return { context: context.slice(0, maxTotalChars + 2000), debug };
+  } catch (err) {
+    debug.reason = `Erreur inattendue : ${String(err).slice(0, 120)}`;
+    return { context: null, debug };
   }
 }
 
