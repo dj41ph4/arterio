@@ -101,13 +101,41 @@ const WIKIDATA_SPARQL = 'https://query.wikidata.org/sparql';
 const WIKIPEDIA_REST = (lang: string, title: string) =>
   `https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, '_'))}`;
 
-/** Wikidata description keywords that mean "this person is an art-world figure". */
-const ART_TERMS = [
-  'painter', 'sculptor', 'artist', 'photographer', 'printmaker', 'engraver',
-  'draughtsman', 'illustrator', 'designer', 'architect', 'ceramicist',
-  'art collector', 'art dealer', 'curator', 'muralist', 'visual artist',
-  'graphic artist', 'art critic',
-];
+/** Wikidata description keywords that mean "this person is an art-world figure" — per language. */
+const ART_TERMS: Record<string, string[]> = {
+  en: [
+    'painter', 'sculptor', 'artist', 'photographer', 'printmaker', 'engraver',
+    'draughtsman', 'illustrator', 'designer', 'architect', 'ceramicist',
+    'art collector', 'art dealer', 'curator', 'muralist', 'visual artist',
+    'graphic artist', 'art critic',
+  ],
+  fr: [
+    'peintre', 'sculpteur', 'sculptrice', 'artiste', 'photographe', 'graveur',
+    'graveuse', 'illustrateur', 'illustratrice', 'dessinateur', 'dessinatrice',
+    'architecte', 'céramiste', 'collectionneur', 'collectionneure', 'galeriste',
+    'commissaire', 'muraliste', 'critique', 'enlumineur',
+  ],
+  de: [
+    'maler', 'malerin', 'bildhauer', 'bildhauerin', 'künstler', 'künstlerin',
+    'fotograf', 'fotografin', 'grafiker', 'grafikerin', 'illustrator',
+    'architekt', 'keramiker', 'kunstkritiker',
+  ],
+  es: [
+    'pintor', 'pintora', 'escultor', 'escultora', 'artista', 'fotógrafo',
+    'grabador', 'ilustrador', 'diseñador', 'arquitecto', 'ceramista',
+  ],
+  it: [
+    'pittore', 'pittrice', 'scultore', 'scultrice', 'artista', 'fotografo',
+    'incisore', 'illustratore', 'disegnatore', 'architetto', 'ceramista',
+  ],
+  nl: [
+    'schilder', 'schilderes', 'beeldhouwer', 'kunstenaar', 'fotograaf',
+    'graveur', 'illustrator', 'tekenaar', 'architect',
+  ],
+};
+
+/** Languages to try, in order, when searching Wikidata — English first since it has the widest coverage. */
+const SEARCH_LANGUAGES = ['en', 'fr', 'de', 'es', 'it', 'nl'] as const;
 
 // Wikidata properties
 const P_BIRTH = 'P569';
@@ -386,9 +414,26 @@ export class ArtistEnrichmentService {
   private async searchWikidataOnceUncached(
     name: string,
   ): Promise<{ qid: string; label: string; exact: boolean; ambiguous: boolean } | null> {
+    // Try each language in turn — English first (widest coverage), then French etc.
+    // Many regional/francophone artists (e.g. Berthe Dubail) have only a French
+    // Wikidata description; the English-only search silently rejects them because
+    // "peintre française" doesn't contain any English ART_TERMS word.
+    for (const lang of SEARCH_LANGUAGES) {
+      const result = await this.searchWikidataInLanguage(name, lang);
+      if (result) return result;
+    }
+    this.logger.warn(`No art-related Wikidata match for "${name}" in any language — skipping to avoid a homonym mismatch.`);
+    return null;
+  }
+
+  private async searchWikidataInLanguage(
+    name: string,
+    lang: string,
+  ): Promise<{ qid: string; label: string; exact: boolean; ambiguous: boolean } | null> {
+    const terms = ART_TERMS[lang] ?? ART_TERMS['en']!;
     const url =
       `https://www.wikidata.org/w/api.php?action=wbsearchentities` +
-      `&search=${encodeURIComponent(name)}&language=en&limit=8&format=json&type=item&origin=*`;
+      `&search=${encodeURIComponent(name)}&language=${lang}&limit=8&format=json&type=item&origin=*`;
     try {
       const res = await fetch(url, { headers: { 'User-Agent': 'Arterio/1.0' }, signal: AbortSignal.timeout(8_000) });
       if (!res.ok) return null;
@@ -397,23 +442,18 @@ export class ArtistEnrichmentService {
       };
 
       const artCandidates = data.search.filter((r) =>
-        ART_TERMS.some((t) => r.description?.toLowerCase().includes(t)),
+        terms.some((t) => r.description?.toLowerCase().includes(t)),
       );
-      if (!artCandidates.length) {
-        this.logger.warn(`No art-related Wikidata match for "${name}" — skipping to avoid a homonym mismatch.`);
-        return null;
-      }
+      if (!artCandidates.length) return null;
 
       const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
       const exactMatch = artCandidates.find((r) => normalize(r.label) === normalize(name));
-      // Ambiguous: several *distinct* art-world people share this name, and the
-      // query didn't land exactly on one of their labels — too risky to pick one.
       const distinctQids = new Set(artCandidates.map((c) => c.id));
       const ambiguous = !exactMatch && distinctQids.size > 1;
       const chosen = exactMatch ?? artCandidates[0]!;
       return { qid: chosen.id, label: chosen.label, exact: Boolean(exactMatch), ambiguous };
     } catch (err) {
-      this.logger.warn(`Wikidata search failed for "${name}": ${String(err)}`);
+      this.logger.warn(`Wikidata search (${lang}) failed for "${name}": ${String(err)}`);
       return null;
     }
   }
@@ -938,29 +978,38 @@ WHERE {
    * Wikipedia intro paragraphs, typically 2–5 sentences, reliable quality.
    */
   private async fetchFromDBpedia(name: string): Promise<FallbackHit | null> {
-    // DBpedia resource names follow Wikipedia's URL slug format
+    // Try English DBpedia first, then French DBpedia — artists with only a French
+    // Wikipedia page (no English article) exist in fr.dbpedia.org but not dbpedia.org.
+    const result = await this.fetchFromDBpediaEndpoint(name, 'http://dbpedia.org', 'en');
+    if (result) return result;
+    return this.fetchFromDBpediaEndpoint(name, 'http://fr.dbpedia.org', 'fr');
+  }
+
+  private async fetchFromDBpediaEndpoint(name: string, endpoint: string, bioLang: string): Promise<FallbackHit | null> {
     const slug = name.trim().replace(/\s+/g, '_');
+    const resource = `${endpoint}/resource/${encodeURIComponent(slug)}`;
+    const sparqlEndpoint = `${endpoint}/sparql`;
 
     const sparql = `
 SELECT ?abstract ?thumbnail ?birthDate ?deathDate ?nationality
 WHERE {
-  { <http://dbpedia.org/resource/${encodeURIComponent(slug)}> a dbo:Artist }
+  { <${resource}> a <http://dbpedia.org/ontology/Artist> }
   UNION
-  { <http://dbpedia.org/resource/${encodeURIComponent(slug)}> a dbo:Painter }
+  { <${resource}> a <http://dbpedia.org/ontology/Painter> }
   UNION
-  { <http://dbpedia.org/resource/${encodeURIComponent(slug)}> a dbo:Sculptor }
-  OPTIONAL { <http://dbpedia.org/resource/${encodeURIComponent(slug)}> dbo:abstract ?abstract . FILTER(LANG(?abstract) = 'en') }
-  OPTIONAL { <http://dbpedia.org/resource/${encodeURIComponent(slug)}> dbo:thumbnail ?thumbnail }
-  OPTIONAL { <http://dbpedia.org/resource/${encodeURIComponent(slug)}> dbo:birthDate ?birthDate }
-  OPTIONAL { <http://dbpedia.org/resource/${encodeURIComponent(slug)}> dbo:deathDate ?deathDate }
-  OPTIONAL { <http://dbpedia.org/resource/${encodeURIComponent(slug)}> dbo:nationality ?nat . ?nat rdfs:label ?nationality . FILTER(LANG(?nationality) = 'en') }
+  { <${resource}> a <http://dbpedia.org/ontology/Sculptor> }
+  OPTIONAL { <${resource}> <http://dbpedia.org/ontology/abstract> ?abstract . FILTER(LANG(?abstract) = '${bioLang}') }
+  OPTIONAL { <${resource}> <http://dbpedia.org/ontology/thumbnail> ?thumbnail }
+  OPTIONAL { <${resource}> <http://dbpedia.org/ontology/birthDate> ?birthDate }
+  OPTIONAL { <${resource}> <http://dbpedia.org/ontology/deathDate> ?deathDate }
+  OPTIONAL { <${resource}> <http://dbpedia.org/ontology/nationality> ?nat . ?nat <http://www.w3.org/2000/01/rdf-schema#label> ?nationality . FILTER(LANG(?nationality) = '${bioLang}') }
 }
 LIMIT 1
 `.trim();
 
     try {
       const res = await fetch(
-        `https://dbpedia.org/sparql?query=${encodeURIComponent(sparql)}&format=application%2Fsparql-results%2Bjson`,
+        `${sparqlEndpoint}?query=${encodeURIComponent(sparql)}&format=application%2Fsparql-results%2Bjson`,
         {
           headers: { Accept: 'application/sparql-results+json', 'User-Agent': 'Arterio/1.0' },
           signal: AbortSignal.timeout(10_000),
@@ -973,17 +1022,17 @@ LIMIT 1
       const b = data.results.bindings[0];
       if (!b) return null;
 
-      // Fetch abstracts in all supported locales in parallel
+      // Fetch abstracts in all supported locales
       const localeSparql = `
 SELECT ?lang ?abstract
 WHERE {
-  <http://dbpedia.org/resource/${encodeURIComponent(slug)}> dbo:abstract ?abstract .
+  <${resource}> <http://dbpedia.org/ontology/abstract> ?abstract .
   BIND(LANG(?abstract) AS ?lang)
   FILTER(?lang IN ('en','fr','it','es','de','nl'))
 }
 `.trim();
       const localeRes = await fetch(
-        `https://dbpedia.org/sparql?query=${encodeURIComponent(localeSparql)}&format=application%2Fsparql-results%2Bjson`,
+        `${sparqlEndpoint}?query=${encodeURIComponent(localeSparql)}&format=application%2Fsparql-results%2Bjson`,
         {
           headers: { Accept: 'application/sparql-results+json', 'User-Agent': 'Arterio/1.0' },
           signal: AbortSignal.timeout(10_000),
@@ -999,11 +1048,11 @@ WHERE {
           biographies[row['lang'].value] = row['abstract'].value;
         }
       }
-      if (!biographies['en'] && b['abstract']?.value) {
-        biographies['en'] = b['abstract'].value;
+      if (!biographies[bioLang] && b['abstract']?.value) {
+        biographies[bioLang] = b['abstract'].value;
       }
 
-      const biography = biographies['en'] ?? Object.values(biographies)[0] ?? '';
+      const biography = biographies['fr'] ?? biographies['en'] ?? Object.values(biographies)[0] ?? '';
       if (!biography) return null;
 
       return {
@@ -1014,10 +1063,10 @@ WHERE {
         deathDate: b['deathDate']?.value?.slice(0, 10),
         nationality: b['nationality']?.value,
         imageUrl: b['thumbnail']?.value,
-        sourceUrl: `http://dbpedia.org/resource/${encodeURIComponent(slug)}`,
+        sourceUrl: resource,
       };
     } catch (err) {
-      this.logger.warn(`DBpedia lookup failed for "${name}": ${String(err)}`);
+      this.logger.warn(`DBpedia (${endpoint}) lookup failed for "${name}": ${String(err)}`);
       return null;
     }
   }

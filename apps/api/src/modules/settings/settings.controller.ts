@@ -167,7 +167,7 @@ export class SettingsController {
   @Post('migration/restore')
   @ApiOperation({
     summary: 'Restore a .zip into the CURRENT organization — wipes existing content then re-imports in-place',
-    description: 'Same ZIP format as migration/import, but replaces the caller's org data instead of creating a new org. Users and auth sessions are preserved.',
+    description: 'Same ZIP format as migration/import, but replaces the current org data instead of creating a new org. Users and auth sessions are preserved.',
   })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
