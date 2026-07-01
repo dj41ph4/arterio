@@ -39,6 +39,49 @@ const pageTextCache = new TtlCache<string | null>(10 * 60_000);
 const ddgImageCache = new TtlCache<DdgImageResult[]>(10 * 60_000);
 
 /**
+ * Wikimedia (Wikipedia + Wikidata) enforce a User-Agent policy: requests with a
+ * missing or generic UA get 429/403-throttled aggressively. Several of our
+ * Wikipedia calls previously sent NO User-Agent at all — which is exactly what
+ * silently killed grounding even for well-known artists (DDG returns 0, then the
+ * Wikidata/Wikipedia fallback also 429s → empty context → the AI fills nothing).
+ * A descriptive UA with a contact URL is what their policy asks for.
+ *
+ * We also retry once on 429/503 after a short randomized backoff, because
+ * Wikimedia throttling is typically a brief burst limit, not a hard ban.
+ */
+const WIKIMEDIA_HEADERS: Record<string, string> = {
+  'User-Agent': 'Arterio/1.0 (https://github.com/dj41ph4/arterio; art collection manager) node-fetch',
+  'Accept-Language': 'fr,en;q=0.8',
+};
+
+async function wikimediaFetch(
+  url: string,
+  timeoutMs = 8_000,
+  extraHeaders: Record<string, string> = {},
+): Promise<Response | null> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: { ...WIKIMEDIA_HEADERS, ...extraHeaders },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if ((res.status === 429 || res.status === 503) && attempt === 0) {
+        await new Promise((r) => setTimeout(r, 600 + Math.random() * 500));
+        continue;
+      }
+      return res;
+    } catch {
+      if (attempt === 0) {
+        await new Promise((r) => setTimeout(r, 400));
+        continue;
+      }
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
  * DDG image search — unofficial but key-less and free.
  * Step 1: fetch the DDG search page to extract the vqd session token.
  * Step 2: call the image JSON endpoint with that token.
@@ -540,16 +583,16 @@ async function fetchWikipediaFull(name: string, maxChars = 4000): Promise<string
   await Promise.all(locales.map(async (lang) => {
     try {
       const searchUrl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(name)}&srlimit=1&format=json&origin=*`;
-      const searchRes = await fetch(searchUrl, { signal: AbortSignal.timeout(6000) });
-      if (!searchRes.ok) return;
+      const searchRes = await wikimediaFetch(searchUrl, 6000);
+      if (!searchRes || !searchRes.ok) return;
       const searchJson = await searchRes.json() as { query?: { search?: Array<{ title: string }> } };
       const pageTitle = searchJson.query?.search?.[0]?.title;
       if (!pageTitle) return;
 
       // Fetch the full article via the extract API (more than the REST summary)
       const extractUrl = `https://${lang}.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(pageTitle)}&prop=extracts&exintro=false&explaintext=true&exsectionformat=plain&format=json&origin=*`;
-      const extractRes = await fetch(extractUrl, { signal: AbortSignal.timeout(8000) });
-      if (!extractRes.ok) return;
+      const extractRes = await wikimediaFetch(extractUrl, 8000);
+      if (!extractRes || !extractRes.ok) return;
       const extractJson = await extractRes.json() as { query?: { pages?: Record<string, { extract?: string; title?: string }> } };
       const pages = extractJson.query?.pages ?? {};
       const page = Object.values(pages)[0];
@@ -609,11 +652,12 @@ SELECT ?birthDate ?deathDate ?nationalityLabel ?movementLabel ?image WHERE {
   OPTIONAL { ?item wdt:P18 ?image }
 } LIMIT 1`;
 
-    const sparqlRes = await fetch(
+    const sparqlRes = await wikimediaFetch(
       `https://query.wikidata.org/sparql?query=${encodeURIComponent(sparql)}&format=json`,
-      { headers: { Accept: 'application/sparql-results+json', 'User-Agent': 'Arterio/1.0' }, signal: AbortSignal.timeout(8_000) },
+      8_000,
+      { Accept: 'application/sparql-results+json' },
     );
-    if (!sparqlRes.ok) return null;
+    if (!sparqlRes || !sparqlRes.ok) return null;
     const sparqlJson = await sparqlRes.json() as { results?: { bindings?: Array<Record<string, { value: string }>> } };
     const binding = sparqlJson.results?.bindings?.[0];
     if (!binding) return null;
@@ -644,8 +688,8 @@ async function searchWikidataArtist(name: string): Promise<string | null> {
   try {
     for (const lang of ['en', 'fr', 'nl', 'de', 'it', 'es']) {
       const url = `https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(name)}&language=${lang}&limit=8&format=json&type=item&origin=*`;
-      const res = await fetch(url, { headers: { 'User-Agent': 'Arterio/1.0' }, signal: AbortSignal.timeout(6_000) });
-      if (!res.ok) continue;
+      const res = await wikimediaFetch(url, 6_000);
+      if (!res || !res.ok) continue;
       const data = await res.json() as { search?: Array<{ id: string; description?: string; label: string }> };
       const artHit = data.search?.find((r) =>
         WIKIDATA_ART_TERMS.some((t) => r.description?.toLowerCase().includes(t)),

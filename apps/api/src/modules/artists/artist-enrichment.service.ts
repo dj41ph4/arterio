@@ -98,6 +98,12 @@ const LANG_MAP: Record<string, string> = {
   en: 'en', fr: 'fr', it: 'it', es: 'es', de: 'de', nl: 'nl',
 };
 
+// Wikimedia's User-Agent policy throttles (429) generic/short UAs hard. A
+// descriptive UA with a contact URL is what keeps Wikidata/Wikipedia reachable
+// under the burst of requests one enrichment fires. See the same constant in
+// free-web-search.util.ts (wikimediaFetch).
+const WIKIMEDIA_UA = 'Arterio/1.0 (https://github.com/dj41ph4/arterio; art collection manager) node-fetch';
+
 const WIKIDATA_SPARQL = 'https://query.wikidata.org/sparql';
 const WIKIPEDIA_REST = (lang: string, title: string) =>
   `https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, '_'))}`;
@@ -527,7 +533,7 @@ export class ArtistEnrichmentService {
       `https://www.wikidata.org/w/api.php?action=wbsearchentities` +
       `&search=${encodeURIComponent(name)}&language=${lang}&limit=8&format=json&type=item&origin=*`;
     try {
-      const res = await fetch(url, { headers: { 'User-Agent': 'Arterio/1.0' }, signal: AbortSignal.timeout(8_000) });
+      const res = await fetch(url, { headers: { 'User-Agent': WIKIMEDIA_UA }, signal: AbortSignal.timeout(8_000) });
       if (!res.ok) return null;
       const data = (await res.json()) as {
         search: Array<{ id: string; description?: string; label: string }>;
@@ -603,14 +609,14 @@ WHERE {
     try {
       const [scalarRes, listsRes, entityRes] = await Promise.all([
         fetch(`${WIKIDATA_SPARQL}?query=${encodeURIComponent(scalarSparql)}&format=json`, {
-          headers: { 'Accept': 'application/sparql-results+json', 'User-Agent': 'Arterio/1.0' },
+          headers: { 'Accept': 'application/sparql-results+json', 'User-Agent': WIKIMEDIA_UA },
           signal: AbortSignal.timeout(8_000),
         }),
         fetch(`${WIKIDATA_SPARQL}?query=${encodeURIComponent(listsSparql)}&format=json`, {
-          headers: { 'Accept': 'application/sparql-results+json', 'User-Agent': 'Arterio/1.0' },
+          headers: { 'Accept': 'application/sparql-results+json', 'User-Agent': WIKIMEDIA_UA },
           signal: AbortSignal.timeout(8_000),
         }),
-        fetch(entityUrl, { headers: { 'User-Agent': 'Arterio/1.0' }, signal: AbortSignal.timeout(8_000) }),
+        fetch(entityUrl, { headers: { 'User-Agent': WIKIMEDIA_UA }, signal: AbortSignal.timeout(8_000) }),
       ]);
 
       const scalarData = scalarRes.ok
@@ -682,7 +688,7 @@ WHERE {
     try {
       const res = await fetch(
         `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${qid}&languages=${encodeURIComponent(langs)}&props=labels&format=json&origin=*`,
-        { headers: { 'User-Agent': 'Arterio/1.0' }, signal: AbortSignal.timeout(8_000) },
+        { headers: { 'User-Agent': WIKIMEDIA_UA }, signal: AbortSignal.timeout(8_000) },
       );
       if (!res.ok) return {};
       const data = (await res.json()) as { entities?: Record<string, { labels?: Record<string, { value: string }> }> };
@@ -719,7 +725,7 @@ WHERE {
         if (!pageTitle) return;
         try {
           const summaryRes = await fetch(WIKIPEDIA_REST(lang, pageTitle), {
-            headers: { 'User-Agent': 'Arterio/1.0' },
+            headers: { 'User-Agent': WIKIMEDIA_UA },
             signal: AbortSignal.timeout(8_000),
           });
           if (!summaryRes.ok) return;
@@ -832,7 +838,7 @@ WHERE {
   private async fetchFromAic(name: string): Promise<FallbackHit | null> {
     const searchRes = await fetch(
       `https://api.artic.edu/api/v1/artists/search?q=${encodeURIComponent(name)}&limit=3`,
-      { headers: { 'User-Agent': 'Arterio/1.0' }, signal: AbortSignal.timeout(8_000) },
+      { headers: { 'User-Agent': WIKIMEDIA_UA }, signal: AbortSignal.timeout(8_000) },
     );
     if (!searchRes.ok) return null;
     const searchData = (await searchRes.json()) as { data?: Array<{ id: number; title: string }> };
@@ -841,7 +847,7 @@ WHERE {
 
     const detailRes = await fetch(
       `https://api.artic.edu/api/v1/artists/${hit.id}?fields=id,title,birth_date,death_date`,
-      { headers: { 'User-Agent': 'Arterio/1.0' }, signal: AbortSignal.timeout(8_000) },
+      { headers: { 'User-Agent': WIKIMEDIA_UA }, signal: AbortSignal.timeout(8_000) },
     );
     if (!detailRes.ok) return null;
     const detail = ((await detailRes.json()) as { data?: { title: string; birth_date?: number; death_date?: number } }).data;
@@ -1103,7 +1109,7 @@ LIMIT 1
       const res = await fetch(
         `${sparqlEndpoint}?query=${encodeURIComponent(sparql)}&format=application%2Fsparql-results%2Bjson`,
         {
-          headers: { Accept: 'application/sparql-results+json', 'User-Agent': 'Arterio/1.0' },
+          headers: { Accept: 'application/sparql-results+json', 'User-Agent': WIKIMEDIA_UA },
           signal: AbortSignal.timeout(10_000),
         },
       );
@@ -1126,7 +1132,7 @@ WHERE {
       const localeRes = await fetch(
         `${sparqlEndpoint}?query=${encodeURIComponent(localeSparql)}&format=application%2Fsparql-results%2Bjson`,
         {
-          headers: { Accept: 'application/sparql-results+json', 'User-Agent': 'Arterio/1.0' },
+          headers: { Accept: 'application/sparql-results+json', 'User-Agent': WIKIMEDIA_UA },
           signal: AbortSignal.timeout(10_000),
         },
       );
