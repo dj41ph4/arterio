@@ -108,7 +108,10 @@ async function searchWebUncached(query: string, limit: number): Promise<WebSearc
       body: `q=${encodeURIComponent(query)}`,
       signal: AbortSignal.timeout(10_000),
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      console.error(`[DDG] HTTP ${res.status} pour: ${query.slice(0, 80)}`);
+      return [];
+    }
     const html = await res.text();
     const $ = cheerio.load(html);
     const results: WebSearchResult[] = [];
@@ -120,8 +123,10 @@ async function searchWebUncached(query: string, limit: number): Promise<WebSearc
       const snippet = $(el).find('.result__snippet').first().text().trim();
       if (href && title) results.push({ title, url: cleanDuckDuckGoUrl(href), snippet });
     });
+    console.log(`[DDG] status=${res.status} htmlLen=${html.length} .result=${(html.match(/class="result"/g)??[]).length} parsed=${results.length} q="${query.slice(0, 60)}"`);
     return results;
-  } catch {
+  } catch (err) {
+    console.error(`[DDG] exception: ${String(err).slice(0, 120)} — q="${query.slice(0, 60)}"`);
     return [];
   }
 }
