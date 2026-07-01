@@ -286,11 +286,115 @@ export async function buildArtistSearchContext(fullName: string, maxTotalChars =
     // artists whose pages don't rank high enough in general search results.
     const wikiExtract = await fetchWikipediaExtract(name);
 
+    // Wikidata structured facts — the most reliable source for dates/nationality/
+    // movement when the artist has a Wikidata entry. Injected FIRST in the block
+    // so the AI sees it as the highest-priority source and doesn't override it
+    // with DDG snippets that may be wrong or about a different person.
+    const wikidataFacts = await fetchWikidataArtistFacts(name);
+
     let context = `Web search results for artist "${name}":\n${resultsBlock}`;
     if (pagesBlock) context += `\n\nPage excerpts:\n${pagesBlock}`;
     if (wikiExtract) context += `\n\n${wikiExtract}`;
+    if (wikidataFacts) context = `${wikidataFacts}\n\n${context}`;
     return context.slice(0, maxTotalChars + 1000);
   } catch {
     return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Wikidata structured facts — key-less, always free
+// ---------------------------------------------------------------------------
+
+const wikidataFactsCache = new TtlCache<string | null>(30 * 60_000);
+
+const WIKIDATA_ART_TERMS: string[] = [
+  'painter', 'sculptor', 'artist', 'printmaker', 'photographer', 'illustrator',
+  'peintre', 'sculpteur', 'artiste', 'graveur', 'photographe', 'illustrateur',
+  'pittore', 'scultore', 'schilder', 'beeldhouwer', 'Maler', 'Bildhauer',
+];
+
+/**
+ * Queries Wikidata for structured artist facts (birthDate, deathDate, nationality,
+ * movement, portrait). Returns a compact text block for injection into AI context,
+ * or null if the artist isn't found. Cached 30 minutes — Wikidata data doesn't
+ * change often and this is called for every autofill.
+ *
+ * Placed in this utility (not in ArtistEnrichmentService) to avoid a circular
+ * NestJS module dependency: ArtistsModule → AiModule → ArtistsModule.
+ */
+export async function fetchWikidataArtistFacts(fullName: string): Promise<string | null> {
+  const key = fullName.trim().toLowerCase();
+  return wikidataFactsCache.wrap(key, () => fetchWikidataArtistFactsUncached(fullName));
+}
+
+async function fetchWikidataArtistFactsUncached(fullName: string): Promise<string | null> {
+  try {
+    const name = fullName.trim();
+    const qid = await searchWikidataArtist(name) ?? await searchWikidataArtist(reverseTokens(name));
+    if (!qid) return null;
+
+    // SPARQL query for the scalar fields we care about
+    const sparql = `
+SELECT ?birthDate ?deathDate ?nationalityLabel ?movementLabel ?image WHERE {
+  BIND(wd:${qid} AS ?item)
+  OPTIONAL { ?item wdt:P569 ?birthDate }
+  OPTIONAL { ?item wdt:P570 ?deathDate }
+  OPTIONAL { ?item wdt:P27 ?nat . ?nat rdfs:label ?nationalityLabel FILTER(LANG(?nationalityLabel) = "en") }
+  OPTIONAL { ?item wdt:P135 ?mov . ?mov rdfs:label ?movementLabel FILTER(LANG(?movementLabel) = "en") }
+  OPTIONAL { ?item wdt:P18 ?image }
+} LIMIT 1`;
+
+    const sparqlRes = await fetch(
+      `https://query.wikidata.org/sparql?query=${encodeURIComponent(sparql)}&format=json`,
+      { headers: { Accept: 'application/sparql-results+json', 'User-Agent': 'Arterio/1.0' }, signal: AbortSignal.timeout(8_000) },
+    );
+    if (!sparqlRes.ok) return null;
+    const sparqlJson = await sparqlRes.json() as { results?: { bindings?: Array<Record<string, { value: string }>> } };
+    const binding = sparqlJson.results?.bindings?.[0];
+    if (!binding) return null;
+
+    const formatDate = (iso?: string) => iso ? iso.slice(0, 10).replace(/^-/, '') : undefined;
+    const birthDate = formatDate(binding['birthDate']?.value);
+    const deathDate = formatDate(binding['deathDate']?.value);
+    const nationality = binding['nationalityLabel']?.value;
+    const movement = binding['movementLabel']?.value;
+    const imageUrl = binding['image']?.value
+      ? `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(binding['image'].value.split('/').pop() ?? '')}?width=400`
+      : undefined;
+
+    const lines = [`[WIKIDATA VERIFIED — ${qid}] Facts for "${name}" — trust these above all other sources:`];
+    if (birthDate) lines.push(`  birthDate: ${birthDate}`);
+    if (deathDate) lines.push(`  deathDate: ${deathDate}`);
+    if (nationality) lines.push(`  nationality: ${nationality}`);
+    if (movement) lines.push(`  movement: ${movement}`);
+    if (imageUrl) lines.push(`  imageUrl: ${imageUrl}`);
+    if (lines.length === 1) return null; // found the entity but no useful fields
+    return lines.join('\n');
+  } catch {
+    return null;
+  }
+}
+
+async function searchWikidataArtist(name: string): Promise<string | null> {
+  try {
+    for (const lang of ['en', 'fr', 'nl', 'de', 'it', 'es']) {
+      const url = `https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(name)}&language=${lang}&limit=8&format=json&type=item&origin=*`;
+      const res = await fetch(url, { headers: { 'User-Agent': 'Arterio/1.0' }, signal: AbortSignal.timeout(6_000) });
+      if (!res.ok) continue;
+      const data = await res.json() as { search?: Array<{ id: string; description?: string; label: string }> };
+      const artHit = data.search?.find((r) =>
+        WIKIDATA_ART_TERMS.some((t) => r.description?.toLowerCase().includes(t)),
+      );
+      if (artHit) return artHit.id;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function reverseTokens(name: string): string {
+  const tokens = name.trim().split(/\s+/);
+  return tokens.length === 2 ? `${tokens[1]} ${tokens[0]}` : name;
 }

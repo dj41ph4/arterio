@@ -539,6 +539,46 @@ export class ArtistEnrichmentService {
   }
 
   /**
+   * Lightweight Wikidata facts lookup for use as AI context grounding.
+   * Returns a compact text block with verified birthDate, deathDate, nationality,
+   * movement, and portrait URL — or null if the artist isn't in Wikidata.
+   * Does NOT write to the database; safe to call from any context.
+   */
+  async lookupWikidataFacts(fullName: string): Promise<{
+    qid: string;
+    birthDate?: string;
+    deathDate?: string;
+    nationality?: string;
+    movement?: string;
+    imageUrl?: string;
+    contextBlock: string;
+  } | null> {
+    try {
+      const match = await this.searchWikidata(fullName);
+      if (!match) return null;
+      const entity = await this.fetchWikidataEntity(match.qid);
+      if (!entity) return null;
+      const lines = [`Wikidata (${match.qid}) — source vérifiée pour "${match.matchedName}" :`];
+      if (entity.birthDate) lines.push(`  birthDate: ${entity.birthDate}`);
+      if (entity.deathDate) lines.push(`  deathDate: ${entity.deathDate}`);
+      if (entity.nationality) lines.push(`  nationality: ${entity.nationality}`);
+      if (entity.movement) lines.push(`  movement: ${entity.movement}`);
+      if (entity.imageUrl) lines.push(`  imageUrl: ${entity.imageUrl}`);
+      return {
+        qid: match.qid,
+        birthDate: entity.birthDate,
+        deathDate: entity.deathDate,
+        nationality: entity.nationality,
+        movement: entity.movement,
+        imageUrl: entity.imageUrl,
+        contextBlock: lines.join('\n'),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Public, lightweight art-world lookup used by artist de-duplication: tells
    * the caller whether a name resolves to exactly one unambiguous art figure
    * (safe to auto-merge variants under), to more than one distinct person
