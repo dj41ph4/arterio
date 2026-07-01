@@ -553,12 +553,12 @@ export class ArtworkService {
         // For join tables (unique constraint), only insert if not already linked
         ...dupIds.flatMap((dupId) => [
           this.prisma.$executeRaw`
-            INSERT OR IGNORE INTO ArtworkTag (artworkId, tagId)
-            SELECT ${canonical.id}, tagId FROM ArtworkTag WHERE artworkId = ${dupId}
+            INSERT OR IGNORE INTO artwork_tags (artworkId, tagId)
+            SELECT ${canonical.id}, tagId FROM artwork_tags WHERE artworkId = ${dupId}
           `,
           this.prisma.$executeRaw`
-            INSERT OR IGNORE INTO ExhibitionArtwork (exhibitionId, artworkId, wallLabel, sortOrder)
-            SELECT exhibitionId, ${canonical.id}, wallLabel, sortOrder FROM ExhibitionArtwork WHERE artworkId = ${dupId}
+            INSERT OR IGNORE INTO exhibition_artworks (exhibitionId, artworkId, wallLabel, sortOrder)
+            SELECT exhibitionId, ${canonical.id}, wallLabel, sortOrder FROM exhibition_artworks WHERE artworkId = ${dupId}
           `,
         ]),
         this.prisma.artworkTag.deleteMany({ where: { artworkId: { in: dupIds } } }),

@@ -308,61 +308,29 @@ export class AiController {
       this.logger.warn(message);
       throw new ServiceUnavailableException(message);
     }
-    const t0 = Date.now();
     const dedupeKey = `autofillArtwork:${user.organizationId}:${body.title ?? ''}:${body.artistName ?? ''}:${body.locale ?? 'en'}`;
-    const [searchContext, structuredHit] = await Promise.all([
-      buildArtworkSearchContext(body.artistName ?? '', body.title ?? ''),
-      this.structuredLookup.searchArtworkByTitle(body.artistName, body.title, user.organizationId),
-    ]);
-    const combinedContext = structuredHit
-      ? `${searchContext ?? ''}\n\nConfirmed museum record (source: ${structuredHit.source}${structuredHit.sourceUrl ? `, ${structuredHit.sourceUrl}` : ''}): ${JSON.stringify(structuredHit.result)} — trust these values over your own search/memory for any field they cover.`.trim()
-      : searchContext;
-    const shared = await this.dedupe(dedupeKey, () =>
-      this.ai.autofillArtwork({
-        title: body.title,
-        artistName: body.artistName,
-        locale: body.locale ?? 'en',
-        organizationId: user.organizationId,
-        searchContext: combinedContext ?? undefined,
-      }),
+    const { data, meta, searchContext } = await this.dedupe(dedupeKey, () =>
+      this.runArtworkAutofillCore(
+        user.organizationId,
+        body.title ?? '',
+        body.artistName ?? '',
+        body.locale ?? 'en',
+      ),
     );
-    const data = { ...shared.data };
-    const meta = { ...shared.meta, attempts: [...shared.meta.attempts] };
-    if (structuredHit) {
-      for (const [key, value] of Object.entries(structuredHit.result)) {
-        if (value !== undefined && value !== null && value !== '') (data as Record<string, unknown>)[key] = value;
-      }
-      meta.message += ` Données confirmées via ${structuredHit.source} (${structuredHit.matchedTitle}).`;
-    }
     const aiGuessedUrl = data.imageUrl;
-    let imageSource: 'wikiart' | 'commons' | 'artsy' | 'ai-search' | null = null;
     if (body.title) {
       const { url, source } = await this.findPhoto(`${body.artistName ?? ''} ${body.title}`.trim(), user.organizationId, aiGuessedUrl);
       data.imageUrl = url ?? undefined;
-      imageSource = source;
       if (source === 'wikiart') meta.message += ' Photo réelle trouvée via WikiArt.';
       else if (source === 'commons') meta.message += ' Photo réelle trouvée via Wikimedia Commons.';
       else if (source === 'artsy') meta.message += ' Photo réelle trouvée via Artsy.';
       else if (source === 'ai-search') meta.message += " Photo trouvée par l'IA via recherche web et vérifiée.";
       else meta.message += ' Aucune photo trouvée.';
+      // Patch imageSource on the debug log entry that runArtworkAutofillCore just pushed
+      const latest = this.debugLog.getAll()[0];
+      if (latest?.op === 'autofill_artwork') latest.imageSource = source;
     }
     this.logger.log(meta.message);
-    this.logUsage(user.organizationId, 'autofillArtwork', meta.attempts);
-    try {
-      this.debugLog.push({
-        op: 'autofill_artwork',
-        input: { artistName: body.artistName, title: body.title },
-        ddgContextBytes: searchContext ? searchContext.length : null,
-        structuredHit: structuredHit ? { source: structuredHit.source, matchedTitle: structuredHit.matchedTitle } : null,
-        provider: meta.attempts[0]?.model ?? null,
-        success: meta.hasUsableData,
-        fieldsFound: Object.entries(data).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k]) => k),
-        imageSource,
-        durationMs: Date.now() - t0,
-      });
-    } catch (e) {
-      this.logger.error(`debugLog.push (artwork) a échoué : ${String(e)}`);
-    }
     return { data, meta };
   }
 
@@ -434,6 +402,63 @@ export class AiController {
     const s = AiController.bulkAutofillJobs.get(orgId);
     if (!s) return { running: false, done: 0, total: 0, updated: 0, mode: null, startedAt: null, finishedAt: null };
     return { running: s.running, done: s.done, total: s.total, updated: s.updated, mode: s.mode, startedAt: s.startedAt.toISOString(), finishedAt: s.finishedAt?.toISOString() ?? null };
+  }
+
+  /**
+   * Core artwork autofill logic shared between the single-artwork endpoint and the
+   * bulk background job. Builds DDG + Wikipedia context, calls the AI, merges any
+   * structured museum record, logs to the debug log, and tracks usage.
+   * Throws on AI failure — callers decide whether to surface or swallow the error.
+   */
+  private async runArtworkAutofillCore(
+    orgId: string,
+    title: string,
+    artistName: string,
+    locale: string,
+  ): Promise<{
+    data: import('./ai.types').ArtworkAutofillResult;
+    meta: import('./ai.types').AiAutofillResponse<import('./ai.types').ArtworkAutofillResult>['meta'];
+    searchContext: string | null;
+  }> {
+    const t0 = Date.now();
+    const [searchContext, structuredHit] = await Promise.all([
+      buildArtworkSearchContext(artistName, title),
+      this.structuredLookup.searchArtworkByTitle(artistName || undefined, title, orgId),
+    ]);
+    const combinedContext = structuredHit
+      ? `${searchContext ?? ''}\n\nConfirmed museum record (source: ${structuredHit.source}${structuredHit.sourceUrl ? `, ${structuredHit.sourceUrl}` : ''}): ${JSON.stringify(structuredHit.result)} — trust these values over your own search/memory for any field they cover.`.trim()
+      : searchContext;
+    const result = await this.ai.autofillArtwork({
+      title,
+      artistName: artistName || undefined,
+      locale: locale as Locale,
+      organizationId: orgId,
+      searchContext: combinedContext ?? undefined,
+    });
+    const data = { ...result.data };
+    if (structuredHit) {
+      for (const [k, v] of Object.entries(structuredHit.result)) {
+        if (v !== undefined && v !== null && v !== '') (data as Record<string, unknown>)[k] = v;
+      }
+      result.meta.message += ` Données confirmées via ${structuredHit.source} (${structuredHit.matchedTitle}).`;
+    }
+    this.logUsage(orgId, 'autofillArtwork', result.meta.attempts);
+    try {
+      this.debugLog.push({
+        op: 'autofill_artwork',
+        input: { artistName, title },
+        ddgContextBytes: searchContext ? searchContext.length : null,
+        structuredHit: structuredHit ? { source: structuredHit.source, matchedTitle: structuredHit.matchedTitle } : null,
+        provider: result.meta.attempts[0]?.model ?? null,
+        success: result.meta.hasUsableData,
+        fieldsFound: Object.entries(data).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k]) => k),
+        imageSource: null,
+        durationMs: Date.now() - t0,
+      });
+    } catch (e) {
+      this.logger.error(`debugLog.push (artwork) a échoué : ${String(e)}`);
+    }
+    return { data, meta: result.meta, searchContext };
   }
 
   /**
@@ -531,28 +556,9 @@ export class AiController {
             const hit = await this.structuredLookup.searchArtworkByTitle(artistName || undefined, title, orgId);
             if (hit) data = hit.result as import('./ai.types').ArtworkAutofillResult;
           } else {
-            const [searchContext, structuredHit] = await Promise.all([
-              buildArtworkSearchContext(artistName, title),
-              this.structuredLookup.searchArtworkByTitle(artistName || undefined, title, orgId),
-            ]);
-            const combinedContext = structuredHit
-              ? `${searchContext ?? ''}\n\nConfirmed museum record (${structuredHit.source}): ${JSON.stringify(structuredHit.result)}`.trim()
-              : searchContext;
-            const result = await this.ai.autofillArtwork({
-              title,
-              artistName: artistName || undefined,
-              locale: locale as import('@arterio/shared').Locale,
-              organizationId: orgId,
-              searchContext: combinedContext ?? undefined,
-            });
-            if (result.meta.hasUsableData) {
-              data = result.data;
-              if (structuredHit) {
-                for (const [k, v] of Object.entries(structuredHit.result)) {
-                  if (v !== undefined && v !== null && v !== '') (data as Record<string, unknown>)[k] = v;
-                }
-              }
-            }
+            // Same pipeline as the single-artwork endpoint: DDG context + Wikipedia + AI + debug log + usage tracking
+            const result = await this.runArtworkAutofillCore(orgId, title, artistName, locale);
+            if (result.meta.hasUsableData) data = result.data;
           }
 
           const patch = this.buildArtworkPatch(aw, data, locale);
@@ -560,8 +566,8 @@ export class AiController {
             await this.prisma.artwork.update({ where: { id: aw.id }, data: patch });
             state.updated++;
           }
-        } catch {
-          // best-effort — skip to next artwork on any error
+        } catch (err) {
+          this.logger.warn(`Bulk autofill — erreur sur "${aw.id}": ${String(err)}`);
         }
         state.done++;
         // Pace calls to avoid hammering external APIs
