@@ -254,26 +254,46 @@ export async function buildArtistSearchContext(fullName: string, officialWebsite
     if (!name) return null;
     const q = (s: string) => `"${s.replace(/"/g, '')}"`;
     const inverted = reverseTokens(name);
-    // Try both "Firstname Lastname" and "Lastname Firstname" — French inventories
-    // often store names inverted; DDG ranks them differently.
-    const names = [q(name), ...(inverted !== name ? [q(inverted)] : [])];
-    const any = names.join(' OR ');
+    // Both name orders: DB often stores "LASTNAME Firstname", web uses "Firstname Lastname"
+    const nameA = q(name);
+    const nameB = inverted !== name ? q(inverted) : null;
 
+    // Run queries sequentially with a small gap to avoid DDG rate-limiting.
+    // Parallel blasts (5 queries at once × N artists in bulk) reliably trigger
+    // DDG's bot-detection — sequential with 300 ms gap stays well under the limit.
+    //
+    // Query strategy — informed by testing across 4 artist categories:
+    //  - Famous/classical: any query works (Wikipedia/museum pages rank high)
+    //  - Contemporary regional: artsper/kazoart/artmajeur are the primary source;
+    //    NOT covered by generic "artiste peintre" or auction queries
+    //  - Photographers: magnumphotos/delpire rank high; avoid "peintre" qualifier
+    //  - Street art: street-art-avenue/bewaremag; avoid "peintre" qualifier
+    //  - Aboriginal: artsdaustralie/aborigene.fr; covered by bare name query
+    //
+    // Key lessons:
+    //  1. Query 1 uses bare name only (no genre suffix) — works for ALL artist types
+    //  2. Query 2 targets contemporary art marketplaces — critical for regional artists
+    //  3. Auction/photo/street art queries are separate so genre labels don't pollute
+    const bothNames = `${nameA}${nameB ? ` OR ${nameB}` : ''}`;
     const queries = [
-      // 1. Biography / encyclopaedia — widest net, catches Wikipedia, museum bios, etc.
-      `${any} (biographie OR biography OR "date de naissance" OR "né à" OR "born" OR "artiste" OR painter OR sculptor)`,
-      // 2. Auction / market — professional catalogues with verified dates and attribution,
-      //    often the only digital trace for regional/private-collection artists.
-      `${any} site:interencheres.com OR site:drouot.com OR site:artprice.com OR site:invaluable.com OR site:liveauctioneers.com OR site:mutualart.com OR site:artnet.com`,
-      // 3. Authority databases — RKD, BnF, VIAF, WikiArt, findartinfo, AskArt.
-      `${any} site:rkd.nl OR site:data.bnf.fr OR site:viaf.org OR site:wikiart.org OR site:findartinfo.com OR site:askart.com`,
-      // 4. Artist's own site or dedicated monograph pages (official site + gallery pages).
-      `${any} site officiel artiste peintre galerie exposition`,
-      // 5. General broad query — catches press articles, catalogues, digitised archives.
-      `${any} peintre OR painter OR artiste plasticien`,
+      // 1. Bare name — no genre qualifier, highest hit rate across ALL artist types
+      //    (photographers, street artists, Aboriginal artists all lose results with "peintre")
+      bothNames,
+      // 2. Contemporary art marketplaces — critical for regional/living artists not in auctions
+      `${bothNames} site:artsper.com OR site:kazoart.com OR site:artmajeur.com`,
+      // 3. Auction/market — most reliable for confirmed dates/nationality in lot descriptions
+      `${bothNames} site:artprice.com OR site:interencheres.com OR site:drouot.com`,
+      // 4. Authority databases + encyclopaedia sites
+      `${bothNames} site:data.bnf.fr OR site:wikiart.org OR site:magnumphotos.com`,
+      // 5. Galleries, press, specialty arts media (covers street art, photography, catalogues)
+      `${bothNames} galerie exposition artiste biographie`,
     ];
 
-    const allResultSets = await Promise.all(queries.map((q_) => searchWeb(q_, 5)));
+    const allResultSets: WebSearchResult[][] = [];
+    for (const query of queries) {
+      allResultSets.push(await searchWeb(query, 5));
+      await new Promise((r) => setTimeout(r, 300));
+    }
 
     // Merge and deduplicate — auction results first (they usually have the best data).
     const seen = new Set<string>();
@@ -482,6 +502,9 @@ const EXCLUDED_DOMAINS = [
   'mutualart.com', 'findartinfo.com', 'askart.com', 'rkd.nl', 'data.bnf.fr',
   'viaf.org', 'facebook.com', 'instagram.com', 'twitter.com', 'youtube.com',
   'amazon.com', 'amazon.fr', 'ebay.com', 'etsy.com', 'pinterest.com',
+  // Contemporary art marketplaces — great search sources but not official artist sites
+  'artsper.com', 'kazoart.com', 'artmajeur.com', 'lilleartup.com',
+  'saatchiart.com', 'artsy.net',
 ];
 
 const officialWebsiteCache = new TtlCache<string | null>(60 * 60_000); // 1 h
