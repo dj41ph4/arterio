@@ -156,17 +156,31 @@ async function fetchWikipediaExtract(name: string, locales = ['fr', 'en'], maxCh
 }
 
 /**
- * Art-specific multi-query search context builder. Runs several targeted DDG
- * queries in parallel — one aimed at auction/market sites (most reliable for
- * dimensions and technique, especially for lesser-known artists), one at museum
- * sites, and the original broad query. Deduplicates URLs, fetches the most
- * relevant pages, and returns a single merged context block.
+ * Artwork-specific multi-query context builder.
  *
- * Why multiple queries: a single generic query works for famous artists
- * (Wikipedia/museum pages rank high) but fails for regional or private-collection
- * works where the only factual data lives on auction catalogues or niche
- * databases. Targeting those domains explicitly with site: operators surfaces
- * results a generic query never would.
+ * Strategy — informed by testing across the collection:
+ *  - Famous artists with specific titles (Ensor, Alechinsky, Picasso): a bare
+ *    "artist" "title" query immediately finds gazette-drouot, amorosart, devuyst,
+ *    michelfillion, invaluable — far better than forcing site: operators that
+ *    DDG may ignore or over-filter.
+ *  - Print/estampe specialists (Alechinsky, Ensor, Picasso): amorosart.com,
+ *    michelfillion.com, mchampetier.com hold lot descriptions with edition, size,
+ *    technique, signature — essential and absent from the old query.
+ *  - Regional Belgian artists with an official site (Dubail Berthe → berthe-dubail.be):
+ *    the bare query surfaces it; the page fetch yields full catalogue data.
+ *  - Contemporary artists (Bocage, Manche, Demaiter): galerie pages
+ *    (galerie-com.com, galerie-container.com) are the only online source;
+ *    the bare query finds them.
+ *  - Generic titles (COMPOSITION, PAYSAGE, NU): title is almost useless for
+ *    disambiguation — artist name is the real anchor.
+ *
+ * Key lesson: multi-site OR queries ("site:A OR site:B OR site:C OR ...") in DDG
+ * are unreliable — the engine either ignores them or returns nothing. A bare query
+ * finds the best matching page regardless of domain, then the auction/print
+ * targeted queries add depth for well-catalogued works.
+ *
+ * Queries run sequentially with 300 ms gaps (same rate-limit reason as the
+ * artist builder — parallel blasts trigger DDG bot detection in bulk mode).
  */
 export async function buildArtworkSearchContext(artistName: string, title: string, maxTotalChars = 8000): Promise<string | null> {
   try {
@@ -175,22 +189,31 @@ export async function buildArtworkSearchContext(artistName: string, title: strin
     const t = title.trim();
     if (!a && !t) return null;
 
-    // Three complementary queries run in parallel:
-    // 1. Auction/market sites — most reliable source for dimensions, technique,
-    //    and signature info, even for obscure artists (lot descriptions are
-    //    verified by professionals before each sale).
-    // 2. Museum sites — authoritative for works in public collections.
-    // 3. Broad art-specific query — catches catalogues raisonnés, monographies,
-    //    gallery pages, and artist websites.
+    const aQ = a ? quoted(a) : '';
+    const tQ = t ? quoted(t) : '';
+    const both = `${aQ} ${tQ}`.trim();
+
+    // Query strategy (sequential, 300 ms gap):
+    // 1. Bare artist + title — no site restriction, highest hit rate for ALL types.
+    //    Finds official artist sites, gallery pages, auction records, museum pages.
+    // 2. Auction + print gallery specialists — best for technical lot descriptions
+    //    (dimensions, edition, signature); gazette-drouot + amorosart are excellent
+    //    for French/Belgian estampes and consistently appear in manual searches.
+    // 3. Artist-level databases — gives the AI artist identity context (nationality,
+    //    dates, movement) even when the specific work has no auction record.
     const queries = [
-      `${a ? quoted(a) : ''} ${t ? quoted(t) : ''} site:interencheres.com OR site:drouot.com OR site:artprice.com OR site:invaluable.com OR site:liveauctioneers.com OR site:mutualart.com`.trim(),
-      `${a ? quoted(a) : ''} ${t ? quoted(t) : ''} site:metmuseum.org OR site:artic.edu OR site:vam.ac.uk OR site:rkd.nl OR site:joconde.fr OR site:wikiart.org`.trim(),
-      `${a ? quoted(a) : ''} ${t ? quoted(t) : ''} catalogue raisonné dimensions technique signature`.trim(),
+      both,
+      `${both} site:gazette-drouot.com OR site:interencheres.com OR site:amorosart.com OR site:michelfillion.com`,
+      `${aQ} site:artprice.com OR site:artnet.com OR site:invaluable.com OR site:wikiart.org`,
     ];
 
-    const allResultSets = await Promise.all(queries.map((q) => searchWeb(q, 4)));
+    const allResultSets: WebSearchResult[][] = [];
+    for (const query of queries) {
+      allResultSets.push(await searchWeb(query, 5));
+      await new Promise((r) => setTimeout(r, 300));
+    }
 
-    // Merge and deduplicate by URL, preserving order (auction results first).
+    // Merge and deduplicate — bare query results first (most relevant).
     const seen = new Set<string>();
     const merged: WebSearchResult[] = [];
     for (const set of allResultSets) {
@@ -204,25 +227,29 @@ export async function buildArtworkSearchContext(artistName: string, title: strin
     if (!merged.length) return null;
 
     const resultsBlock = merged
-      .slice(0, 8)
+      .slice(0, 10)
       .map((r, i) => `[${i + 1}] ${r.title} (${r.url})${r.snippet ? `: ${r.snippet}` : ''}`)
       .join('\n');
 
-    // Fetch page text for the top results. Auction pages tend to be dense with
-    // exactly the data we need, so give them a larger per-page budget.
-    const auctionDomains = ['interencheres.com', 'drouot.com', 'artprice.com', 'invaluable.com', 'liveauctioneers.com', 'mutualart.com'];
+    // Fetch page text. Auction/print catalogue pages get a larger budget —
+    // their lot descriptions are dense with exactly the facts we need.
+    const richDomains = [
+      'interencheres.com', 'drouot.com', 'gazette-drouot.com', 'artprice.com',
+      'invaluable.com', 'liveauctioneers.com', 'mutualart.com', 'artnet.com',
+      'amorosart.com', 'michelfillion.com', 'mchampetier.com',
+    ];
     const pages = await Promise.all(
-      merged.slice(0, 5).map(async (r, i) => {
-        const isAuction = auctionDomains.some((d) => r.url.includes(d));
-        const charBudget = isAuction ? Math.floor(maxTotalChars / 3) : Math.floor(maxTotalChars / 5);
+      merged.slice(0, 6).map(async (r, i) => {
+        const isRich = richDomains.some((d) => r.url.includes(d));
+        const charBudget = isRich ? Math.floor(maxTotalChars / 3) : Math.floor(maxTotalChars / 6);
         const text = await fetchPageText(r.url, charBudget);
         return text ? `[${i + 1}] ${r.url}:\n${text}` : null;
       }),
     );
     const pagesBlock = pages.filter((p): p is string => Boolean(p)).join('\n\n');
 
-    // Wikipedia lookup for the artist — gives the AI artist identity context
-    // even when the specific artwork has no auction/museum record.
+    // Wikipedia artist context — helps the AI identify the artist even when the
+    // specific work has no online record (common for generic titles like PAYSAGE).
     const wikiExtract = a ? await fetchWikipediaExtract(a) : null;
 
     let context = `Web search results for "${[a, t].filter(Boolean).join(' ')}":\n${resultsBlock}`;
