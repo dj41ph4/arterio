@@ -124,7 +124,16 @@ export function EditArtistModal({ artist, open, onClose, onDeleted }: EditArtist
       if (!birthDate && data.birthDate) setBirthDate(data.birthDate);
       if (!deathDate && data.deathDate) setDeathDate(data.deathDate);
       if (!thumbnail && data.imageUrl) setThumbnail(data.imageUrl);
-      if (!biography[locale] && data.biography) {
+      // Apply all translated biographies at once — only fill empty locales
+      if (data.allBiographies && Object.keys(data.allBiographies).length > 0) {
+        setBiography((b) => {
+          const next = { ...b };
+          for (const [lang, text] of Object.entries(data.allBiographies!)) {
+            if (!next[lang as keyof typeof next] && text) next[lang as keyof typeof next] = text;
+          }
+          return next;
+        });
+      } else if (!biography[locale] && data.biography) {
         setBiography((b) => ({ ...b, [locale]: data.biography }));
       }
       return { message: meta.message, success: true };

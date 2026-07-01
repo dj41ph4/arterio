@@ -347,11 +347,12 @@ export class AiController {
   ): Promise<{
     data: import('./ai.types').ArtistAutofillResult;
     meta: import('./ai.types').AiAutofillResponse<import('./ai.types').ArtistAutofillResult>['meta'];
+    allBiographies: Partial<Record<Locale, string>>;
   }> {
     const t0 = Date.now();
+    const ALL_LOCALES: Locale[] = ['fr', 'en', 'it', 'es', 'de', 'nl'];
 
     // Resolve official website: DB first (fastest), DDG discovery as fallback.
-    // If discovered via DDG, persist it so the next call is instant.
     let officialWebsite: string | undefined;
     try {
       const dbArtist = await this.prisma.artist.findFirst({
@@ -383,6 +384,32 @@ export class AiController {
     });
     const data = { ...result.data };
     const meta = { ...result.meta, attempts: [...result.meta.attempts] };
+
+    // Translate the biography to all other locales in parallel.
+    // One search + one AI call produces content for all 6 languages — no redundant
+    // web searches, and the translation starts from local source material rather than
+    // a generic AI guess in each language.
+    const allBiographies: Partial<Record<Locale, string>> = {};
+    if (data.biography) {
+      allBiographies[locale as Locale] = data.biography;
+      const otherLocales = ALL_LOCALES.filter((l) => l !== locale);
+      const translations = await Promise.all(
+        otherLocales.map((targetLocale) =>
+          this.ai.translate({
+            text: data.biography!,
+            sourceLocale: locale as Locale,
+            targetLocale,
+            organizationId: orgId,
+          }).catch(() => null),
+        ),
+      );
+      otherLocales.forEach((targetLocale, i) => {
+        if (translations[i]) allBiographies[targetLocale] = translations[i]!;
+      });
+      const translatedCount = Object.keys(allBiographies).length - 1;
+      if (translatedCount > 0) meta.message += ` Bio traduite en ${translatedCount} langue${translatedCount > 1 ? 's' : ''}.`;
+    }
+
     const aiGuessedUrl = data.imageUrl;
     const { url, source } = await this.findPhoto(`${fullName} portrait`, orgId, aiGuessedUrl);
     data.imageUrl = url ?? undefined;
@@ -407,7 +434,7 @@ export class AiController {
     } catch (e) {
       this.logger.error(`debugLog.push (artist) a échoué : ${String(e)}`);
     }
-    return { data, meta };
+    return { data, meta, allBiographies };
   }
 
   @Post('autofill/artist')
@@ -420,12 +447,13 @@ export class AiController {
       this.logger.warn(message);
       throw new ServiceUnavailableException(message);
     }
-    const { data, meta } = await this.dedupe(
-      `autofillArtist:${user.organizationId}:${body.fullName}:${body.locale ?? 'en'}`,
-      () => this.runArtistAutofillCore(user.organizationId, body.fullName, body.locale ?? 'en'),
+    const { data, meta, allBiographies } = await this.dedupe(
+      `autofillArtist:${user.organizationId}:${body.fullName}:${body.locale ?? 'fr'}`,
+      () => this.runArtistAutofillCore(user.organizationId, body.fullName, body.locale ?? 'fr'),
     );
     this.logger.log(meta.message);
-    return { data, meta };
+    // Return allBiographies so the frontend can populate all locale fields at once
+    return { data: { ...data, allBiographies }, meta };
   }
 
   // ---------------------------------------------------------------------------
@@ -659,15 +687,21 @@ export class AiController {
       thumbnail: string | null;
     },
     data: import('./ai.types').ArtistAutofillResult,
-    locale: string,
+    allBiographies: Partial<Record<Locale, string>>,
   ): Record<string, unknown> {
     const patch: Record<string, unknown> = {};
     if (!artist.nationality && data.nationality) patch.nationality = data.nationality;
     if (!artist.birthDate && data.birthDate) patch.birthDate = data.birthDate;
     if (!artist.deathDate && data.deathDate) patch.deathDate = data.deathDate;
     if (!artist.thumbnail && data.imageUrl) patch.thumbnail = data.imageUrl;
+    // Write all translated biographies at once — only fill locales that are currently empty
     const bio = artist.biography as Record<string, string> | null ?? {};
-    if (!bio[locale] && data.biography) patch.biography = { ...bio, [locale]: data.biography };
+    const mergedBio = { ...bio };
+    let bioUpdated = false;
+    for (const [lang, text] of Object.entries(allBiographies)) {
+      if (!mergedBio[lang] && text) { mergedBio[lang] = text; bioUpdated = true; }
+    }
+    if (bioUpdated) patch.biography = mergedBio;
     return patch;
   }
 
@@ -701,7 +735,7 @@ export class AiController {
         try {
           const result = await this.runArtistAutofillCore(orgId, artist.fullName, locale);
           if (result.meta.hasUsableData) {
-            const patch = this.buildArtistPatch(artist, result.data, locale);
+            const patch = this.buildArtistPatch(artist, result.data, result.allBiographies);
             if (Object.keys(patch).length) {
               await this.prisma.artist.update({ where: { id: artist.id }, data: patch });
               state.updated++;

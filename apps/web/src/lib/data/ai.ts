@@ -22,6 +22,8 @@ export interface ArtistAutofillResult {
   deathDate?: string;
   movement?: string;
   imageUrl?: string;
+  /** All 6 locale biographies, generated from a single search + AI call then translated */
+  allBiographies?: Partial<Record<string, string>>;
 }
 
 export interface AiAttemptLog {
