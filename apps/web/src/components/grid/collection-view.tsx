@@ -12,11 +12,11 @@ import {
   type RowSelectionState,
 } from '@tanstack/react-table';
 import { useSearchParams } from 'next/navigation';
-import { Check, Star, Pencil, Trash2, X, LibraryBig, Upload, Plus } from 'lucide-react';
+import { Check, Star, Pencil, Trash2, X, LibraryBig, Upload, Plus, Merge } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ArtworkView, Locale, ArtworkQuery } from '@arterio/shared';
 import { resolveLocalized } from '@arterio/shared';
 import { toast } from 'sonner';
-import { useQueryClient } from '@tanstack/react-query';
 import { useArtworksInfinite, useToggleFavorite } from '@/hooks/use-artworks';
 import { artworkRepository } from '@/lib/data';
 import { useFacets } from '@/hooks/use-artworks';
@@ -109,6 +109,21 @@ export function CollectionView({ favoritesOnly = false }: { favoritesOnly?: bool
   const [collectionsOpen, setCollectionsOpen] = React.useState(false);
   const [artworkFormOpen, setArtworkFormOpen] = React.useState(false);
   const [exporting, setExporting] = React.useState(false);
+
+  const dedupMutation = useMutation({
+    mutationFn: () => artworkRepository.autoMerge(),
+    onSuccess: (report) => {
+      qc.invalidateQueries({ queryKey: ['artworks'] });
+      if (!report.merged.length) {
+        toast.info('Aucun doublon détecté');
+      } else {
+        toast.success(
+          `${report.merged.length} groupe${report.merged.length > 1 ? 's' : ''} fusionné${report.merged.length > 1 ? 's' : ''} — ${report.checked} œuvres analysées`,
+        );
+      }
+    },
+    onError: () => toast.error('Échec de la fusion automatique'),
+  });
 
   const { data: facets } = useFacets();
 
@@ -397,6 +412,17 @@ export function CollectionView({ favoritesOnly = false }: { favoritesOnly?: bool
               >
                 <LibraryBig className="h-4 w-4" />
                 {t('collections.title')}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => dedupMutation.mutate()}
+                disabled={dedupMutation.isPending}
+                className="flex items-center gap-2"
+                title="Détecte les œuvres en double (même titre + artiste) et fusionne en gardant la plus complète"
+              >
+                <Merge className={cn('h-4 w-4', dedupMutation.isPending && 'animate-pulse')} />
+                {dedupMutation.isPending ? 'Analyse…' : 'Fusionner les doublons'}
               </Button>
               <Button
                 variant="outline"

@@ -176,6 +176,13 @@ export class ArtworkController {
     return this.artworks.attachMediaFromUrl(user, id, url);
   }
 
+  @Post('dedup')
+  @RequirePermissions(PERMISSIONS.ARTWORK_UPDATE)
+  @ApiOperation({ summary: 'Auto-detect and merge duplicate artworks (same title + artist) — keeps the richest record, reassigns all relations' })
+  autoMergeDuplicates(@CurrentUser() user: AuthUser) {
+    return this.artworks.autoMergeDuplicates(user);
+  }
+
   @Delete(':id/media/:mediaId')
   @RequirePermissions(PERMISSIONS.ARTWORK_UPDATE)
   @ApiOperation({ summary: 'Remove an uploaded image from an artwork' })

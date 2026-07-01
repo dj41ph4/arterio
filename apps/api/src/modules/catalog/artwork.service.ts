@@ -460,6 +460,121 @@ export class ArtworkService {
     return toArtworkView(final as never, { crypto: this.crypto, canViewValuation: this.canViewValuation(user) });
   }
 
+  /**
+   * Détecte et fusionne les œuvres en double dans l'organisation courante.
+   *
+   * Deux œuvres sont considérées comme doublons si elles partagent la même clé
+   * normalisée : titre (sans accents, minuscule, espaces réduits) + artiste
+   * (id Prisma quand disponible, sinon nom normalisé). La plus complète devient
+   * canonique ; toutes les relations liées (médias, documents, prêts, expositions,
+   * restaurations, tags, valuations, déplacements) sont réaffectées vers elle
+   * avant suppression définitive des doublons.
+   */
+  async autoMergeDuplicates(user: AuthUser): Promise<{
+    merged: Array<{ canonicalTitle: string; count: number }>;
+    checked: number;
+  }> {
+    const artworks = await this.prisma.artwork.findMany({
+      where: { organizationId: user.organizationId, deletedAt: null },
+      include: {
+        _count: {
+          select: {
+            media: true,
+            documents: true,
+            loanItems: true,
+            exhibitionItems: true,
+            restorations: true,
+            tags: true,
+          },
+        },
+        valuation: { select: { id: true } },
+      },
+    });
+
+    const normalize = (s: string) =>
+      s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+
+    const titleOf = (a: (typeof artworks)[number]) => {
+      const t = a.title as Record<string, string> | null;
+      if (!t) return '';
+      return normalize(t['fr'] ?? t['en'] ?? Object.values(t).find((v) => v) ?? '');
+    };
+
+    const artistKey = (a: (typeof artworks)[number]) =>
+      a.artistId ?? normalize(a.attribution ?? '');
+
+    const groups = new Map<string, typeof artworks>();
+    for (const aw of artworks) {
+      const title = titleOf(aw);
+      if (!title) continue;
+      const key = `${title}||${artistKey(aw)}`;
+      const list = groups.get(key) ?? [];
+      list.push(aw);
+      groups.set(key, list);
+    }
+
+    const completeness = (a: (typeof artworks)[number]) => {
+      let score = 0;
+      const t = a.title as Record<string, string> | null;
+      if (t && Object.values(t).some((v) => v)) score += 10;
+      if (a.description) score += 10;
+      if (a.artistId) score += 15;
+      if (a.yearFrom) score += 10;
+      if (a.heightCm || a.widthCm) score += 5;
+      if (a.condition !== 'unknown' && a.condition) score += 5;
+      if (a.inventoryNumber) score += 5;
+      score += a._count.media * 8;
+      score += a._count.documents * 3;
+      score += a._count.loanItems * 2;
+      score += a._count.exhibitionItems * 2;
+      score += a._count.tags * 2;
+      score += a.valuation ? 4 : 0;
+      return score;
+    };
+
+    const merged: Array<{ canonicalTitle: string; count: number }> = [];
+
+    for (const members of groups.values()) {
+      if (members.length < 2) continue;
+
+      const canonical = members.reduce((best, m) =>
+        completeness(m) > completeness(best) ? m : best,
+      );
+      const duplicates = members.filter((m) => m.id !== canonical.id);
+      const dupIds = duplicates.map((d) => d.id);
+
+      await this.prisma.$transaction([
+        // Reassign all relations from duplicates to canonical
+        this.prisma.mediaAsset.updateMany({ where: { artworkId: { in: dupIds } }, data: { artworkId: canonical.id } }),
+        this.prisma.document.updateMany({ where: { artworkId: { in: dupIds } }, data: { artworkId: canonical.id } }),
+        this.prisma.loanItem.updateMany({ where: { artworkId: { in: dupIds } }, data: { artworkId: canonical.id } }),
+        this.prisma.movementRecord.updateMany({ where: { artworkId: { in: dupIds } }, data: { artworkId: canonical.id } }),
+        this.prisma.restoration.updateMany({ where: { artworkId: { in: dupIds } }, data: { artworkId: canonical.id } }),
+        // For join tables (unique constraint), only insert if not already linked
+        ...dupIds.flatMap((dupId) => [
+          this.prisma.$executeRaw`
+            INSERT OR IGNORE INTO ArtworkTag (artworkId, tagId)
+            SELECT ${canonical.id}, tagId FROM ArtworkTag WHERE artworkId = ${dupId}
+          `,
+          this.prisma.$executeRaw`
+            INSERT OR IGNORE INTO ExhibitionArtwork (exhibitionId, artworkId, wallLabel, sortOrder)
+            SELECT exhibitionId, ${canonical.id}, wallLabel, sortOrder FROM ExhibitionArtwork WHERE artworkId = ${dupId}
+          `,
+        ]),
+        this.prisma.artworkTag.deleteMany({ where: { artworkId: { in: dupIds } } }),
+        this.prisma.exhibitionArtwork.deleteMany({ where: { artworkId: { in: dupIds } } }),
+        this.prisma.artworkValuation.deleteMany({ where: { artworkId: { in: dupIds } } }),
+        this.prisma.artwork.deleteMany({ where: { id: { in: dupIds } } }),
+      ]);
+
+      const t = canonical.title as Record<string, string> | null;
+      const canonicalTitle = t ? (t['fr'] ?? t['en'] ?? Object.values(t)[0] ?? '') : '';
+      merged.push({ canonicalTitle, count: members.length });
+    }
+
+    return { merged, checked: artworks.length };
+  }
+
   /** Builds a Prisma orderBy, routing relation-backed fields (artist) through their join. */
   private buildOrderBy(field: string, dir: 'asc' | 'desc'): Record<string, unknown> {
     if (field === 'artistName') return { artist: { fullName: dir } };

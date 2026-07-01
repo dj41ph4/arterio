@@ -298,4 +298,9 @@ export class MockArtworkRepository implements ArtworkRepository {
     artwork.thumbnailUrl = first;
     return artwork;
   }
+
+  async autoMerge(): Promise<{ merged: Array<{ canonicalTitle: string; count: number }>; checked: number }> {
+    await delay(300);
+    return { merged: [], checked: DATA.length };
+  }
 }

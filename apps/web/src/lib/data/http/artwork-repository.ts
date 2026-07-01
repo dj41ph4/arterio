@@ -145,4 +145,8 @@ export class HttpArtworkRepository implements ArtworkRepository {
     const a = await apiFetch<ArtworkView>(`/artworks/${id}/media/${mediaId}`, { method: 'DELETE' });
     return fixMedia(a);
   }
+
+  async autoMerge(): Promise<{ merged: Array<{ canonicalTitle: string; count: number }>; checked: number }> {
+    return apiFetch('/artworks/dedup', { method: 'POST' });
+  }
 }
