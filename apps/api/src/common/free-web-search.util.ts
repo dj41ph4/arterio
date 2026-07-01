@@ -101,32 +101,83 @@ export async function searchWeb(query: string, limit = 5): Promise<WebSearchResu
 }
 
 async function searchWebUncached(query: string, limit: number): Promise<WebSearchResult[]> {
+  // GET is less aggressive than POST for bot-detection heuristics.
+  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
   try {
-    const res = await fetch('https://html.duckduckgo.com/html/', {
-      method: 'POST',
-      headers: { ...BROWSER_HEADERS, 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `q=${encodeURIComponent(query)}`,
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: BROWSER_HEADERS,
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) {
-      console.error(`[DDG] HTTP ${res.status} pour: ${query.slice(0, 80)}`);
-      return [];
+      console.error(`[DDG] HTTP ${res.status} q="${query.slice(0, 60)}"`);
+      return ddgLiteSearch(query, limit);
     }
+    const html = await res.text();
+    const results = parseDdgHtml(html, limit);
+    console.log(`[DDG] status=${res.status} htmlLen=${html.length} parsed=${results.length} q="${query.slice(0, 60)}"`);
+    if (results.length) return results;
+    // HTML received but no results — DDG may have changed selectors or showed CAPTCHA.
+    // Try the lite endpoint as fallback before giving up.
+    return ddgLiteSearch(query, limit);
+  } catch (err) {
+    console.error(`[DDG] exception: ${String(err).slice(0, 120)} q="${query.slice(0, 60)}"`);
+    return ddgLiteSearch(query, limit);
+  }
+}
+
+/** Parse DDG HTML results — tries multiple selector patterns since DDG changes markup periodically. */
+function parseDdgHtml(html: string, limit: number): WebSearchResult[] {
+  const $ = cheerio.load(html);
+  const results: WebSearchResult[] = [];
+
+  // Try selectors in order of specificity — stop at the first one that yields results.
+  const selectorSets = [
+    { container: '.result', link: '.result__a', snippet: '.result__snippet' },
+    { container: '.web-result', link: '.result__a', snippet: '.result__snippet' },
+    { container: '[data-result="web"]', link: 'a[href]', snippet: 'p' },
+    { container: '.links_main', link: 'a.result-link', snippet: '.result-snippet' },
+  ];
+
+  for (const { container, link: linkSel, snippet: snippetSel } of selectorSets) {
+    if (!$(container).length) continue;
+    $(container).each((_, el) => {
+      if (results.length >= limit) return;
+      const linkEl = $(el).find(linkSel).first();
+      const href = linkEl.attr('href');
+      const title = linkEl.text().trim();
+      const snippet = $(el).find(snippetSel).first().text().trim();
+      if (href && title) results.push({ title, url: cleanDuckDuckGoUrl(href), snippet });
+    });
+    if (results.length) break;
+  }
+  return results;
+}
+
+/** DDG Lite — even simpler HTML, separate bot-detection path, used as fallback. */
+async function ddgLiteSearch(query: string, limit: number): Promise<WebSearchResult[]> {
+  try {
+    const res = await fetch(`https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`, {
+      method: 'GET',
+      headers: BROWSER_HEADERS,
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return [];
     const html = await res.text();
     const $ = cheerio.load(html);
     const results: WebSearchResult[] = [];
-    $('.result').each((_, el) => {
+    // Lite DDG: result links are in <a class="result-link">, snippets in <td class="result-snippet">
+    $('a.result-link').each((_, el) => {
       if (results.length >= limit) return;
-      const linkEl = $(el).find('.result__a').first();
-      const href = linkEl.attr('href');
-      const title = linkEl.text().trim();
-      const snippet = $(el).find('.result__snippet').first().text().trim();
-      if (href && title) results.push({ title, url: cleanDuckDuckGoUrl(href), snippet });
+      const href = $(el).attr('href');
+      const title = $(el).text().trim();
+      if (href && title && href.startsWith('http')) {
+        results.push({ title, url: href, snippet: '' });
+      }
     });
-    console.log(`[DDG] status=${res.status} htmlLen=${html.length} .result=${(html.match(/class="result"/g)??[]).length} parsed=${results.length} q="${query.slice(0, 60)}"`);
+    console.log(`[DDG Lite] htmlLen=${html.length} parsed=${results.length} q="${query.slice(0, 60)}"`);
     return results;
-  } catch (err) {
-    console.error(`[DDG] exception: ${String(err).slice(0, 120)} — q="${query.slice(0, 60)}"`);
+  } catch {
     return [];
   }
 }

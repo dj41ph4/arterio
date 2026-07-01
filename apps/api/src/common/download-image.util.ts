@@ -13,6 +13,15 @@ const ALLOWED_IMAGE_MIME_EXT: Record<string, string> = {
   'image/gif': '.gif',
 };
 
+// Gallery/auction sites block bare fetch() with 403 — mimic a browser request.
+// Referer: google.com is accepted by most hotlink-protection rules.
+const DOWNLOAD_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+  Accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+  'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
+  Referer: 'https://www.google.com/',
+};
+
 /** Rejects loopback/private/link-local targets — the caller controls this URL, so without this a write-permission user could probe internal network services via the server (SSRF). */
 function isPrivateAddress(address: string): boolean {
   if (isIP(address) === 4) {
@@ -36,10 +45,9 @@ export async function isLikelyRealImage(url: string): Promise<boolean> {
     const resolved = await lookup(parsed.hostname).catch(() => null);
     if (!resolved || isPrivateAddress(resolved.address)) return false;
 
-    const res = await fetch(url, { signal: AbortSignal.timeout(8_000) }).catch(() => null);
+    const res = await fetch(url, { method: 'HEAD', headers: DOWNLOAD_HEADERS, signal: AbortSignal.timeout(4_000) }).catch(() => null);
     if (!res?.ok) return false;
     const mimeType = res.headers.get('content-type')?.split(';')[0]?.trim() ?? '';
-    void res.body?.cancel().catch(() => {});
     return Boolean(ALLOWED_IMAGE_MIME_EXT[mimeType]);
   } catch {
     return false;
@@ -68,7 +76,7 @@ export async function downloadImageToUploads(url: string): Promise<{ filename: s
     throw new BadRequestException('Invalid URL');
   }
 
-  const res = await fetch(url, { signal: AbortSignal.timeout(15_000) }).catch(() => null);
+  const res = await fetch(url, { headers: DOWNLOAD_HEADERS, signal: AbortSignal.timeout(15_000) }).catch(() => null);
   if (!res?.ok) throw new BadRequestException('Could not download image');
 
   const mimeType = res.headers.get('content-type')?.split(';')[0]?.trim() ?? '';

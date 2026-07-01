@@ -562,7 +562,9 @@ export class AiController {
    * Returns only the fields from an autofill result that are actually missing on the
    * current artwork, so existing curator work is never overwritten by bulk AI data.
    */
-  private buildArtworkPatch(
+  private async buildArtworkPatch(
+    orgId: string,
+    artworkId: string,
     artwork: {
       description: unknown;
       yearFrom: number | null;
@@ -572,27 +574,55 @@ export class AiController {
       dimensionsNote: string | null;
       signatureDescription: string | null;
       condition: string;
+      techniqueId: string | null;
     },
     data: import('./ai.types').ArtworkAutofillResult,
     locale: string,
-  ): Record<string, unknown> {
+  ): Promise<Record<string, unknown>> {
     const patch: Record<string, unknown> = {};
 
-    // Description (JSON field) — only add locale key if missing
     const desc = artwork.description as Record<string, string> | null ?? {};
     if (!desc[locale] && data.description) {
       patch.description = { ...desc, [locale]: data.description };
     }
 
-    if (!artwork.yearFrom && data.yearFrom) patch.yearFrom = data.yearFrom;
+    if (!artwork.yearFrom && data.yearFrom) patch.yearFrom = typeof data.yearFrom === 'number' ? data.yearFrom : Number(data.yearFrom);
     if (!artwork.dateText && data.dateText) patch.dateText = data.dateText;
-    if (!artwork.heightCm && data.heightCm) patch.heightCm = data.heightCm;
-    if (!artwork.widthCm && data.widthCm) patch.widthCm = data.widthCm;
+    if (!artwork.heightCm && data.heightCm) patch.heightCm = typeof data.heightCm === 'number' ? data.heightCm : parseFloat(String(data.heightCm));
+    if (!artwork.widthCm && data.widthCm) patch.widthCm = typeof data.widthCm === 'number' ? data.widthCm : parseFloat(String(data.widthCm));
     if (!artwork.dimensionsNote && data.dimensionsNote) patch.dimensionsNote = data.dimensionsNote;
     if (!artwork.signatureDescription && data.signatureDescription) patch.signatureDescription = data.signatureDescription;
     const validConditions = ['excellent', 'good', 'fair', 'poor', 'critical'];
     if (artwork.condition === 'unknown' && data.condition && validConditions.includes(data.condition)) {
       patch.condition = data.condition;
+    }
+
+    // Technique — upsert so the name is guaranteed to exist in the org's list
+    if (!artwork.techniqueId && data.techniqueName) {
+      try {
+        const technique = await this.prisma.technique.upsert({
+          where: { organizationId_name: { organizationId: orgId, name: data.techniqueName } },
+          create: { organizationId: orgId, name: data.techniqueName, label: { fr: data.techniqueName } },
+          update: {},
+        });
+        patch.techniqueId = technique.id;
+      } catch { /* non-fatal */ }
+    }
+
+    // Tags — create missing ones and link via junction table (skipDuplicates handles re-runs)
+    if (data.tags?.length) {
+      try {
+        await Promise.all(
+          data.tags.map(async (name) => {
+            const tag = await this.prisma.tag.upsert({
+              where: { organizationId_name: { organizationId: orgId, name } },
+              create: { organizationId: orgId, name, aiGenerated: true },
+              update: {},
+            });
+            await this.prisma.artworkTag.create({ data: { artworkId, tagId: tag.id } }).catch(() => { /* déjà lié */ });
+          }),
+        );
+      } catch { /* non-fatal */ }
     }
 
     return patch;
@@ -630,6 +660,7 @@ export class AiController {
         dimensionsNote: true,
         signatureDescription: true,
         condition: true,
+        techniqueId: true,
         artist: { select: { fullName: true } },
       },
     });
@@ -658,7 +689,7 @@ export class AiController {
             if (result.meta.hasUsableData) data = result.data;
           }
 
-          const patch = this.buildArtworkPatch(aw, data, locale);
+          const patch = await this.buildArtworkPatch(orgId, aw.id, aw, data, locale);
           if (Object.keys(patch).length) {
             await this.prisma.artwork.update({ where: { id: aw.id }, data: patch });
             state.updated++;
@@ -703,23 +734,24 @@ export class AiController {
     return { running: s.running, done: s.done, total: s.total, updated: s.updated, startedAt: s.startedAt.toISOString(), finishedAt: s.finishedAt?.toISOString() ?? null };
   }
 
-  private buildArtistPatch(
+  private async buildArtistPatch(
+    orgId: string,
     artist: {
       nationality: string | null;
       birthDate: string | null;
       deathDate: string | null;
       biography: unknown;
       thumbnail: string | null;
+      movementId: string | null;
     },
     data: import('./ai.types').ArtistAutofillResult,
     allBiographies: Partial<Record<Locale, string>>,
-  ): Record<string, unknown> {
+  ): Promise<Record<string, unknown>> {
     const patch: Record<string, unknown> = {};
     if (!artist.nationality && data.nationality) patch.nationality = data.nationality;
     if (!artist.birthDate && data.birthDate) patch.birthDate = data.birthDate;
     if (!artist.deathDate && data.deathDate) patch.deathDate = data.deathDate;
     if (!artist.thumbnail && data.imageUrl) patch.thumbnail = data.imageUrl;
-    // Write all translated biographies at once — only fill locales that are currently empty
     const bio = artist.biography as Record<string, string> | null ?? {};
     const mergedBio = { ...bio };
     let bioUpdated = false;
@@ -727,6 +759,19 @@ export class AiController {
       if (!mergedBio[lang] && text) { mergedBio[lang] = text; bioUpdated = true; }
     }
     if (bioUpdated) patch.biography = mergedBio;
+
+    // Movement — upsert so the name is guaranteed to exist in the org's list
+    if (!artist.movementId && data.movement) {
+      try {
+        const movement = await this.prisma.artMovement.upsert({
+          where: { organizationId_name: { organizationId: orgId, name: data.movement } },
+          create: { organizationId: orgId, name: data.movement, label: { fr: data.movement } },
+          update: {},
+        });
+        patch.movementId = movement.id;
+      } catch { /* non-fatal */ }
+    }
+
     return patch;
   }
 
@@ -748,7 +793,7 @@ export class AiController {
     const whereIds = body.ids?.length ? { id: { in: body.ids } } : {};
     const artists = await this.prisma.artist.findMany({
       where: { organizationId: orgId, ...whereIds },
-      select: { id: true, fullName: true, nationality: true, birthDate: true, deathDate: true, biography: true, thumbnail: true },
+      select: { id: true, fullName: true, nationality: true, birthDate: true, deathDate: true, biography: true, thumbnail: true, movementId: true },
     });
 
     const locale = body.locale ?? 'fr';
@@ -760,7 +805,7 @@ export class AiController {
         try {
           const result = await this.runArtistAutofillCore(orgId, artist.fullName, locale);
           if (result.meta.hasUsableData) {
-            const patch = this.buildArtistPatch(artist, result.data, result.allBiographies);
+            const patch = await this.buildArtistPatch(orgId, artist, result.data, result.allBiographies);
             if (Object.keys(patch).length) {
               await this.prisma.artist.update({ where: { id: artist.id }, data: patch });
               state.updated++;
