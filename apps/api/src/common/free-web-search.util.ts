@@ -235,28 +235,43 @@ export async function buildArtworkSearchContext(artistName: string, title: strin
 }
 
 /**
- * Artist-specific multi-query context builder. For well-known artists, the first
- * query (biography sites) will dominate. For regional or lesser-known artists,
- * the auction/market query is the main fallback — auction catalogue bios are
- * often the only existing machine-readable biography for an obscure painter.
+ * Artist-specific multi-query context builder.
+ *
+ * Strategy: for well-known artists, biography/encyclopaedia sites dominate.
+ * For regional or lesser-known artists, auction catalogues are often the only
+ * machine-readable source. We run five complementary DDG queries in parallel,
+ * also try the name inverted (Lastname Firstname → Firstname Lastname), fetch
+ * the full text of the most promising pages, and inject Wikidata + Wikipedia
+ * as authoritative anchors so the AI doesn't have to guess from thin context.
  */
-export async function buildArtistSearchContext(fullName: string, maxTotalChars = 6000): Promise<string | null> {
+export async function buildArtistSearchContext(fullName: string, maxTotalChars = 12000): Promise<string | null> {
   try {
     const name = fullName.trim();
     if (!name) return null;
-    const quoted = `"${name.replace(/"/g, '')}"`;
+    const q = (s: string) => `"${s.replace(/"/g, '')}"`;
+    const inverted = reverseTokens(name);
+    // Try both "Firstname Lastname" and "Lastname Firstname" — French inventories
+    // often store names inverted; DDG ranks them differently.
+    const names = [q(name), ...(inverted !== name ? [q(inverted)] : [])];
+    const any = names.join(' OR ');
 
     const queries = [
-      // 1. Encyclopaedia/biography sites
-      `${quoted} (biographie OR biography OR "date de naissance" OR "né à" OR "born") (peintre OR sculpteur OR artiste OR painter)`,
-      // 2. Auction/market sites — the only digital trace for many regional artists
-      `${quoted} site:artprice.com OR site:interencheres.com OR site:mutualart.com OR site:liveauctioneers.com`,
-      // 3. Authority databases
-      `${quoted} site:rkd.nl OR site:data.bnf.fr OR site:viaf.org OR site:wikiart.org`,
+      // 1. Biography / encyclopaedia — widest net, catches Wikipedia, museum bios, etc.
+      `${any} (biographie OR biography OR "date de naissance" OR "né à" OR "born" OR "artiste" OR painter OR sculptor)`,
+      // 2. Auction / market — professional catalogues with verified dates and attribution,
+      //    often the only digital trace for regional/private-collection artists.
+      `${any} site:interencheres.com OR site:drouot.com OR site:artprice.com OR site:invaluable.com OR site:liveauctioneers.com OR site:mutualart.com OR site:artnet.com`,
+      // 3. Authority databases — RKD, BnF, VIAF, WikiArt, findartinfo, AskArt.
+      `${any} site:rkd.nl OR site:data.bnf.fr OR site:viaf.org OR site:wikiart.org OR site:findartinfo.com OR site:askart.com`,
+      // 4. Artist's own site or dedicated monograph pages (official site + gallery pages).
+      `${any} site officiel artiste peintre galerie exposition`,
+      // 5. General broad query — catches press articles, catalogues, digitised archives.
+      `${any} peintre OR painter OR artiste plasticien`,
     ];
 
-    const allResultSets = await Promise.all(queries.map((q) => searchWeb(q, 3)));
+    const allResultSets = await Promise.all(queries.map((q_) => searchWeb(q_, 5)));
 
+    // Merge and deduplicate — auction results first (they usually have the best data).
     const seen = new Set<string>();
     const merged: WebSearchResult[] = [];
     for (const set of allResultSets) {
@@ -270,36 +285,77 @@ export async function buildArtistSearchContext(fullName: string, maxTotalChars =
     if (!merged.length) return null;
 
     const resultsBlock = merged
-      .slice(0, 6)
+      .slice(0, 12)
       .map((r, i) => `[${i + 1}] ${r.title} (${r.url})${r.snippet ? `: ${r.snippet}` : ''}`)
       .join('\n');
 
+    // Fetch full page text for the top 7 results — auction pages get a larger
+    // budget because lot descriptions are dense with exactly the facts we need.
+    const auctionDomains = ['interencheres.com', 'drouot.com', 'artprice.com', 'invaluable.com', 'liveauctioneers.com', 'mutualart.com', 'artnet.com'];
     const pages = await Promise.all(
-      merged.slice(0, 4).map(async (r, i) => {
-        const text = await fetchPageText(r.url, Math.floor(maxTotalChars / 4));
+      merged.slice(0, 7).map(async (r, i) => {
+        const isAuction = auctionDomains.some((d) => r.url.includes(d));
+        const charBudget = isAuction ? Math.floor(maxTotalChars / 4) : Math.floor(maxTotalChars / 7);
+        const text = await fetchPageText(r.url, charBudget);
         return text ? `[${i + 1}] ${r.url}:\n${text}` : null;
       }),
     );
     const pagesBlock = pages.filter((p): p is string => Boolean(p)).join('\n\n');
 
-    // Direct Wikipedia lookup — more reliable than DDG→Wikipedia for lesser-known
-    // artists whose pages don't rank high enough in general search results.
-    const wikiExtract = await fetchWikipediaExtract(name);
+    // Wikipedia — try all 6 app locales, take the longest extract found.
+    // Use the full page text (via fetchPageText on the Wikipedia URL) rather than
+    // the summary API which is often truncated to 2-3 sentences.
+    const wikiExtract = await fetchWikipediaFull(name);
 
-    // Wikidata structured facts — the most reliable source for dates/nationality/
-    // movement when the artist has a Wikidata entry. Injected FIRST in the block
-    // so the AI sees it as the highest-priority source and doesn't override it
-    // with DDG snippets that may be wrong or about a different person.
+    // Wikidata structured facts — injected FIRST as the highest-priority anchor.
     const wikidataFacts = await fetchWikidataArtistFacts(name);
 
     let context = `Web search results for artist "${name}":\n${resultsBlock}`;
     if (pagesBlock) context += `\n\nPage excerpts:\n${pagesBlock}`;
     if (wikiExtract) context += `\n\n${wikiExtract}`;
     if (wikidataFacts) context = `${wikidataFacts}\n\n${context}`;
-    return context.slice(0, maxTotalChars + 1000);
+    return context.slice(0, maxTotalChars + 2000);
   } catch {
     return null;
   }
+}
+
+/**
+ * Fetches the full Wikipedia article text (not just the REST summary) for an
+ * artist name, trying all 6 app locales. Prefers longer articles. Capped at
+ * 4 000 chars so one Wikipedia page can't crowd out other sources.
+ */
+async function fetchWikipediaFull(name: string, maxChars = 4000): Promise<string | null> {
+  const locales = ['fr', 'en', 'nl', 'de', 'it', 'es'];
+  const candidates: Array<{ lang: string; title: string; text: string }> = [];
+
+  await Promise.all(locales.map(async (lang) => {
+    try {
+      const searchUrl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(name)}&srlimit=1&format=json&origin=*`;
+      const searchRes = await fetch(searchUrl, { signal: AbortSignal.timeout(6000) });
+      if (!searchRes.ok) return;
+      const searchJson = await searchRes.json() as { query?: { search?: Array<{ title: string }> } };
+      const pageTitle = searchJson.query?.search?.[0]?.title;
+      if (!pageTitle) return;
+
+      // Fetch the full article via the extract API (more than the REST summary)
+      const extractUrl = `https://${lang}.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(pageTitle)}&prop=extracts&exintro=false&explaintext=true&exsectionformat=plain&format=json&origin=*`;
+      const extractRes = await fetch(extractUrl, { signal: AbortSignal.timeout(8000) });
+      if (!extractRes.ok) return;
+      const extractJson = await extractRes.json() as { query?: { pages?: Record<string, { extract?: string; title?: string }> } };
+      const pages = extractJson.query?.pages ?? {};
+      const page = Object.values(pages)[0];
+      if (page?.extract && page.extract.length > 100) {
+        candidates.push({ lang, title: page.title ?? pageTitle, text: page.extract });
+      }
+    } catch { /* try next locale */ }
+  }));
+
+  if (!candidates.length) return null;
+  // Prefer the longest article (usually the most complete)
+  candidates.sort((a, b) => b.text.length - a.text.length);
+  const best = candidates[0]!;
+  return `Wikipedia (${best.lang}) — ${best.title}:\n${best.text.slice(0, maxChars)}`;
 }
 
 // ---------------------------------------------------------------------------
