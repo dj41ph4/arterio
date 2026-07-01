@@ -1,6 +1,7 @@
 import * as cheerio from 'cheerio';
 import { BROWSER_HEADERS, fetchHtml } from './gallery-site-scraper.util';
 import { TtlCache } from './ttl-cache.util';
+import { isLikelyRealImage } from './download-image.util';
 
 /**
  * Free, key-less web search + page-text extraction — gives ANY AI provider
@@ -23,10 +24,74 @@ export interface WebSearchResult {
   snippet: string;
 }
 
+export interface DdgImageResult {
+  imageUrl: string;
+  pageUrl: string;
+  title: string;
+  width: number;
+  height: number;
+}
+
 // Short TTL — long enough to absorb a double-click/dedupe race or a quick
 // retry, short enough that results stay reasonably fresh.
 const searchCache = new TtlCache<WebSearchResult[]>(5 * 60_000);
 const pageTextCache = new TtlCache<string | null>(10 * 60_000);
+const ddgImageCache = new TtlCache<DdgImageResult[]>(10 * 60_000);
+
+/**
+ * DDG image search — unofficial but key-less and free.
+ * Step 1: fetch the DDG search page to extract the vqd session token.
+ * Step 2: call the image JSON endpoint with that token.
+ * Returns validated image URLs (HEAD-checked). Never throws — returns [] on any failure.
+ * Cached 10 min per query.
+ */
+export async function ddgImageSearch(query: string, limit = 6): Promise<DdgImageResult[]> {
+  const key = `${query.trim().toLowerCase()}::${limit}`;
+  return ddgImageCache.wrap(key, () => ddgImageSearchUncached(query, limit));
+}
+
+async function ddgImageSearchUncached(query: string, limit: number): Promise<DdgImageResult[]> {
+  try {
+    // Step 1 — get vqd token from the HTML search page
+    const searchPageRes = await fetch(
+      `https://duckduckgo.com/?q=${encodeURIComponent(query)}&iax=images&ia=images`,
+      { headers: BROWSER_HEADERS, signal: AbortSignal.timeout(10_000) },
+    );
+    if (!searchPageRes.ok) return [];
+    const html = await searchPageRes.text();
+
+    // vqd token is embedded in a script block as vqd='...' or vqd="..."
+    const vqdMatch = html.match(/vqd[='":\s]+['"]?([0-9-]+)/);
+    if (!vqdMatch?.[1]) return [];
+    const vqd = vqdMatch[1];
+
+    // Step 2 — fetch image results JSON
+    const imgUrl = `https://duckduckgo.com/i.js?q=${encodeURIComponent(query)}&o=json&p=-1&s=0&u=bing&f=,,,,,&l=fr-fr&vqd=${encodeURIComponent(vqd)}`;
+    const imgRes = await fetch(imgUrl, {
+      headers: { ...BROWSER_HEADERS, Referer: 'https://duckduckgo.com/' },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!imgRes.ok) return [];
+
+    const json = await imgRes.json() as {
+      results?: Array<{ image: string; url: string; title: string; width: number; height: number }>;
+    };
+    const raw = json.results ?? [];
+
+    // Validate: HEAD-check each candidate and keep only real, reachable images
+    const validated: DdgImageResult[] = [];
+    for (const r of raw.slice(0, limit * 2)) {
+      if (validated.length >= limit) break;
+      if (!r.image || !r.image.startsWith('http')) continue;
+      if (await isLikelyRealImage(r.image)) {
+        validated.push({ imageUrl: r.image, pageUrl: r.url, title: r.title, width: r.width ?? 0, height: r.height ?? 0 });
+      }
+    }
+    return validated;
+  } catch {
+    return [];
+  }
+}
 
 export async function searchWeb(query: string, limit = 5): Promise<WebSearchResult[]> {
   return searchCache.wrap(`${query.trim().toLowerCase()}::${limit}`, () => searchWebUncached(query, limit));

@@ -19,7 +19,7 @@ interface AiDebugEntry {
   provider: string | null;
   success: boolean;
   fieldsFound: string[];
-  imageSource: 'wikiart' | 'commons' | 'artsy' | 'ai-search' | null;
+  imageSource: 'wikiart' | 'commons' | 'artsy' | 'ddg' | 'ai-search' | null;
   durationMs: number;
   error?: string;
 }

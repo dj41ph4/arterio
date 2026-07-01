@@ -7,7 +7,7 @@ import { searchCommonsImage, searchCommonsImages } from '../../common/commons-im
 import { searchWikiArtImage, searchWikiArtImages } from '../../common/wikiart-api.util';
 import { searchArtsyImage, searchArtsyImages } from '../../common/artsy-api.util';
 import { isLikelyRealImage } from '../../common/download-image.util';
-import { buildSearchContext, buildArtworkSearchContext, buildArtistSearchContext, findArtistOfficialWebsite } from '../../common/free-web-search.util';
+import { buildSearchContext, buildArtworkSearchContext, buildArtistSearchContext, findArtistOfficialWebsite, ddgImageSearch } from '../../common/free-web-search.util';
 import { StructuredLookupService } from './structured-lookup.service';
 import { AiDebugLogService } from './ai-debug-log.service';
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
@@ -130,7 +130,7 @@ export class AiController {
     query: string,
     organizationId: string,
     aiGuessedUrl?: string,
-  ): Promise<{ url: string | null; source: 'wikiart' | 'commons' | 'artsy' | 'ai-search' | null }> {
+  ): Promise<{ url: string | null; source: 'wikiart' | 'commons' | 'artsy' | 'ddg' | 'ai-search' | null }> {
     try {
       const { wikiartKey, artsyKey } = await this.resolveImageSourceKeys(organizationId);
 
@@ -145,6 +145,11 @@ export class AiController {
         const fromArtsy = await searchArtsyImage(artsyKey, query);
         if (fromArtsy) return { url: fromArtsy, source: 'artsy' };
       }
+
+      // DDG image search — finds photos on any public page (gallery, auction, press)
+      // critical for contemporary artists and artworks not in Wikimedia/WikiArt/Artsy
+      const fromDdg = await ddgImageSearch(query, 4);
+      if (fromDdg.length) return { url: fromDdg[0]!.imageUrl, source: 'ddg' };
 
       if (aiGuessedUrl && (await isLikelyRealImage(aiGuessedUrl))) {
         return { url: aiGuessedUrl, source: 'ai-search' };
@@ -167,25 +172,30 @@ export class AiController {
     query: string,
     organizationId: string,
     limit = 8,
-  ): Promise<{ images: string[]; wikiartCount: number; artsyCount: number }> {
+  ): Promise<{ images: string[]; wikiartCount: number; artsyCount: number; ddgCount: number }> {
     const { wikiartKey, artsyKey } = await this.resolveImageSourceKeys(organizationId);
-    const fromWikiArt = wikiartKey ? await searchWikiArtImages(wikiartKey, query, limit) : [];
-    const fromCommons = await searchCommonsImages(query, limit);
-    const fromArtsy = artsyKey ? await searchArtsyImages(artsyKey, query, limit) : [];
+    const [fromWikiArt, fromCommons, fromArtsy, fromDdg] = await Promise.all([
+      wikiartKey ? searchWikiArtImages(wikiartKey, query, limit) : Promise.resolve([]),
+      searchCommonsImages(query, limit),
+      artsyKey ? searchArtsyImages(artsyKey, query, limit) : Promise.resolve([]),
+      ddgImageSearch(query, limit),
+    ]);
+    const ddgUrls = fromDdg.map((r) => r.imageUrl);
     const seen = new Set<string>();
-    const images = [...fromWikiArt, ...fromCommons, ...fromArtsy].filter((u) => {
+    const images = [...fromWikiArt, ...fromCommons, ...fromArtsy, ...ddgUrls].filter((u) => {
       if (seen.has(u)) return false;
       seen.add(u);
       return true;
     }).slice(0, limit);
-    return { images, wikiartCount: fromWikiArt.length, artsyCount: fromArtsy.length };
+    return { images, wikiartCount: fromWikiArt.length, artsyCount: fromArtsy.length, ddgCount: fromDdg.length };
   }
 
-  /** Builds the "(dont N via WikiArt, M via Artsy)" suffix for the Wiki image-search messages. */
-  private describeSourceBreakdown(wikiartCount: number, artsyCount: number): string {
+  /** Builds the "(dont N via WikiArt, M via Artsy, K via DDG)" suffix for image-search messages. */
+  private describeSourceBreakdown(wikiartCount: number, artsyCount: number, ddgCount = 0): string {
     const parts = [];
     if (wikiartCount) parts.push(`${wikiartCount} via WikiArt`);
     if (artsyCount) parts.push(`${artsyCount} via Artsy`);
+    if (ddgCount) parts.push(`${ddgCount} via DDG`);
     return parts.length ? ` (dont ${parts.join(', ')})` : ' via Wikimedia Commons';
   }
 
@@ -195,11 +205,11 @@ export class AiController {
   async findArtworkImages(@CurrentUser() user: AuthUser, @Body() body: { title?: string; artistName?: string }) {
     const query = `${body.artistName ?? ''} ${body.title ?? ''}`.trim();
     if (!query) throw new BadRequestException('title or artistName is required');
-    const { images, wikiartCount, artsyCount } = await this.findWikiImages(query, user.organizationId);
+    const { images, wikiartCount, artsyCount, ddgCount } = await this.findWikiImages(query, user.organizationId);
     const message = images.length
-      ? `${images.length} image${images.length > 1 ? 's' : ''} trouvée${images.length > 1 ? 's' : ''}${this.describeSourceBreakdown(wikiartCount, artsyCount)}.`
-      : 'Aucune image trouvée via WikiArt/Artsy/Wikimedia Commons pour ce titre/artiste.';
-    this.logger.log(`Recherche Wiki d'images pour une œuvre — "${query}" — ${message}`);
+      ? `${images.length} image${images.length > 1 ? 's' : ''} trouvée${images.length > 1 ? 's' : ''}${this.describeSourceBreakdown(wikiartCount, artsyCount, ddgCount)}.`
+      : 'Aucune image trouvée via WikiArt/Artsy/Wikimedia Commons/DDG pour ce titre/artiste.';
+    this.logger.log(`Recherche d'images pour une œuvre — "${query}" — ${message}`);
     return { images, message };
   }
 
@@ -241,11 +251,11 @@ export class AiController {
   @ApiOperation({ summary: 'Find multiple candidate portraits for an artist via WikiArt/Artsy/Wikimedia Commons (no AI call)' })
   async findArtistImages(@CurrentUser() user: AuthUser, @Body() body: { fullName: string }) {
     if (!body.fullName?.trim()) throw new BadRequestException('fullName is required');
-    const { images, wikiartCount, artsyCount } = await this.findWikiImages(`${body.fullName} portrait`, user.organizationId);
+    const { images, wikiartCount, artsyCount, ddgCount } = await this.findWikiImages(`${body.fullName} portrait`, user.organizationId);
     const message = images.length
-      ? `${images.length} portrait${images.length > 1 ? 's' : ''} trouvé${images.length > 1 ? 's' : ''}${this.describeSourceBreakdown(wikiartCount, artsyCount)}.`
-      : 'Aucun portrait trouvé via WikiArt/Artsy/Wikimedia Commons pour ce nom.';
-    this.logger.log(`Recherche Wiki de portraits — "${body.fullName}" — ${message}`);
+      ? `${images.length} portrait${images.length > 1 ? 's' : ''} trouvé${images.length > 1 ? 's' : ''}${this.describeSourceBreakdown(wikiartCount, artsyCount, ddgCount)}.`
+      : 'Aucun portrait trouvé via WikiArt/Artsy/Wikimedia Commons/DDG pour ce nom.';
+    this.logger.log(`Recherche de portraits — "${body.fullName}" — ${message}`);
     return { images, message };
   }
 
@@ -321,9 +331,10 @@ export class AiController {
     if (body.title) {
       const { url, source } = await this.findPhoto(`${body.artistName ?? ''} ${body.title}`.trim(), user.organizationId, aiGuessedUrl);
       data.imageUrl = url ?? undefined;
-      if (source === 'wikiart') meta.message += ' Photo réelle trouvée via WikiArt.';
-      else if (source === 'commons') meta.message += ' Photo réelle trouvée via Wikimedia Commons.';
-      else if (source === 'artsy') meta.message += ' Photo réelle trouvée via Artsy.';
+      if (source === 'wikiart') meta.message += ' Photo trouvée via WikiArt.';
+      else if (source === 'commons') meta.message += ' Photo trouvée via Wikimedia Commons.';
+      else if (source === 'artsy') meta.message += ' Photo trouvée via Artsy.';
+      else if (source === 'ddg') meta.message += ' Photo trouvée via DDG Images.';
       else if (source === 'ai-search') meta.message += " Photo trouvée par l'IA via recherche web et vérifiée.";
       else meta.message += ' Aucune photo trouvée.';
       // Patch imageSource on the debug log entry that runArtworkAutofillCore just pushed
@@ -416,6 +427,7 @@ export class AiController {
     if (source === 'wikiart') meta.message += ' Portrait trouvé via WikiArt.';
     else if (source === 'commons') meta.message += ' Portrait trouvé via Wikimedia Commons.';
     else if (source === 'artsy') meta.message += ' Portrait trouvé via Artsy.';
+    else if (source === 'ddg') meta.message += ' Portrait trouvé via DDG Images.';
     else if (source === 'ai-search') meta.message += " Portrait trouvé par l'IA via recherche web et vérifié.";
     else meta.message += ' Aucun portrait trouvé.';
     this.logUsage(orgId, 'autofillArtist', meta.attempts);
