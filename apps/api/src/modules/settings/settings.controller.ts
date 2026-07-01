@@ -164,6 +164,37 @@ export class SettingsController {
     await this.migration.exportMigration(user, res);
   }
 
+  @Post('migration/restore')
+  @ApiOperation({
+    summary: 'Restore a .zip into the CURRENT organization — wipes existing content then re-imports in-place',
+    description: 'Same ZIP format as migration/import, but replaces the caller's org data instead of creating a new org. Users and auth sessions are preserved.',
+  })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: tmpdir(),
+        filename: (_req, _file, cb) => cb(null, `arterio-restore-${randomBytes(8).toString('hex')}.zip`),
+      }),
+      limits: { fileSize: 5 * 1024 * 1024 * 1024 },
+      fileFilter: (_req, file, cb) => {
+        if (file.mimetype !== 'application/zip' && file.mimetype !== 'application/x-zip-compressed') {
+          cb(new BadRequestException('Expected a .zip file'), false);
+          return;
+        }
+        cb(null, true);
+      },
+    }),
+  )
+  async restoreMigration(@CurrentUser() user: AuthUser, @UploadedFile() file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No file uploaded');
+    try {
+      return await this.migration.restoreMigration(user.organizationId, file.path);
+    } finally {
+      await unlink(file.path).catch(() => undefined);
+    }
+  }
+
   @Post('migration/import')
   @ApiOperation({
     summary: 'Restore a .zip produced by migration/export — always creates a new organization',

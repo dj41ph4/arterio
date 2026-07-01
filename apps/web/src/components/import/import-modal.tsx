@@ -40,6 +40,8 @@ type Step = 'upload' | 'mapping' | 'importing' | 'done';
 interface ImportModalProps {
   open: boolean;
   onClose: () => void;
+  /** 'artwork' (default) — always imports artworks. 'artist' — always imports artists regardless of columns detected. */
+  mode?: 'artwork' | 'artist';
 }
 
 interface ImportLogEntry {
@@ -210,7 +212,7 @@ function MappingRow({
   );
 }
 
-export function ImportModal({ open, onClose }: ImportModalProps) {
+export function ImportModal({ open, onClose, mode = 'artwork' }: ImportModalProps) {
   const qc = useQueryClient();
   const [step, setStep] = React.useState<Step>('upload');
   const [loading, setLoading] = React.useState(false);
@@ -350,24 +352,25 @@ export function ImportModal({ open, onClose }: ImportModalProps) {
       }
     };
 
-    // Some real-world files are an artist roster, not an artwork inventory — e.g. just
-    // "Nom / Oeuvre / Bio / Photo", one row per artist. Forcing that shape through the
-    // artwork importer would create one fake, near-empty artwork per artist. Detect it by
-    // the absence of any artwork-only signal (title/technique/dimensions/inventory/year) and
-    // route to a dedicated artist-roster import instead — same dedup/resolve logic, no
-    // artwork rows created.
+    // Route to artist-roster import when:
+    // - the modal was opened explicitly in artist mode (from the artist list page), OR
+    // - the file looks like an artist roster (no artwork-specific columns, has name + bio/photo)
     const artistOnlyFile =
-      titleColIdx === undefined &&
-      fieldCol('technique') === undefined &&
-      fieldCol('dimensions') === undefined &&
-      fieldCol('inventoryNumber') === undefined &&
-      fieldCol('year') === undefined &&
-      artistColIdx !== undefined &&
-      (fieldCol('bio') !== undefined || fieldCol('photo') !== undefined);
+      mode === 'artist' ||
+      (titleColIdx === undefined &&
+        fieldCol('technique') === undefined &&
+        fieldCol('dimensions') === undefined &&
+        fieldCol('inventoryNumber') === undefined &&
+        fieldCol('year') === undefined &&
+        artistColIdx !== undefined &&
+        (fieldCol('bio') !== undefined || fieldCol('photo') !== undefined));
+
+    // In artist mode, fall back to the first column as the name if no "artiste" column was detected
+    const effectiveArtistColIdx = artistColIdx ?? (mode === 'artist' ? 0 : undefined);
 
     if (artistOnlyFile) {
       for (let i = 0; i < sheet.rows.length; i++) {
-        const artistRaw = cell(sheet.rows, i, artistColIdx);
+        const artistRaw = cell(sheet.rows, i, effectiveArtistColIdx);
         const bio = cell(sheet.rows, i, fieldCol('bio')).trim();
         const photoUrl = cell(sheet.rows, i, fieldCol('photo')).trim();
         if (!artistRaw.trim()) {
@@ -543,7 +546,7 @@ export function ImportModal({ open, onClose }: ImportModalProps) {
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <div className="flex items-center gap-3">
             <FileText className="h-5 w-5 text-primary" />
-            <h2 className="font-semibold text-foreground">Importer des œuvres</h2>
+            <h2 className="font-semibold text-foreground">{mode === 'artist' ? 'Importer des artistes' : 'Importer des œuvres'}</h2>
           </div>
           {step !== 'importing' && (
             <button
@@ -752,7 +755,10 @@ export function ImportModal({ open, onClose }: ImportModalProps) {
                 onClick={handleImport}
                 className="flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
               >
-                <Upload className="h-4 w-4" /> Importer {validRowCount} œuvre{validRowCount > 1 ? 's' : ''}
+                <Upload className="h-4 w-4" />
+                {mode === 'artist'
+                  ? `Importer ${sheet.rows.length} artiste${sheet.rows.length > 1 ? 's' : ''}`
+                  : `Importer ${validRowCount} œuvre${validRowCount > 1 ? 's' : ''}`}
               </button>
             ) : null}
           </div>

@@ -354,7 +354,7 @@ export function ArtistListView() {
           router.push(`/${locale}/artists/${artist.id}`);
         }}
       />
-      <ImportModal open={importOpen} onClose={() => setImportOpen(false)} />
+      <ImportModal open={importOpen} onClose={() => setImportOpen(false)} mode="artist" />
     </div>
   );
 }

@@ -218,4 +218,21 @@ export const settingsApi = {
     }
     return res.json();
   },
+
+  /** Restores a migration .zip into the CURRENT organization — wipes and replaces content in-place. */
+  async restoreMigration(file: File): Promise<{ restoredItems: number }> {
+    const { accessToken } = useAuthStore.getState();
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${API_BASE_URL}/settings/migration/restore`, {
+      method: 'POST',
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+      body: form,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ message: 'Restore failed' }));
+      throw new Error(body.message ?? 'Restore failed');
+    }
+    return res.json();
+  },
 };
