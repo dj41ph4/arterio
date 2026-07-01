@@ -141,11 +141,14 @@ Return ONLY a JSON object with any of: description, techniqueName, dateText, yea
   }
 
   async autofillArtist(input: ArtistAutofillInput): Promise<AiAutofillResponse<ArtistAutofillResult>> {
-    const systemPrompt = `You are an art historian. Respond in language code: ${input.locale}.
-Only state facts you are confident about for this specific person — leave a field out entirely rather than guessing.
-CRITICAL: if you have nothing useful, OMIT the key entirely. Never write a sentence ABOUT not knowing something as the VALUE of a field.
-Return ONLY a JSON object with any of: biography, nationality, birthDate, deathDate, movement.`;
-    const text = await this.complete(systemPrompt, `Artist: ${input.fullName}`);
+    const systemPrompt = `You are an art database assistant. Respond in language code: ${input.locale}.
+STRICT SOURCING RULE: use ONLY facts explicitly stated in the search results provided by the user. Do NOT draw on your training-data knowledge of this artist — training data about lesser-known or regional artists is frequently wrong, confused with other artists of similar names, or entirely fabricated. If a fact is not clearly supported by the search results, omit that field entirely.
+If the search results are absent or contain nothing useful, return an empty JSON object {}.
+Never invent dates, nationalities, schools, or biographies — a missing field is always better than a wrong one.
+Return ONLY a JSON object with any subset of: biography, nationality, birthDate, deathDate, movement, imageUrl.`;
+    const userMessage = `Artist: ${input.fullName}` +
+      (input.searchContext ? `\n\nSearch results:\n${input.searchContext}` : '\n\nNo search results available — return {}.') ;
+    const text = await this.complete(systemPrompt, userMessage);
     return this.parseAutofillResult<ArtistAutofillResult>(text, this.model);
   }
 

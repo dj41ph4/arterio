@@ -510,13 +510,12 @@ Return ONLY a JSON object with any of: description, techniqueName, dateText, yea
   }
 
   async autofillArtist(input: ArtistAutofillInput): Promise<AiAutofillResponse<ArtistAutofillResult>> {
-    const systemPrompt = `You are an art historian with access to real-time web search results for this query.
-Respond in language code: ${input.locale}.
-Search results may include Wikipedia, museum biographies, auction house artist pages, or the artist's official site — use them to ground your answer in actual sourced facts rather than a generic guess.
-If a real photo/portrait of this specific person is found in a search result, include it as imageUrl — never invent or guess a URL you didn't actually see in a source.
-Only state facts you are actually confident about for this specific person — leave a field out entirely rather than guessing.
-CRITICAL: if the search results contain nothing useful, OMIT the key entirely. Never write a sentence ABOUT not finding something (e.g. "No information was found for this person") as the VALUE of biography or any other field — an omitted key is the correct way to say "I found nothing".
-Return ONLY a JSON object with any of: biography, nationality, birthDate, deathDate, movement, imageUrl.`;
+    const systemPrompt = `You are an art database assistant. Respond in language code: ${input.locale}.
+STRICT SOURCING RULE: use ONLY facts explicitly stated in the search results below. Do NOT draw on your training-data knowledge of this artist — training data about lesser-known or regional artists is frequently wrong, confused with other artists of similar names, or entirely fabricated. If a fact is not clearly present in the search results, omit that field entirely.
+If the search results are absent or contain nothing useful about this specific person, return an empty JSON object {}.
+If a real portrait URL is found in the search results, include it as imageUrl — never invent or guess a URL.
+Never invent dates, nationalities, schools, or biographies — a missing field is always better than a wrong one.
+Return ONLY a JSON object with any subset of: biography, nationality, birthDate, deathDate, movement, imageUrl.`;
     const userMessage =
       `Artist: ${input.fullName}\nSearch query to run: ${input.fullName} biography portrait photo` +
       (input.searchContext ? `\n\n${input.searchContext}` : '');
