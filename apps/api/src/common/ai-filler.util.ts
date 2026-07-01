@@ -18,6 +18,10 @@ const NO_RESULT_PATTERNS = [
   /\baucune information\b/i,
   /\bpas trouvé.*(résultats?|recherche)\b/i,
   /\bne (figure|semble) pas (dans|parmi)\b/i,
+  /\bnon disponible\b/i,
+  /\bdonnées? indisponibles?\b/i,
+  /\b(information|donnée)s? non disponibles?\b/i,
+  /\bnon (renseigné|précisé|communiqué)/i,
 ];
 
 function isNoResultFiller(value: string): boolean {

@@ -8,6 +8,7 @@ import { searchWikiArtImage, searchWikiArtImages } from '../../common/wikiart-ap
 import { searchArtsyImage, searchArtsyImages } from '../../common/artsy-api.util';
 import { isLikelyRealImage, downloadImageToUploads } from '../../common/download-image.util';
 import { buildSearchContext, buildArtworkSearchContext, buildArtistSearchContext, findArtistOfficialWebsite, ddgImageSearch } from '../../common/free-web-search.util';
+import { fillMissingTranslations } from '../../common/translate.util';
 import { StructuredLookupService } from './structured-lookup.service';
 import { AiDebugLogService } from './ai-debug-log.service';
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
@@ -471,20 +472,27 @@ export class AiController {
     const allBiographies: Partial<Record<Locale, string>> = {};
     if (data.biography) {
       allBiographies[locale as Locale] = data.biography;
-      const otherLocales = ALL_LOCALES.filter((l) => l !== locale);
-      const translations = await Promise.all(
-        otherLocales.map((targetLocale) =>
+      // Free services first (MyMemory → Lingva, no token cost), AI as fallback,
+      // ONE locale at a time. The old path fired all 5 locales at the paid LLM in
+      // parallel, so a single burst rate-limit silently dropped whichever locale
+      // lost the race — most often English (first in the list). Sequential +
+      // free-first fills every locale reliably.
+      const filled = await fillMissingTranslations(
+        data.biography,
+        locale,
+        ALL_LOCALES,
+        (targetLocale) =>
           this.ai.translate({
             text: data.biography!,
             sourceLocale: locale as Locale,
-            targetLocale,
+            targetLocale: targetLocale as Locale,
             organizationId: orgId,
-          }).catch(() => null),
-        ),
+          }),
+        { [locale]: data.biography },
       );
-      otherLocales.forEach((targetLocale, i) => {
-        if (translations[i]) allBiographies[targetLocale] = translations[i]!;
-      });
+      for (const [lang, text] of Object.entries(filled)) {
+        if (text) allBiographies[lang as Locale] = text;
+      }
       const translatedCount = Object.keys(allBiographies).length - 1;
       if (translatedCount > 0) meta.message += ` Bio traduite en ${translatedCount} langue${translatedCount > 1 ? 's' : ''}.`;
     }
@@ -643,10 +651,23 @@ export class AiController {
       patch.description = { ...desc, [locale]: data.description };
     }
 
-    if (!artwork.yearFrom && data.yearFrom) patch.yearFrom = typeof data.yearFrom === 'number' ? data.yearFrom : Number(data.yearFrom);
+    // Numeric fields: coerce, then only persist if the result is a real finite
+    // number. The AI sometimes answers a dimension with prose ("hauteur inconnue")
+    // — parseFloat/Number of that is NaN, and writing NaN to Prisma silently
+    // corrupts the row, so drop it rather than store it.
+    if (!artwork.yearFrom && data.yearFrom) {
+      const y = typeof data.yearFrom === 'number' ? data.yearFrom : Number(data.yearFrom);
+      if (Number.isFinite(y)) patch.yearFrom = y;
+    }
     if (!artwork.dateText && data.dateText) patch.dateText = data.dateText;
-    if (!artwork.heightCm && data.heightCm) patch.heightCm = typeof data.heightCm === 'number' ? data.heightCm : parseFloat(String(data.heightCm));
-    if (!artwork.widthCm && data.widthCm) patch.widthCm = typeof data.widthCm === 'number' ? data.widthCm : parseFloat(String(data.widthCm));
+    if (!artwork.heightCm && data.heightCm) {
+      const h = typeof data.heightCm === 'number' ? data.heightCm : parseFloat(String(data.heightCm));
+      if (Number.isFinite(h)) patch.heightCm = h;
+    }
+    if (!artwork.widthCm && data.widthCm) {
+      const w = typeof data.widthCm === 'number' ? data.widthCm : parseFloat(String(data.widthCm));
+      if (Number.isFinite(w)) patch.widthCm = w;
+    }
     if (!artwork.dimensionsNote && data.dimensionsNote) patch.dimensionsNote = data.dimensionsNote;
     if (!artwork.signatureDescription && data.signatureDescription) patch.signatureDescription = data.signatureDescription;
     const validConditions = ['excellent', 'good', 'fair', 'poor', 'critical'];

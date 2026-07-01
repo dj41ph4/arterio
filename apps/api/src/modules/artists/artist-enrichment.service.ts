@@ -7,6 +7,7 @@ import { CryptoService } from '../../core/crypto/crypto.service';
 import { AI_PROVIDER, type AiProvider } from '../ai/ai.types';
 import { scrapeICAC, scrapeArtmajeur, scrapeSingulart } from '../../common/gallery-site-scraper.util';
 import { TtlCache } from '../../common/ttl-cache.util';
+import { translateFree, isRealBiography } from '../../common/translate.util';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -140,117 +141,9 @@ const SEARCH_LANGUAGES = ['fr', 'nl', 'en', 'de', 'es', 'it'] as const;
 /** Priority order for picking a source biography to translate from. */
 const BIO_SOURCE_PRIORITY: string[] = ['fr', 'nl', 'en', 'de', 'es', 'it'];
 
-// ---------------------------------------------------------------------------
-// Free translation utilities (called before the AI to avoid wasting tokens)
-// ---------------------------------------------------------------------------
-
-/**
- * Splits a long text into chunks of at most `maxChars` characters,
- * breaking on sentence boundaries (". ") to avoid cutting mid-sentence.
- */
-function splitIntoChunks(text: string, maxChars = 450): string[] {
-  if (text.length <= maxChars) return [text];
-  const sentences = text.match(/[^.!?]+[.!?]+(\s|$)/g) ?? [text];
-  const chunks: string[] = [];
-  let current = '';
-  for (const sentence of sentences) {
-    if ((current + sentence).length > maxChars && current) {
-      chunks.push(current.trim());
-      current = sentence;
-    } else {
-      current += sentence;
-    }
-  }
-  if (current.trim()) chunks.push(current.trim());
-  return chunks.length ? chunks : [text.slice(0, maxChars)];
-}
-
-/**
- * MyMemory — free REST translation API, no key required for ≤1000 words/day
- * per server IP (well within what artist enrichment generates).
- * MyMemory chunks at 450 chars; we split longer texts and re-join.
- */
-async function translateWithMyMemory(text: string, from: string, to: string): Promise<string | null> {
-  const chunks = splitIntoChunks(text, 450);
-  const translated: string[] = [];
-  for (const chunk of chunks) {
-    try {
-      const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(chunk)}&langpair=${from}|${to}`;
-      const res = await fetch(url, { headers: { 'User-Agent': 'Arterio/1.0' }, signal: AbortSignal.timeout(8_000) });
-      if (!res.ok) return null;
-      const data = (await res.json()) as { responseStatus: number; responseData?: { translatedText?: string } };
-      const t = data.responseData?.translatedText;
-      if (!t || data.responseStatus !== 200) return null;
-      // Daily quota exceeded
-      if (t.includes('MYMEMORY WARNING')) return null;
-      translated.push(t);
-    } catch {
-      return null;
-    }
-  }
-  return translated.length ? translated.join(' ') : null;
-}
-
-/**
- * Lingva Translate — open-source Google Translate frontend with a public
- * REST API, no key required. Used as fallback when MyMemory fails.
- */
-async function translateWithLingva(text: string, from: string, to: string): Promise<string | null> {
-  try {
-    const url = `https://lingva.ml/api/v1/${from}/${to}/${encodeURIComponent(text)}`;
-    const res = await fetch(url, { headers: { 'User-Agent': 'Arterio/1.0' }, signal: AbortSignal.timeout(10_000) });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { translation?: string };
-    return data.translation ?? null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Tries free translation services in order (MyMemory → Lingva), validates
- * the result, and returns it — or null if both fail or return garbage.
- */
-async function translateFree(text: string, from: string, to: string): Promise<string | null> {
-  const myMemory = await translateWithMyMemory(text, from, to);
-  if (myMemory && isRealBiography(myMemory)) return myMemory;
-
-  const lingva = await translateWithLingva(text, from, to);
-  if (lingva && isRealBiography(lingva)) return lingva;
-
-  return null;
-}
-
-/**
- * Returns true only if the text looks like a real artist biography.
- * Rejects AI refusals ("Je n'ai pas pu…"), empty stubs, and texts
- * shorter than 80 chars. Requires at least one year-pattern (4 digits)
- * OR multiple sentences — the two most reliable signals that we got
- * actual encyclopedic content rather than a generic fallback message.
- */
-function isRealBiography(text: string | undefined | null): boolean {
-  if (!text) return false;
-  const t = text.trim();
-  if (t.length < 80) return false;
-
-  // Typical AI refusal / generic placeholder patterns (multilingual)
-  const refusalPatterns = [
-    /^je n['']ai pas (pu|trouvé)/i,
-    /^i (could|was unable|cannot|can'?t) (find|provide|generate|create)/i,
-    /^(aucune|no|keine|geen|nessuna|ninguna) (bio|information|donnée|data)/i,
-    /^(désolé|sorry|entschuldigung|lo siento|mi dispiace)/i,
-    /^(en tant qu['']|as an? (ai|artificial intelligence|language model))/i,
-    /^(this|cette|diese|questo|este) (artist|artiste|künstler)/i,
-    /biographie? (non disponible|introuvable|non trovata|nicht verfügbar)/i,
-    /^(unfortunately|malheureusement|leider|lamentablemente|purtroppo)/i,
-  ];
-  if (refusalPatterns.some((p) => p.test(t))) return false;
-
-  // Must contain at least one year (4-digit number 1200–2100) OR two+ sentences
-  const hasYear = /\b(1[2-9]\d{2}|20\d{2})\b/.test(t);
-  const sentenceCount = (t.match(/[.!?]/g) ?? []).length;
-  return hasYear || sentenceCount >= 2;
-}
+// Free translation + biography-quality helpers now live in a shared util so the
+// interactive AI-autofill controller reuses the exact same resilient logic.
+// See: ../../common/translate.util.ts (translateFree, isRealBiography).
 
 // Wikidata properties
 const P_BIRTH = 'P569';
