@@ -802,4 +802,43 @@ export class AiController {
     this.debugLog.clear();
     return { ok: true };
   }
+
+  /** Diagnostic: raw DDG HTML fetch to see exactly what the server receives. */
+  @Get('debug/ddg-raw')
+  @RequirePermissions(PERMISSIONS.SETTINGS_MANAGE)
+  @ApiOperation({ summary: 'Raw DDG diagnostic — shows HTTP status, HTML snippet and parsed result count' })
+  async debugDdgRaw() {
+    const query = 'Abie Loy Kemarre "Bush Medicine Leaves"';
+    const BROWSER_HEADERS = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Cache-Control': 'no-cache',
+    };
+    try {
+      const res = await fetch('https://html.duckduckgo.com/html/', {
+        method: 'POST',
+        headers: { ...BROWSER_HEADERS, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `q=${encodeURIComponent(query)}`,
+        signal: AbortSignal.timeout(12_000),
+      });
+      const html = await res.text();
+      // Count rough indicators in the raw HTML
+      const resultCount = (html.match(/class="result"/g) ?? []).length;
+      const resultACount = (html.match(/class="result__a"/g) ?? []).length;
+      const hasZeroClickInfo = html.includes('zero_click_info');
+      const hasCaptcha = html.toLowerCase().includes('captcha') || html.includes('robot');
+      return {
+        query,
+        status: res.status,
+        ok: res.ok,
+        htmlLength: html.length,
+        htmlSnippet: html.slice(0, 1500),
+        indicators: { resultCount, resultACount, hasZeroClickInfo, hasCaptcha },
+      };
+    } catch (err) {
+      return { query, error: String(err) };
+    }
+  }
 }
