@@ -265,7 +265,12 @@ CRITICAL: if nothing useful is found for a field, OMIT that key entirely. Never 
 Return ONLY a JSON object with any of: description, techniqueName, dateText, yearFrom (number), heightCm (number), widthCm (number), dimensionsNote, signatureDescription, condition, tags (string array), imageUrl.`;
     const userMessage = `Title: ${input.title ?? '(unknown)'}\nArtist: ${input.artistName ?? '(unknown)'}` +
       (input.searchContext ? `\n\n${input.searchContext}` : '');
-    return this.completeJson<ArtworkAutofillResult>(input.organizationId, systemPrompt, userMessage, false);
+    // Rescue path: when the free DDG/Wikidata/Wikipedia context came back empty,
+    // fall back to Mistral's own (paid) native web_search so the model still has
+    // real grounding instead of returning {}. Only fires when the free path found
+    // nothing — no extra cost on the common case where DDG already delivered.
+    const webSearch = !input.searchContext;
+    return this.completeJson<ArtworkAutofillResult>(input.organizationId, systemPrompt, userMessage, webSearch);
   }
 
   async autofillArtist(input: ArtistAutofillInput): Promise<AiAutofillResponse<ArtistAutofillResult>> {
@@ -277,7 +282,10 @@ Never invent dates, nationalities, schools, or biographies — a missing field i
 Return ONLY a JSON object with any subset of: biography, nationality, birthDate, deathDate, movement, imageUrl.`;
     const userMessage = `Artist: ${input.fullName}` +
       (input.searchContext ? `\n\n${input.searchContext}` : '');
-    return this.completeJson<ArtistAutofillResult>(input.organizationId, systemPrompt, userMessage, false);
+    // Rescue path — see autofillArtwork: native web_search only when the free
+    // DDG/Wikidata/Wikipedia context found nothing about this person.
+    const webSearch = !input.searchContext;
+    return this.completeJson<ArtistAutofillResult>(input.organizationId, systemPrompt, userMessage, webSearch);
   }
 
   async findImages(input: FindImagesInput): Promise<AiAutofillResponse<FindImagesResult>> {
