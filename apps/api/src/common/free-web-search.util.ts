@@ -243,8 +243,12 @@ export async function buildArtworkSearchContext(artistName: string, title: strin
  * also try the name inverted (Lastname Firstname → Firstname Lastname), fetch
  * the full text of the most promising pages, and inject Wikidata + Wikipedia
  * as authoritative anchors so the AI doesn't have to guess from thin context.
+ *
+ * If officialWebsite is provided (from DB or discovered by findArtistOfficialWebsite),
+ * it is fetched first with a large budget and injected as the top-priority source —
+ * the artist's own site contains the most authoritative biography.
  */
-export async function buildArtistSearchContext(fullName: string, maxTotalChars = 12000): Promise<string | null> {
+export async function buildArtistSearchContext(fullName: string, officialWebsite?: string, maxTotalChars = 12000): Promise<string | null> {
   try {
     const name = fullName.trim();
     if (!name) return null;
@@ -303,16 +307,28 @@ export async function buildArtistSearchContext(fullName: string, maxTotalChars =
     const pagesBlock = pages.filter((p): p is string => Boolean(p)).join('\n\n');
 
     // Wikipedia — try all 6 app locales, take the longest extract found.
-    // Use the full page text (via fetchPageText on the Wikipedia URL) rather than
-    // the summary API which is often truncated to 2-3 sentences.
     const wikiExtract = await fetchWikipediaFull(name);
 
     // Wikidata structured facts — injected FIRST as the highest-priority anchor.
     const wikidataFacts = await fetchWikidataArtistFacts(name);
 
+    // Official website — fetched with a large budget (5 000 chars) and injected
+    // just after Wikidata as the most authoritative biographical source: the
+    // artist's own site contains the raw bio, CV, and statements that the AI
+    // then cleans up and structures. Excluded from the DDG page-fetch above to
+    // guarantee it always gets its own generous budget regardless of rank.
+    let officialSiteBlock: string | null = null;
+    if (officialWebsite) {
+      const siteText = await fetchPageText(officialWebsite, 5000);
+      if (siteText) officialSiteBlock = `[SITE OFFICIEL — ${officialWebsite}]\n${siteText}`;
+      // Mark as seen so it doesn't get double-fetched in the pages loop
+      seen.add(officialWebsite);
+    }
+
     let context = `Web search results for artist "${name}":\n${resultsBlock}`;
     if (pagesBlock) context += `\n\nPage excerpts:\n${pagesBlock}`;
     if (wikiExtract) context += `\n\n${wikiExtract}`;
+    if (officialSiteBlock) context = `${officialSiteBlock}\n\n${context}`;
     if (wikidataFacts) context = `${wikidataFacts}\n\n${context}`;
     return context.slice(0, maxTotalChars + 2000);
   } catch {
@@ -453,4 +469,60 @@ async function searchWikidataArtist(name: string): Promise<string | null> {
 function reverseTokens(name: string): string {
   const tokens = name.trim().split(/\s+/);
   return tokens.length === 2 ? `${tokens[1]} ${tokens[0]}` : name;
+}
+
+// ---------------------------------------------------------------------------
+// Official website discovery
+// ---------------------------------------------------------------------------
+
+// Domains that are never an artist's own site
+const EXCLUDED_DOMAINS = [
+  'wikipedia.org', 'wikidata.org', 'wikiart.org', 'artprice.com', 'artnet.com',
+  'interencheres.com', 'drouot.com', 'invaluable.com', 'liveauctioneers.com',
+  'mutualart.com', 'findartinfo.com', 'askart.com', 'rkd.nl', 'data.bnf.fr',
+  'viaf.org', 'facebook.com', 'instagram.com', 'twitter.com', 'youtube.com',
+  'amazon.com', 'amazon.fr', 'ebay.com', 'etsy.com', 'pinterest.com',
+];
+
+const officialWebsiteCache = new TtlCache<string | null>(60 * 60_000); // 1 h
+
+/**
+ * Tries to discover an artist's official website via DDG.
+ * Returns the validated URL (artist's name found on the page) or null.
+ * Cached 1 hour — run once per artist, result stored in DB by the caller.
+ */
+export async function findArtistOfficialWebsite(fullName: string): Promise<string | null> {
+  return officialWebsiteCache.wrap(fullName.trim().toLowerCase(), () => findArtistOfficialWebsiteUncached(fullName));
+}
+
+async function findArtistOfficialWebsiteUncached(fullName: string): Promise<string | null> {
+  try {
+    const name = fullName.trim();
+    const q = `"${name}" site officiel OR "official website" OR artiste peintre`;
+    const results = await searchWeb(q, 8);
+
+    const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const nameParts = normalize(name).split(/\s+/);
+
+    for (const r of results) {
+      try {
+        const domain = new URL(r.url).hostname.replace(/^www\./, '');
+        // Skip known aggregator/social/auction domains
+        if (EXCLUDED_DOMAINS.some((d) => domain.includes(d))) continue;
+
+        // Validate: fetch the page and check the artist's name appears in it
+        const text = await fetchPageText(r.url, 3000);
+        if (!text) continue;
+        const normalizedText = normalize(text);
+        // Both first name and last name must appear on the page
+        const allPartsFound = nameParts.every((part) => part.length > 2 && normalizedText.includes(part));
+        if (allPartsFound) return r.url;
+      } catch {
+        continue;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }

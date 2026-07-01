@@ -7,7 +7,7 @@ import { searchCommonsImage, searchCommonsImages } from '../../common/commons-im
 import { searchWikiArtImage, searchWikiArtImages } from '../../common/wikiart-api.util';
 import { searchArtsyImage, searchArtsyImages } from '../../common/artsy-api.util';
 import { isLikelyRealImage } from '../../common/download-image.util';
-import { buildSearchContext, buildArtworkSearchContext, buildArtistSearchContext } from '../../common/free-web-search.util';
+import { buildSearchContext, buildArtworkSearchContext, buildArtistSearchContext, findArtistOfficialWebsite } from '../../common/free-web-search.util';
 import { StructuredLookupService } from './structured-lookup.service';
 import { AiDebugLogService } from './ai-debug-log.service';
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
@@ -349,7 +349,32 @@ export class AiController {
     meta: import('./ai.types').AiAutofillResponse<import('./ai.types').ArtistAutofillResult>['meta'];
   }> {
     const t0 = Date.now();
-    const searchContext = await buildArtistSearchContext(fullName);
+
+    // Resolve official website: DB first (fastest), DDG discovery as fallback.
+    // If discovered via DDG, persist it so the next call is instant.
+    let officialWebsite: string | undefined;
+    try {
+      const dbArtist = await this.prisma.artist.findFirst({
+        where: { organizationId: orgId, fullName },
+        select: { id: true, externalIds: true },
+      });
+      const stored = (dbArtist?.externalIds as Record<string, unknown> | null)?.officialWebsite as string | undefined;
+      if (stored) {
+        officialWebsite = stored;
+      } else if (dbArtist) {
+        const discovered = await findArtistOfficialWebsite(fullName);
+        if (discovered) {
+          officialWebsite = discovered;
+          const existing = (dbArtist.externalIds as Record<string, unknown>) ?? {};
+          await this.prisma.artist.update({
+            where: { id: dbArtist.id },
+            data: { externalIds: { ...existing, officialWebsite: discovered } },
+          });
+        }
+      }
+    } catch { /* non-blocking */ }
+
+    const searchContext = await buildArtistSearchContext(fullName, officialWebsite);
     const result = await this.ai.autofillArtist({
       fullName,
       locale: locale as Locale,
