@@ -134,8 +134,42 @@ const ART_TERMS: Record<string, string[]> = {
   ],
 };
 
-/** Languages to try, in order, when searching Wikidata — English first since it has the widest coverage. */
-const SEARCH_LANGUAGES = ['en', 'fr', 'de', 'es', 'it', 'nl'] as const;
+/** Languages to try, in order, when searching Wikidata — FR first (user preference), then NL, EN, rest. */
+const SEARCH_LANGUAGES = ['fr', 'nl', 'en', 'de', 'es', 'it'] as const;
+
+/** Priority order for picking a source biography to translate from. */
+const BIO_SOURCE_PRIORITY: string[] = ['fr', 'nl', 'en', 'de', 'es', 'it'];
+
+/**
+ * Returns true only if the text looks like a real artist biography.
+ * Rejects AI refusals ("Je n'ai pas pu…"), empty stubs, and texts
+ * shorter than 80 chars. Requires at least one year-pattern (4 digits)
+ * OR multiple sentences — the two most reliable signals that we got
+ * actual encyclopedic content rather than a generic fallback message.
+ */
+function isRealBiography(text: string | undefined | null): boolean {
+  if (!text) return false;
+  const t = text.trim();
+  if (t.length < 80) return false;
+
+  // Typical AI refusal / generic placeholder patterns (multilingual)
+  const refusalPatterns = [
+    /^je n['']ai pas (pu|trouvé)/i,
+    /^i (could|was unable|cannot|can'?t) (find|provide|generate|create)/i,
+    /^(aucune|no|keine|geen|nessuna|ninguna) (bio|information|donnée|data)/i,
+    /^(désolé|sorry|entschuldigung|lo siento|mi dispiace)/i,
+    /^(en tant qu['']|as an? (ai|artificial intelligence|language model))/i,
+    /^(this|cette|diese|questo|este) (artist|artiste|künstler)/i,
+    /biographie? (non disponible|introuvable|non trovata|nicht verfügbar)/i,
+    /^(unfortunately|malheureusement|leider|lamentablemente|purtroppo)/i,
+  ];
+  if (refusalPatterns.some((p) => p.test(t))) return false;
+
+  // Must contain at least one year (4-digit number 1200–2100) OR two+ sentences
+  const hasYear = /\b(1[2-9]\d{2}|20\d{2})\b/.test(t);
+  const sentenceCount = (t.match(/[.!?]/g) ?? []).length;
+  return hasYear || sentenceCount >= 2;
+}
 
 // Wikidata properties
 const P_BIRTH = 'P569';
@@ -264,22 +298,27 @@ export class ArtistEnrichmentService {
   ): Promise<void> {
     if (!this.aiProvider || !(await this.aiProvider.isEnabled(organizationId))) return;
 
-    const available = Object.entries(result.biographies).filter(([, text]) => Boolean(text)) as Array<[Locale, string]>;
-    if (!available.length) return;
+    // Only keep bios that are genuine encyclopedic content — filter out AI
+    // refusals, stubs, or placeholder text that slipped through earlier steps.
+    const realBios = Object.entries(result.biographies).filter(([, text]) =>
+      isRealBiography(text),
+    ) as Array<[Locale, string]>;
+    if (!realBios.length) return;
 
-    const missing = LOCALES.filter((l) => !result.biographies[l]);
+    const missing = LOCALES.filter((l) => !result.biographies[l] || !isRealBiography(result.biographies[l]));
     if (!missing.length) return;
 
-    const [sourceLocale, sourceText] =
-      available.find(([lang]) => lang === 'en') ??
-      available.reduce((longest, current) => (current[1].length > longest[1].length ? current : longest));
+    // Pick source by explicit priority (FR → NL → EN → rest), then fall back
+    // to the longest real bio available — a longer source loses less in translation.
+    const sourceEntry =
+      BIO_SOURCE_PRIORITY.map((lang) => realBios.find(([l]) => l === lang)).find(Boolean) ??
+      realBios.reduce((best, cur) => (cur[1].length > best[1].length ? cur : best));
+    const [sourceLocale, sourceText] = sourceEntry!;
 
-    // Sequential with a short stagger, NOT Promise.allSettled — firing one request
-    // per missing locale (up to 5) all at once routinely tripped a fresh/free-tier
-    // AI API key's per-second burst limit on the very first enrichment, well before
-    // any real daily quota was used. One locale failing to translate still never
-    // blocks the rest; it just no longer fires them all in the same instant.
+    // Sequential with a short stagger — bursting all locales at once trips
+    // free-tier per-second rate limits on the very first enrichment.
     for (const targetLocale of missing) {
+      if (targetLocale === sourceLocale) continue;
       try {
         const translated = await this.aiProvider.translate({
           text: sourceText,
@@ -287,9 +326,13 @@ export class ArtistEnrichmentService {
           sourceLocale,
           organizationId,
         });
-        if (translated) {
+        // Validate the translation before storing — reject refusals or stubs
+        // that can happen when the AI lacks knowledge about an obscure artist.
+        if (translated && isRealBiography(translated)) {
           result.biographies[targetLocale] = translated;
           this.logger.log(`Biographie de "${fullName}" traduite ${sourceLocale} → ${targetLocale} via IA.`);
+        } else if (translated) {
+          this.logger.warn(`Traduction ${sourceLocale} → ${targetLocale} pour "${fullName}" rejetée (contenu générique détecté).`);
         }
       } catch (e) {
         this.logger.warn(`Traduction de la biographie de "${fullName}" (${sourceLocale} → ${targetLocale}) échouée : ${String(e)}`);
