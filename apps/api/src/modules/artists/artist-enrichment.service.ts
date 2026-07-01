@@ -305,6 +305,21 @@ function releaseEnrichmentSlot(): void {
 const wikidataSearchCache = new TtlCache<{ qid: string; label: string; exact: boolean; ambiguous: boolean } | null>(10 * 60_000);
 const wikidataEntityCache = new TtlCache<WikidataArtist | null>(10 * 60_000);
 
+/**
+ * Converts a Wikimedia Commons Special:FilePath URL into a sized thumbnail.
+ * Wikidata P18 returns `http://commons.wikimedia.org/wiki/Special:FilePath/Foo.jpg`
+ * which redirects to the raw file (often multi-MB). Appending ?width=N asks the
+ * media handler to serve a resized version instead.
+ */
+function wikimediaCommonsThumb(url: string, width = 600): string {
+  if (!url) return url;
+  const u = url.replace(/^http:\/\//, 'https://');
+  if (u.includes('Special:FilePath') && !u.includes('width=')) {
+    return `${u}${u.includes('?') ? '&' : '?'}width=${width}`;
+  }
+  return u;
+}
+
 @Injectable()
 export class ArtistEnrichmentService {
   private readonly logger = new Logger(ArtistEnrichmentService.name);
@@ -433,6 +448,7 @@ export class ArtistEnrichmentService {
   }
 
   private async doEnrich(fullName: string, organizationId?: string): Promise<ArtistEnrichmentResult> {
+
     const match = await this.searchWikidata(fullName);
     if (!match) {
       const fallback = await this.fetchFallbackChain(fullName, organizationId);
@@ -455,9 +471,20 @@ export class ArtistEnrichmentService {
     const wikidata = await this.fetchWikidataEntity(qid);
     const biographies = await this.fetchWikipediaBiographies(wikidata?.wikipediaSitelinks ?? {});
 
-    const thumbnail =
-      biographies['en']?.thumbnail ??
+    // Photo priority:
+    // 1. Wikidata P18 (Wikimedia Commons) — highest quality, dedicated portrait
+    // 2. Wikipedia page thumbnail by locale preference (FR → NL → EN → any)
+    const wikidataImage = wikidata?.imageUrl
+      ? wikimediaCommonsThumb(wikidata.imageUrl, 600)
+      : undefined;
+    const wikipediaThumbnail =
+      BIO_SOURCE_PRIORITY.map((lang) => biographies[lang]?.thumbnail).find(Boolean) ??
       Object.values(biographies).find((b) => b?.thumbnail)?.thumbnail;
+    const thumbnail = wikidataImage ?? wikipediaThumbnail;
+
+    // Prefer FR Wikipedia URL, fall back to any language with a page
+    const wikipediaUrl =
+      BIO_SOURCE_PRIORITY.map((lang) => biographies[lang]?.url).find(Boolean);
 
     return {
       wikidata,
@@ -469,7 +496,7 @@ export class ArtistEnrichmentService {
       ) as Partial<Record<Locale, string>>,
       thumbnail,
       externalUrls: {
-        wikipedia: biographies['en']?.url,
+        wikipedia: wikipediaUrl,
         wikidata: `https://www.wikidata.org/wiki/${qid}`,
         ulan: wikidata?.ulanId
           ? `https://vocab.getty.edu/ulan/${wikidata.ulanId}`
@@ -690,7 +717,7 @@ WHERE {
         v ? v.replace('T00:00:00Z', '').replace(/^\+/, '') : undefined;
 
       const wikimediaImage = (url: string | undefined) =>
-        url?.startsWith('http') ? url : undefined;
+        url?.startsWith('http') ? wikimediaCommonsThumb(url) : undefined;
 
       return {
         qid,
