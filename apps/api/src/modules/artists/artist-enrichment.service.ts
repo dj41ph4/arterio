@@ -754,11 +754,11 @@ WHERE {
   private async fetchFallbackChain(name: string, organizationId?: string): Promise<FallbackHit | null> {
     const keys = await this.resolveSourceKeys(organizationId);
     const providers: Array<[string, () => Promise<FallbackHit | null>]> = [
+      // Centre Pompidou / MNAM first — keyless, ~92k works, THE reference for
+      // modern & contemporary artists (and by far the best coverage of French ones).
+      ['pompidou', () => this.fetchFromPompidou(name)],
       ['aic', () => this.fetchFromAic(name)],
       ['met', () => this.fetchFromMet(name)],
-      // Centre Pompidou / MNAM — keyless, ~92k works, THE reference for modern
-      // & contemporary artists (and by far the best coverage of French ones).
-      ['pompidou', () => this.fetchFromPompidou(name)],
       ['cleveland', () => this.fetchFromCleveland(name)],
       ['vam', () => this.fetchFromVam(name)],
       ['wikiart', () => this.fetchFromWikiArt(name)],

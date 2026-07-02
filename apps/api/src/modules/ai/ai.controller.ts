@@ -143,15 +143,15 @@ export class AiController {
     try {
       const { wikiartKey, artsyKey } = await this.resolveImageSourceKeys(organizationId);
 
+      // Centre Pompidou / MNAM first — keyless, museum-photographed, art-only:
+      // the highest-confidence source of the whole chain.
+      const fromPompidou = await searchPompidouImage(query);
+      if (fromPompidou) return { url: fromPompidou, source: 'pompidou', file: null };
+
       if (wikiartKey) {
         const fromWikiArt = await searchWikiArtImage(wikiartKey, query);
         if (fromWikiArt) return { url: fromWikiArt, source: 'wikiart', file: null };
       }
-      // Centre Pompidou / MNAM — keyless, museum-photographed, art-only: a hit
-      // here is higher-confidence than a general Commons search.
-      const fromPompidou = await searchPompidouImage(query);
-      if (fromPompidou) return { url: fromPompidou, source: 'pompidou', file: null };
-
       const fromCommons = await searchCommonsImage(query);
       if (fromCommons) return { url: fromCommons, source: 'commons', file: null };
 
@@ -261,7 +261,8 @@ export class AiController {
     ]);
     const ddgUrls = fromDdg.map((r) => r.imageUrl);
     const seen = new Set<string>();
-    const images = [...fromWikiArt, ...fromPompidou, ...fromCommons, ...fromArtsy, ...ddgUrls].filter((u) => {
+    // Pompidou first — museum-photographed originals outrank every other source.
+    const images = [...fromPompidou, ...fromWikiArt, ...fromCommons, ...fromArtsy, ...ddgUrls].filter((u) => {
       if (seen.has(u)) return false;
       seen.add(u);
       return true;
