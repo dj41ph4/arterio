@@ -1,0 +1,56 @@
+# =============================================================================
+#  Arterio — déploiement Synology (recommandé : image unique)
+#
+#  UNE seule image (API + Web dans le même conteneur), publiée sur Docker Hub
+#  par GitHub Actions à chaque `git push`. Le serveur web parle à l'API via
+#  "localhost" à l'intérieur du même conteneur — aucun réseau Docker entre
+#  deux conteneurs à configurer, aucun CORS, aucune variable d'environnement
+#  à deviner. La base de données est un fichier SQLite dans le dossier mappé
+#  ./data — AUCUN serveur PostgreSQL/Redis à installer à côté.
+#
+#  Pour déployer : Container Manager → Projet → coller ce fichier → Lancer.
+#  Premier lancement : ouvrez http://IP-DU-NAS:3000 → assistant de configuration.
+#  À sauvegarder : le seul dossier ./data (base + photos/documents).
+#
+#  Reverse proxy / nom de domaine : pointez votre reverse proxy vers le port
+#  3000, c'est tout. Un seul hôte, un seul conteneur, rien d'autre à régler.
+# =============================================================================
+
+name: arterio
+
+services:
+  app:
+    image: docker.io/dj41ph4/arterio:latest
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+      # Décommentez pour accéder directement à l'API/Swagger sans passer par
+      # le web — jamais nécessaire pour l'usage normal, et à ne PAS exposer
+      # publiquement sur un reverse proxy :
+      # - '4000:4000'
+    volumes:
+      # Tout le persistant : base SQLite + médias. Le seul dossier à sauvegarder.
+      - ./data:/data
+    # environment:
+    #   # Sécurité (recommandé en production) — sinon des valeurs de dev sont
+    #   # utilisées. Générez des secrets aléatoires longs et une clé 32 octets base64 :
+    #   JWT_ACCESS_SECRET: change-me-long-random-string
+    #   JWT_REFRESH_SECRET: change-me-another-long-random-string
+    #   DATA_ENCRYPTION_KEY: change-me-32-bytes-base64
+    labels:
+      com.centurylinklabs.watchtower.enable: 'true'
+
+  # Mises à jour automatiques : surveille Docker Hub et re-déploie l'image dès
+  # qu'une nouvelle version `:latest` est publiée. Rien à faire sur le NAS après
+  # un `git push`. Dépôt Docker Hub privé : ajoutez REPO_USER / REPO_PASS ci-dessous.
+  watchtower:
+    image: containrrr/watchtower:latest
+    restart: unless-stopped
+    environment:
+      WATCHTOWER_CLEANUP: 'true'
+      WATCHTOWER_LABEL_ENABLE: 'true'
+      WATCHTOWER_POLL_INTERVAL: '120'
+      # REPO_USER: dj41ph4
+      # REPO_PASS: <token Docker Hub>
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

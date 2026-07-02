@@ -1,0 +1,491 @@
+{
+  "app": {
+    "name": "Arterio",
+    "tagline": "Art collection management"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "collection": "Collection",
+    "artists": "Artists",
+    "exhibitions": "Exhibitions",
+    "loans": "Loans",
+    "locations": "Locations",
+    "documents": "Documents",
+    "reports": "Reports",
+    "settings": "Settings",
+    "favorites": "Favorites",
+    "search": "Search",
+    "sectionMain": "Workspace",
+    "sectionManage": "Manage",
+    "more": "More"
+  },
+  "common": {
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "All changes saved",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "add": "Add",
+    "search": "Search",
+    "filter": "Filter",
+    "sort": "Sort",
+    "group": "Group",
+    "export": "Export",
+    "import": "Import",
+    "loading": "Loading…",
+    "noResults": "No results",
+    "noResultsHint": "Try adjusting your search or filters.",
+    "actions": "Actions",
+    "close": "Close",
+    "confirm": "Confirm",
+    "all": "All",
+    "selected": "selected",
+    "clear": "Clear",
+    "apply": "Apply",
+    "new": "New",
+    "more": "More",
+    "back": "Back",
+    "undo": "Undo",
+    "redo": "Redo",
+    "view": "View"
+  },
+  "command": {
+    "placeholder": "Type a command or search…",
+    "empty": "No results found.",
+    "groupNavigation": "Navigation",
+    "groupActions": "Actions",
+    "groupPreferences": "Preferences",
+    "newArtwork": "New artwork",
+    "importData": "Import data",
+    "toggleTheme": "Toggle theme",
+    "changeLanguage": "Change language",
+    "changeAccent": "Change accent color"
+  },
+  "assistant": {
+    "title": "Collection assistant",
+    "placeholder": "Ask a question about your collection…",
+    "emptyTitle": "Talk to your collection",
+    "emptyHint": "Ask a question in natural language — answers are computed from your real data, never invented.",
+    "thinking": "Querying the collection…",
+    "toolTrace": "{count, plural, one {# query executed} other {# queries executed}}",
+    "emptyAnswer": "I could not form an answer. Try rephrasing your question?",
+    "error": "Something went wrong. Please try again in a moment.",
+    "aiDisabled": "AI is not enabled for this organization.",
+    "aiDisabledHint": "Enable an AI provider (free Mistral, for example) in",
+    "aiDisabledCta": "Settings → AI",
+    "clear": "Clear conversation",
+    "examples": {
+      "q1": "How many artworks are in poor condition?",
+      "q2": "Which artworks are currently on loan?",
+      "q3": "Where is my latest acquisition stored?",
+      "q4": "Which artist is most represented in my collection?"
+    }
+  },
+  "theme": {
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System",
+    "accent": "Accent color",
+    "appearance": "Appearance"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "subtitle": "Overview of your collection",
+    "totalArtworks": "Artworks",
+    "totalValue": "Insured value",
+    "collections": "Collections",
+    "artists": "Artists",
+    "onLoan": "On loan",
+    "onExhibition": "On exhibition",
+    "needsRestoration": "Needs restoration",
+    "recentlyAdded": "Recently added",
+    "byStatus": "By status",
+    "byCollection": "By collection",
+    "valueByCollection": "Value by collection",
+    "conditionOverview": "Condition overview",
+    "activity": "Recent activity",
+    "alerts": "Alerts",
+    "noAlerts": "No active alerts. Everything looks healthy.",
+    "viewAll": "View all"
+  },
+  "grid": {
+    "title": "Collection",
+    "subtitle": "{count, plural, =0 {No artworks} one {# artwork} other {# artworks}}",
+    "newArtwork": "New artwork",
+    "groupBy": "Group by",
+    "groupNone": "No grouping",
+    "addFilter": "Add filter",
+    "savedViews": "Views",
+    "columns": "Columns",
+    "sort": "Sort",
+    "sortBy": "Sort by",
+    "results": "{count, plural, =0 {No results} one {# result} other {# results}}",
+    "selectedCount": "{count} selected",
+    "bulkEdit": "Edit {count}",
+    "rowHeight": "Row height",
+    "freezeColumn": "Freeze up to here",
+    "hideColumn": "Hide column",
+    "sortAsc": "Sort ascending",
+    "sortDesc": "Sort descending",
+    "emptyTitle": "Your collection is empty",
+    "emptyBody": "Add your first artwork or import an existing catalogue.",
+    "viewList": "List view",
+    "viewGrid": "Grid view",
+    "viewSheet": "Spreadsheet view",
+    "cellSaved": "Saved",
+    "cellSaveFailed": "Save failed",
+    "mediaIndex": {
+      "start": "Index images",
+      "running": "Indexing {done}/{total}…",
+      "done": "Indexing finished — {indexed}/{total} images analyzed",
+      "failed": "Could not start indexing",
+      "hint": "Computes each image's visual fingerprint and dominant colors — enables color search, visual duplicates and similar works"
+    },
+    "colorFilter": {
+      "label": "Color",
+      "clear": "Clear"
+    }
+  },
+  "artwork": {
+    "fields": {
+      "inventoryNumber": "Inventory no.",
+      "title": "Title",
+      "artist": "Artist",
+      "attribution": "Attribution",
+      "authentication": "Authentication",
+      "date": "Date",
+      "technique": "Technique",
+      "support": "Support",
+      "dimensions": "Dimensions",
+      "signature": "Signature location",
+      "weight": "Weight",
+      "status": "Status",
+      "condition": "Condition",
+      "collection": "Collection",
+      "location": "Location",
+      "acquisition": "Acquisition",
+      "acquisitionDate": "Acquisition date",
+      "value": "Current value",
+      "insuranceValue": "Insured value",
+      "purchasePrice": "Purchase price",
+      "tags": "Tags",
+      "description": "Description",
+      "provenance": "Provenance",
+      "updatedAt": "Updated"
+    },
+    "tabs": {
+      "overview": "Overview",
+      "media": "Media",
+      "documents": "Documents",
+      "provenance": "Provenance",
+      "location": "Location",
+      "loans": "Loans",
+      "exhibitions": "Exhibitions",
+      "conservation": "Conservation",
+      "history": "History"
+    },
+    "media": {
+      "dropHint": "Click or drag photos here",
+      "formats": "JPEG, PNG, WebP or GIF — up to 15 MB",
+      "uploaded": "Photo uploaded",
+      "uploadFailed": "Upload failed",
+      "removeFailed": "Could not remove the photo",
+      "takePhoto": "Take a photo",
+      "fromGallery": "From gallery"
+    },
+    "share": {
+      "copied": "Link copied to clipboard"
+    },
+    "qr": {
+      "title": "QR code — artwork page",
+      "download": "Download QR code"
+    },
+    "form": {
+      "createTitle": "New artwork",
+      "editTitle": "Edit artwork",
+      "titleRequired": "Title is required",
+      "currency": "Currency",
+      "tagsPlaceholder": "comma-separated",
+      "createSuccess": "Artwork created successfully",
+      "updateSuccess": "Artwork updated successfully",
+      "error": "Something went wrong",
+      "aiAutofill": "Autofill with AI",
+      "aiSuccess": "AI suggestions applied",
+      "aiError": "AI autofill failed",
+      "aiImageError": "Could not attach the AI-found image"
+    },
+    "detail": {
+      "addedOn": "Added {date}",
+      "updatedOn": "Updated {date}",
+      "noImage": "No image",
+      "gallery": "Gallery",
+      "compare": "Compare",
+      "fullscreen": "Fullscreen",
+      "restricted": "You don't have permission to view financial data."
+    },
+    "similar": {
+      "title": "Similar works"
+    },
+    "conditionAi": {
+      "generate": "Condition report (AI)",
+      "generating": "Analyzing the photo…",
+      "suggestion": "Suggested condition report",
+      "accept": "Accept",
+      "prefillRestoration": "Pre-fill a restoration",
+      "noMedia": "Add a photo of the artwork first",
+      "failed": "Condition report failed",
+      "acceptedToast": "Condition and note updated"
+    }
+  },
+  "status": {
+    "draft": "Draft",
+    "active": "Active",
+    "on_loan": "On loan",
+    "on_exhibition": "On exhibition",
+    "in_storage": "In storage",
+    "in_restoration": "In restoration",
+    "in_transit": "In transit",
+    "sold": "Sold",
+    "deaccessioned": "Deaccessioned",
+    "archived": "Archived"
+  },
+  "condition": {
+    "excellent": "Excellent",
+    "good": "Good",
+    "fair": "Fair",
+    "poor": "Poor",
+    "critical": "Critical",
+    "unknown": "Unknown"
+  },
+  "auth": {
+    "signIn": "Sign in",
+    "signOut": "Sign out",
+    "signInSubtitle": "Welcome back. Sign in to your collection.",
+    "email": "Email",
+    "password": "Password",
+    "forgotPassword": "Forgot password?",
+    "forgotPasswordHint": "No email is configured on this install — ask an administrator to reset your password from Settings → Members.",
+    "forgotPasswordPrompt": "Enter your email and we'll send a reset link if an account matches.",
+    "forgotPasswordSend": "Send link",
+    "forgotPasswordSent": "If that email is registered, a reset link is on its way.",
+    "rememberMe": "Remember me",
+    "signInButton": "Sign in",
+    "or": "or",
+    "continueWithGoogle": "Continue with Google",
+    "continueWithMicrosoft": "Continue with Microsoft",
+    "oauthError": "Sign-in failed. Please try again or use your password.",
+    "backToLogin": "Back to sign in",
+    "noAccount": "Don't have an account?",
+    "requestAccess": "Request access",
+    "secured": "Secured with end-to-end encryption & MFA",
+    "tagline": "Care for your collection like a museum curator.",
+    "taglineSubtitle": "Catalogue every artwork, track its value and history, and present your collection with the rigour of the world's leading institutions.",
+    "featureCatalogue": "Every artwork, fully documented — technique, provenance, value, photos.",
+    "featureSecurity": "Your data, protected like a piece behind glass.",
+    "featureAi": "An assistant that finds the story behind an artist or a work."
+  },
+  "setup": {
+    "apiServerQuestion": "Is the API server on this same machine?",
+    "apiServerQuestionHint": "Most installs run the web app and API together. Answer \"different server\" only if you deployed them on separate machines.",
+    "apiServerSame": "Same server",
+    "apiServerDifferent": "Different server",
+    "apiServerHostLabel": "API server address",
+    "apiServerHostPlaceholder": "e.g. 192.168.1.50 or api.example.com",
+    "apiServerBack": "Back",
+    "apiServerContinue": "Continue",
+    "title": "Welcome to Arterio",
+    "subtitle": "Let's set up your workspace",
+    "organizationName": "Organization name",
+    "organizationNamePlaceholder": "e.g. Museum of Fine Arts",
+    "fullName": "Your full name",
+    "email": "Administrator email",
+    "password": "Password",
+    "confirmPassword": "Confirm password",
+    "passwordMismatch": "Passwords do not match",
+    "passwordTooShort": "At least 8 characters",
+    "submitButton": "Create my administrator account",
+    "redirecting": "Already set up, redirecting…",
+    "featureSearch": "Every artwork, fully documented — technique, provenance, value, photos.",
+    "featureSecurity": "Your data, protected like a piece behind glass.",
+    "featureAi": "An assistant that finds the story behind an artist or a work.",
+    "modeNew": "New organization",
+    "modeImport": "Import a migration",
+    "importHint": "Restore a .zip file exported from another Arterio installation (Settings → Migration → Export). Everything is restored as-is, including existing accounts and passwords.",
+    "importButton": "Choose the .zip file",
+    "importing": "Importing…",
+    "importSuccessTitle": "Import complete",
+    "importSuccessBody": "Organization \"{name}\" restored. Log in with one of the accounts from the imported file."
+  },
+  "artists": {
+    "subtitle": "{count, plural, =0 {No artists} one {# artist} other {# artists}}",
+    "searchPlaceholder": "Search by name, nationality or movement…",
+    "biography": "Biography",
+    "notableWorks": "Notable works",
+    "influencedBy": "Influenced by",
+    "worksInCollection": "{count, plural, one {# work in collection} other {# works in collection}}",
+    "artistInfo": "Artist information",
+    "nationality": "Nationality",
+    "born": "Born",
+    "died": "Died",
+    "movement": "Movement",
+    "authorityLinks": "Authority links",
+    "identifiers": "Authority identifiers",
+    "enrichTooltip": "Biographical data sourced from Wikipedia & Wikidata (free, no API key required)",
+    "enrichButton": "Refresh from Wikipedia",
+    "enriched": "Enriched",
+    "noEnrichment": "No biographical data — click 'Refresh' to fetch from Wikipedia"
+  },
+  "exhibitions": {
+    "subtitle": "{count, plural, =0 {No exhibitions} one {# exhibition} other {# exhibitions}}",
+    "searchPlaceholder": "Search by title, venue or city…",
+    "worksCount": "{count, plural, one {# work} other {# works}}",
+    "phase": {
+      "upcoming": "Upcoming",
+      "current": "Current",
+      "past": "Past"
+    }
+  },
+  "loans": {
+    "subtitle": "{count, plural, =0 {No loans} one {# loan} other {# loans}}",
+    "searchPlaceholder": "Search by artwork, artist or partner…",
+    "status": {
+      "pending": "Pending",
+      "active": "Active",
+      "returned": "Returned",
+      "overdue": "Overdue"
+    }
+  },
+  "locations": {
+    "subtitle": "{count, plural, =0 {No locations} one {# location} other {# locations}}",
+    "searchPlaceholder": "Search by room, floor or building…"
+  },
+  "documents": {
+    "subtitle": "{count, plural, =0 {No documents} one {# document} other {# documents}}",
+    "searchPlaceholder": "Search by title or linked artwork…",
+    "type": {
+      "invoice": "Invoice",
+      "certificate": "Certificate",
+      "report": "Report",
+      "insurance": "Insurance"
+    },
+    "encryptedNotice": "Encrypted at rest (AES-256)",
+    "downloadStarted": "Downloading \"{title}\"…",
+    "ocr": {
+      "uploadFile": "Attach file",
+      "replaceFile": "Replace file",
+      "uploaded": "File attached",
+      "analyze": "Analyze (OCR)",
+      "reanalyze": "Re-analyze",
+      "analyzing": "Analyzing…",
+      "analyzed": "Document analyzed",
+      "extracted": "Fields extracted from the invoice",
+      "price": "Price",
+      "date": "Date",
+      "seller": "Seller",
+      "invoiceNumber": "Invoice #",
+      "apply": "Apply to artwork",
+      "applied": "Fields applied to the artwork",
+      "failed": "Operation failed"
+    }
+  },
+  "reports": {
+    "subtitle": "Generate PDF reports and view a live snapshot of your collection",
+    "generatePdf": "Generate PDF",
+    "generated": "\"{name}\" generated and downloaded",
+    "generateFailed": "Failed to generate the report",
+    "snapshot": "Live snapshot",
+    "types": {
+      "catalogue": {
+        "title": "Collection catalogue",
+        "description": "Illustrated catalogue of all artworks"
+      },
+      "insurance": {
+        "title": "Insurance summary",
+        "description": "Valuations and coverage by policy"
+      },
+      "conservation": {
+        "title": "Conservation report",
+        "description": "Condition overview and restoration needs"
+      },
+      "financial": {
+        "title": "Financial overview",
+        "description": "Value distribution and acquisition trends"
+      }
+    }
+  },
+  "collections": {
+    "title": "Collections",
+    "add": "New collection",
+    "name": "Name",
+    "namePlaceholder": "e.g. Old Masters",
+    "description": "Description",
+    "descriptionPlaceholder": "Optional description",
+    "color": "Colour",
+    "nameRequired": "Name is required",
+    "created": "Collection created",
+    "updated": "Collection updated",
+    "deleted": "Collection deleted",
+    "deleteConfirm": "Delete collection \"{name}\"? Linked artworks will keep their data but lose this grouping.",
+    "empty": "No collections yet. Create one to group your artworks.",
+    "worksCount": "{count, plural, =0 {No works} one {# work} other {# works}}"
+  },
+  "settings": {
+    "title": "Settings",
+    "general": "General",
+    "appearance": "Appearance",
+    "security": "Security",
+    "members": "Members",
+    "roles": "Roles & permissions",
+    "api": "API & webhooks",
+    "notifications": "Notifications",
+    "backups": "Backups",
+    "migration": "Migration",
+    "debug": "Logs IA",
+    "danger": "Danger zone",
+    "language": "Language",
+    "languageHint": "Choose the language for the interface."
+  },
+  "pwa": {
+    "install": "Install the app",
+    "shareReceive": {
+      "title": "Shared photo",
+      "subtitle": "Pick the artwork to attach this photo to",
+      "empty": "No shared photo found. Share a photo from your gallery to Arterio.",
+      "pickArtwork": "Attach to which artwork?",
+      "searchPlaceholder": "Search an artwork…",
+      "uploaded": "{count, plural, one {Photo added} other {# photos added}}",
+      "failed": "Upload failed",
+      "hint": "Photos are compressed automatically before upload."
+    }
+  },
+  "duplicates": {
+    "autoByTitle": "Auto-merge (title + artist)",
+    "visualAction": "Visual duplicates…",
+    "visualTitle": "Visual duplicates",
+    "visualSubtitle": "{images} images compared by visual fingerprint",
+    "analyzing": "Analyzing visual fingerprints…",
+    "similarity": "{pct}% similar",
+    "keepHint": "Tap the artwork to KEEP — the others will be merged into it.",
+    "keep": "to keep",
+    "merge": "Merge",
+    "ignore": "Ignore",
+    "none": "No visual duplicates found.",
+    "mergedToast": "Artworks merged",
+    "mergeFailed": "Merge failed"
+  },
+  "search": {
+    "groups": {
+      "artworks": "Artworks",
+      "artists": "Artists",
+      "documents": "Documents",
+      "exhibitions": "Exhibitions"
+    },
+    "groupAi": "Artificial intelligence",
+    "aiSearch": "Smart search: “{query}”",
+    "askAssistant": "Ask the assistant",
+    "inOcr": "found in scanned text",
+    "aiFailed": "AI search failed"
+  }
+}

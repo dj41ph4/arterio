@@ -1,0 +1,31 @@
+{
+  "name": "arterio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Arterio — Professional art collection management platform for museums, galleries, foundations and auction houses.",
+  "license": "UNLICENSED",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=@arterio/web",
+    "dev:web": "npm run dev --workspace=@arterio/web",
+    "dev:api": "npm run start:dev --workspace=@arterio/api",
+    "build": "npm run build --workspaces --if-present",
+    "build:web": "npm run build --workspace=@arterio/web",
+    "build:api": "npm run build --workspace=@arterio/api",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "db:generate": "npm run generate --workspace=@arterio/database",
+    "db:migrate": "npm run migrate:dev --workspace=@arterio/database",
+    "db:seed": "npm run seed --workspace=@arterio/database",
+    "infra:up": "docker compose -f infra/docker-compose.yml up -d",
+    "infra:down": "docker compose -f infra/docker-compose.yml down"
+  },
+  "engines": {
+    "zod": "^3.24.1",
+    "node-fetch": "^3.3.2"
+  },
+  "packageManager": "npm@11.13.0"
+}

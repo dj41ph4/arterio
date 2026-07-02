@@ -1,0 +1,194 @@
+import type {
+  AiAutofillMeta,
+  AiAutofillResponse,
+  AiCapabilities,
+  AiChatInput,
+  AiChatTurn,
+  AiOcrInput,
+  AiOcrResult,
+  AiProvider,
+  AiVisionInput,
+  AiVisionResult,
+  ArtistAutofillInput,
+  ArtistAutofillResult,
+  ArtworkAutofillInput,
+  ArtworkAutofillResult,
+  DescribeInput,
+  DescribeResult,
+  FindImagesInput,
+  FindImagesResult,
+  TranslateInput,
+} from './ai.types';
+import { Logger, ServiceUnavailableException } from '@nestjs/common';
+import { stripFillerFields } from '../../common/ai-filler.util';
+
+/**
+ * Claude-backed provider. Only instantiated when AI_ENABLED=true and
+ * ANTHROPIC_API_KEY is set. The SDK import is intentionally lazy so the
+ * module loads cleanly even when the dependency is absent in stripped builds.
+ */
+export class AnthropicAiProvider implements AiProvider {
+  readonly id = 'anthropic';
+  readonly enabled = true;
+  private readonly logger = new Logger(AnthropicAiProvider.name);
+
+  async isEnabled(): Promise<boolean> {
+    return true;
+  }
+
+  private readonly model: string;
+  private client: unknown = null;
+
+  constructor(apiKey: string, model = 'claude-opus-4-8') {
+    this.model = model;
+    // Lazy-load to avoid hard build dependency when AI is off.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { Anthropic } = require('@anthropic-ai/sdk') as typeof import('@anthropic-ai/sdk');
+    this.client = new Anthropic({ apiKey });
+  }
+
+  capabilities(): AiCapabilities {
+    return {
+      describe: true,
+      tag: true,
+      ocr: false,
+      signature: false,
+      compare: false,
+      similar: false,
+      classify: true,
+      chat: false,
+      vision: false,
+    };
+  }
+
+  async describe(input: DescribeInput): Promise<DescribeResult> {
+    const sdk = this.client as import('@anthropic-ai/sdk').Anthropic;
+    const content: import('@anthropic-ai/sdk').Anthropic.MessageParam['content'] = [];
+
+    if (input.imageUrl) {
+      // Pass as URL reference — works for publicly accessible images
+      content.push({
+        type: 'image',
+        source: { type: 'url', url: input.imageUrl },
+      } as never);
+    }
+
+    const systemPrompt = `You are an expert art cataloguer. Respond in language code: ${input.locale}.
+Return ONLY a JSON object: {"description": "...", "keywords": [...], "suggestedCategory": "..."}`;
+
+    content.push({ type: 'text', text: 'Describe this artwork for cataloguing purposes.' });
+
+    const msg = await sdk.messages.create({
+      model: this.model,
+      max_tokens: 512,
+      system: systemPrompt,
+      messages: [{ role: 'user', content }],
+    });
+
+    const text = msg.content.find((b) => b.type === 'text')?.text ?? '{}';
+    return JSON.parse(text) as DescribeResult;
+  }
+
+  async ocr(_input: AiOcrInput): Promise<AiOcrResult> {
+    throw new ServiceUnavailableException('OCR not supported by Anthropic provider');
+  }
+
+  async chat(_input: AiChatInput): Promise<AiChatTurn> {
+    throw new ServiceUnavailableException("Le chat n'est pas encore supporté par le fournisseur Anthropic.");
+  }
+
+  async analyzeImage(_input: AiVisionInput): Promise<AiVisionResult> {
+    throw new ServiceUnavailableException("L'analyse d'image n'est pas encore supportée par le fournisseur Anthropic.");
+  }
+
+  async tags(input: DescribeInput): Promise<string[]> {
+    const result = await this.describe(input);
+    return result.keywords;
+  }
+
+  private async complete(systemPrompt: string, userMessage: string): Promise<string> {
+    const sdk = this.client as import('@anthropic-ai/sdk').Anthropic;
+    const msg = await sdk.messages.create({
+      model: this.model,
+      max_tokens: 512,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: [{ type: 'text', text: userMessage }] }],
+    });
+    return msg.content.find((b) => b.type === 'text')?.text ?? '{}';
+  }
+
+  /** Mirrors OpenRouterAiProvider's parsing/meta contract so the controller can treat both providers identically. */
+  private parseAutofillResult<T extends object>(text: string, model: string): { data: T; meta: AiAutofillMeta } {
+    const attempts = [{ model, success: true, message: `Réponse reçue avec succès du modèle "${model}"` }];
+    const meta: AiAutofillMeta = {
+      modelUsed: model,
+      fallbackUsed: false,
+      attempts,
+      message: `Réponse IA reçue correctement depuis Anthropic (modèle : ${model}).`,
+      hasUsableData: false,
+    };
+    try {
+      const data = stripFillerFields(JSON.parse(text) as Record<string, unknown>) as T;
+      const fieldCount = Object.values(data).filter((v) => v !== undefined && v !== null && v !== '').length;
+      if (fieldCount === 0) {
+        meta.message += ' — Réponse extraite mais entièrement vide.';
+      } else {
+        meta.message += ` — Réponse extraite avec succès et envoyée à l'UI (${fieldCount} champ${fieldCount > 1 ? 's' : ''}).`;
+        meta.hasUsableData = true;
+      }
+      return { data, meta };
+    } catch (e) {
+      meta.message += ` — Réponse reçue mais JSON invalide (${(e as Error).message}).`;
+      this.logger.warn(`JSON.parse a échoué sur la réponse Anthropic (tronquée) : ${text.slice(0, 200)}`);
+      return { data: {} as T, meta };
+    }
+  }
+
+  async autofillArtwork(input: ArtworkAutofillInput): Promise<AiAutofillResponse<ArtworkAutofillResult>> {
+    const systemPrompt = `You are an expert art cataloguer. Respond in language code: ${input.locale}.
+Only state facts you are confident about for this specific, named work — leave a field out entirely rather than guessing.
+If a dimension is known (e.g. "46x38 cm"), split it into heightCm (first number) and widthCm (second number), in centimeters — alongside dimensionsNote with the raw text, never instead of the parsed numbers.
+CRITICAL: if you have nothing useful for a field, OMIT that key entirely. Never write a sentence ABOUT not knowing something (e.g. "No information is available for this work") as the VALUE of a field.
+Return ONLY a JSON object with any of: description, techniqueName, dateText, yearFrom (number), heightCm (number), widthCm (number), dimensionsNote, signatureDescription (e.g. "signé en bas à droite"), condition, tags (string array).`;
+    const userMessage = `Title: ${input.title ?? '(unknown)'}\nArtist: ${input.artistName ?? '(unknown)'}`;
+    const text = await this.complete(systemPrompt, userMessage);
+    return this.parseAutofillResult<ArtworkAutofillResult>(text, this.model);
+  }
+
+  async autofillArtist(input: ArtistAutofillInput): Promise<AiAutofillResponse<ArtistAutofillResult>> {
+    const systemPrompt = `You are an art database assistant. Respond in language code: ${input.locale}.
+STRICT SOURCING RULE: use ONLY facts explicitly stated in the search results provided by the user. Do NOT draw on your training-data knowledge of this artist — training data about lesser-known or regional artists is frequently wrong, confused with other artists of similar names, or entirely fabricated. If a fact is not clearly supported by the search results, omit that field entirely.
+If the search results are absent or contain nothing useful, return an empty JSON object {}.
+Never invent dates, nationalities, schools, or biographies — a missing field is always better than a wrong one.
+Return ONLY a JSON object with any subset of: biography, nationality, birthDate, deathDate, movement, imageUrl.`;
+    const userMessage = `Artist: ${input.fullName}` +
+      (input.searchContext ? `\n\nSearch results:\n${input.searchContext}` : '\n\nNo search results available — return {}.') ;
+    const text = await this.complete(systemPrompt, userMessage);
+    return this.parseAutofillResult<ArtistAutofillResult>(text, this.model);
+  }
+
+  /** Best-effort text translation — never throws, returns null so the caller (enrichment) just skips that locale on failure. */
+  async translate(input: TranslateInput): Promise<string | null> {
+    const systemPrompt =
+      `You are a professional translator. Translate the user's text into language code "${input.targetLocale}"` +
+      (input.sourceLocale ? ` (source language code: "${input.sourceLocale}").` : '.') +
+      ' Return ONLY the translated text — no quotes, no explanation, no markdown, no preamble.';
+    try {
+      const text = await this.complete(systemPrompt, input.text);
+      const trimmed = text.trim();
+      return trimmed || null;
+    } catch (e) {
+      this.logger.warn(`Traduction vers "${input.targetLocale}" échouée : ${String(e)}`);
+      return null;
+    }
+  }
+
+  /** This provider has no web-search grounding configured, so it can't reliably find real image URLs — say so explicitly rather than guessing from memory. */
+  async findImages(_input: FindImagesInput): Promise<AiAutofillResponse<FindImagesResult>> {
+    const message = "Le fournisseur Anthropic ne dispose pas de recherche web — utilisez OpenRouter pour la recherche d'images par IA.";
+    return {
+      data: {},
+      meta: { fallbackUsed: false, attempts: [{ model: this.model, success: false, message }], message, hasUsableData: false },
+    };
+  }
+}

@@ -1,0 +1,491 @@
+{
+  "app": {
+    "name": "Arterio",
+    "tagline": "Gestion de collection d'art"
+  },
+  "nav": {
+    "dashboard": "Tableau de bord",
+    "collection": "Collection",
+    "artists": "Artistes",
+    "exhibitions": "Expositions",
+    "loans": "Prêts",
+    "locations": "Emplacements",
+    "documents": "Documents",
+    "reports": "Rapports",
+    "settings": "Paramètres",
+    "favorites": "Favoris",
+    "search": "Rechercher",
+    "sectionMain": "Espace de travail",
+    "sectionManage": "Gestion",
+    "more": "Plus"
+  },
+  "common": {
+    "save": "Enregistrer",
+    "saving": "Enregistrement…",
+    "saved": "Modifications enregistrées",
+    "cancel": "Annuler",
+    "delete": "Supprimer",
+    "edit": "Modifier",
+    "create": "Créer",
+    "add": "Ajouter",
+    "search": "Rechercher",
+    "filter": "Filtrer",
+    "sort": "Trier",
+    "group": "Grouper",
+    "export": "Exporter",
+    "import": "Importer",
+    "loading": "Chargement…",
+    "noResults": "Aucun résultat",
+    "noResultsHint": "Essayez d'ajuster votre recherche ou vos filtres.",
+    "actions": "Actions",
+    "close": "Fermer",
+    "confirm": "Confirmer",
+    "all": "Tous",
+    "selected": "sélectionné(s)",
+    "clear": "Effacer",
+    "apply": "Appliquer",
+    "new": "Nouveau",
+    "more": "Plus",
+    "back": "Retour",
+    "undo": "Annuler",
+    "redo": "Rétablir",
+    "view": "Affichage"
+  },
+  "command": {
+    "placeholder": "Tapez une commande ou recherchez…",
+    "empty": "Aucun résultat.",
+    "groupNavigation": "Navigation",
+    "groupActions": "Actions",
+    "groupPreferences": "Préférences",
+    "newArtwork": "Nouvelle œuvre",
+    "importData": "Importer des données",
+    "toggleTheme": "Changer de thème",
+    "changeLanguage": "Changer de langue",
+    "changeAccent": "Changer la couleur d'accent"
+  },
+  "assistant": {
+    "title": "Assistant de collection",
+    "placeholder": "Posez une question sur votre collection…",
+    "emptyTitle": "Parlez à votre collection",
+    "emptyHint": "Posez une question en langage naturel — les réponses sont calculées à partir de vos données réelles, jamais inventées.",
+    "thinking": "J'interroge la collection…",
+    "toolTrace": "{count, plural, one {# requête exécutée} other {# requêtes exécutées}}",
+    "emptyAnswer": "Je n'ai pas pu formuler de réponse. Reformulez votre question ?",
+    "error": "Une erreur est survenue. Réessayez dans un instant.",
+    "aiDisabled": "L'IA n'est pas activée sur cette organisation.",
+    "aiDisabledHint": "Activez un fournisseur IA (Mistral gratuit, par exemple) dans",
+    "aiDisabledCta": "Réglages → IA",
+    "clear": "Effacer la conversation",
+    "examples": {
+      "q1": "Combien d'œuvres sont en mauvais état ?",
+      "q2": "Quelles œuvres sont actuellement en prêt ?",
+      "q3": "Où est stockée ma dernière acquisition ?",
+      "q4": "Quel artiste est le plus représenté dans ma collection ?"
+    }
+  },
+  "theme": {
+    "light": "Clair",
+    "dark": "Sombre",
+    "system": "Système",
+    "accent": "Couleur d'accent",
+    "appearance": "Apparence"
+  },
+  "dashboard": {
+    "title": "Tableau de bord",
+    "subtitle": "Vue d'ensemble de votre collection",
+    "totalArtworks": "Œuvres",
+    "totalValue": "Valeur assurée",
+    "collections": "Collections",
+    "artists": "Artistes",
+    "onLoan": "En prêt",
+    "onExhibition": "En exposition",
+    "needsRestoration": "À restaurer",
+    "recentlyAdded": "Ajouts récents",
+    "byStatus": "Par statut",
+    "byCollection": "Par collection",
+    "valueByCollection": "Valeur par collection",
+    "conditionOverview": "Aperçu de l'état",
+    "activity": "Activité récente",
+    "alerts": "Alertes",
+    "noAlerts": "Aucune alerte active. Tout semble en ordre.",
+    "viewAll": "Tout voir"
+  },
+  "grid": {
+    "title": "Collection",
+    "subtitle": "{count, plural, =0 {Aucune œuvre} one {# œuvre} other {# œuvres}}",
+    "newArtwork": "Nouvelle œuvre",
+    "groupBy": "Grouper par",
+    "groupNone": "Aucun groupe",
+    "addFilter": "Ajouter un filtre",
+    "savedViews": "Vues",
+    "columns": "Colonnes",
+    "sort": "Trier",
+    "sortBy": "Trier par",
+    "results": "{count, plural, =0 {Aucun résultat} one {# résultat} other {# résultats}}",
+    "selectedCount": "{count} sélectionné(s)",
+    "bulkEdit": "Modifier {count}",
+    "rowHeight": "Hauteur des lignes",
+    "freezeColumn": "Figer jusqu'ici",
+    "hideColumn": "Masquer la colonne",
+    "sortAsc": "Tri croissant",
+    "sortDesc": "Tri décroissant",
+    "emptyTitle": "Votre collection est vide",
+    "emptyBody": "Ajoutez votre première œuvre ou importez un catalogue existant.",
+    "viewList": "Vue liste",
+    "viewGrid": "Vue grille",
+    "viewSheet": "Vue tableau (Excel)",
+    "cellSaved": "Enregistré",
+    "cellSaveFailed": "Échec de l'enregistrement",
+    "mediaIndex": {
+      "start": "Indexer les images",
+      "running": "Indexation {done}/{total}…",
+      "done": "Indexation terminée — {indexed}/{total} images analysées",
+      "failed": "Impossible de démarrer l'indexation",
+      "hint": "Calcule l'empreinte visuelle et les couleurs dominantes de chaque image — active la recherche par couleur, les doublons visuels et les œuvres similaires"
+    },
+    "colorFilter": {
+      "label": "Couleur",
+      "clear": "Effacer"
+    }
+  },
+  "artwork": {
+    "fields": {
+      "inventoryNumber": "N° d'inventaire",
+      "title": "Titre",
+      "artist": "Artiste",
+      "attribution": "Attribution",
+      "authentication": "Authentification",
+      "date": "Date",
+      "technique": "Technique",
+      "support": "Support",
+      "dimensions": "Dimensions",
+      "signature": "Emplacement de la signature",
+      "weight": "Poids",
+      "status": "Statut",
+      "condition": "État",
+      "collection": "Collection",
+      "location": "Emplacement",
+      "acquisition": "Acquisition",
+      "acquisitionDate": "Date d'acquisition",
+      "value": "Valeur actuelle",
+      "insuranceValue": "Valeur assurée",
+      "purchasePrice": "Prix d'achat",
+      "tags": "Étiquettes",
+      "description": "Description",
+      "provenance": "Provenance",
+      "updatedAt": "Mis à jour"
+    },
+    "tabs": {
+      "overview": "Aperçu",
+      "media": "Médias",
+      "documents": "Documents",
+      "provenance": "Provenance",
+      "location": "Emplacement",
+      "loans": "Prêts",
+      "exhibitions": "Expositions",
+      "conservation": "Conservation",
+      "history": "Historique"
+    },
+    "media": {
+      "dropHint": "Cliquez ou glissez des photos ici",
+      "formats": "JPEG, PNG, WebP ou GIF — jusqu'à 15 Mo",
+      "uploaded": "Photo ajoutée",
+      "uploadFailed": "Échec de l'envoi",
+      "removeFailed": "Impossible de supprimer la photo",
+      "takePhoto": "Prendre une photo",
+      "fromGallery": "Depuis la galerie"
+    },
+    "share": {
+      "copied": "Lien copié dans le presse-papier"
+    },
+    "qr": {
+      "title": "QR code — fiche œuvre",
+      "download": "Télécharger le QR code"
+    },
+    "form": {
+      "createTitle": "Nouvelle œuvre",
+      "editTitle": "Modifier l'œuvre",
+      "titleRequired": "Le titre est obligatoire",
+      "currency": "Devise",
+      "tagsPlaceholder": "séparés par des virgules",
+      "createSuccess": "Œuvre créée avec succès",
+      "updateSuccess": "Œuvre mise à jour avec succès",
+      "error": "Une erreur est survenue",
+      "aiAutofill": "Compléter avec l'IA",
+      "aiSuccess": "Suggestions IA appliquées",
+      "aiError": "L'autocomplétion IA a échoué",
+      "aiImageError": "Impossible d'attacher l'image trouvée par l'IA"
+    },
+    "detail": {
+      "addedOn": "Ajouté le {date}",
+      "updatedOn": "Mis à jour le {date}",
+      "noImage": "Aucune image",
+      "gallery": "Galerie",
+      "compare": "Comparer",
+      "fullscreen": "Plein écran",
+      "restricted": "Vous n'avez pas l'autorisation de voir les données financières."
+    },
+    "similar": {
+      "title": "Œuvres similaires"
+    },
+    "conditionAi": {
+      "generate": "Constat d'état (IA)",
+      "generating": "Analyse de la photo…",
+      "suggestion": "Constat d'état suggéré",
+      "accept": "Accepter",
+      "prefillRestoration": "Pré-remplir une restauration",
+      "noMedia": "Ajoutez d'abord une photo de l'œuvre",
+      "failed": "Échec du constat d'état",
+      "acceptedToast": "État et constat mis à jour"
+    }
+  },
+  "status": {
+    "draft": "Brouillon",
+    "active": "Actif",
+    "on_loan": "En prêt",
+    "on_exhibition": "En exposition",
+    "in_storage": "En réserve",
+    "in_restoration": "En restauration",
+    "in_transit": "En transit",
+    "sold": "Vendu",
+    "deaccessioned": "Déclassé",
+    "archived": "Archivé"
+  },
+  "condition": {
+    "excellent": "Excellent",
+    "good": "Bon",
+    "fair": "Moyen",
+    "poor": "Médiocre",
+    "critical": "Critique",
+    "unknown": "Inconnu"
+  },
+  "auth": {
+    "signIn": "Connexion",
+    "signOut": "Déconnexion",
+    "signInSubtitle": "Bon retour. Connectez-vous à votre collection.",
+    "email": "E-mail",
+    "password": "Mot de passe",
+    "forgotPassword": "Mot de passe oublié ?",
+    "forgotPasswordHint": "Aucun e-mail n'est configuré sur cette installation — demandez à un administrateur de réinitialiser votre mot de passe depuis Paramètres → Membres.",
+    "forgotPasswordPrompt": "Saisissez votre e-mail, un lien de réinitialisation sera envoyé si un compte correspond.",
+    "forgotPasswordSend": "Envoyer le lien",
+    "forgotPasswordSent": "Si cet e-mail est enregistré, un lien de réinitialisation arrive.",
+    "rememberMe": "Se souvenir de moi",
+    "signInButton": "Se connecter",
+    "or": "ou",
+    "continueWithGoogle": "Continuer avec Google",
+    "continueWithMicrosoft": "Continuer avec Microsoft",
+    "oauthError": "La connexion a échoué. Réessayez ou utilisez votre mot de passe.",
+    "backToLogin": "Retour à la connexion",
+    "noAccount": "Pas encore de compte ?",
+    "requestAccess": "Demander un accès",
+    "secured": "Sécurisé par chiffrement de bout en bout et MFA",
+    "tagline": "Prenez soin de votre collection comme un conservateur de musée.",
+    "taglineSubtitle": "Cataloguez chaque œuvre, suivez sa valeur et son parcours, et présentez votre collection avec la rigueur des plus grandes institutions.",
+    "featureCatalogue": "Chaque œuvre, sa fiche complète — technique, provenance, valeur, photos.",
+    "featureSecurity": "Vos données protégées comme une œuvre sous vitrine.",
+    "featureAi": "Une assistance qui retrouve pour vous l'histoire d'un artiste ou d'une œuvre."
+  },
+  "setup": {
+    "apiServerQuestion": "Le serveur API est-il sur cette même machine ?",
+    "apiServerQuestionHint": "La plupart des installations font tourner le site web et l'API ensemble. Répondez « serveur différent » uniquement si vous les avez déployés sur des machines séparées.",
+    "apiServerSame": "Même serveur",
+    "apiServerDifferent": "Serveur différent",
+    "apiServerHostLabel": "Adresse du serveur API",
+    "apiServerHostPlaceholder": "ex. 192.168.1.50 ou api.exemple.com",
+    "apiServerBack": "Retour",
+    "apiServerContinue": "Continuer",
+    "title": "Bienvenue sur Arterio",
+    "subtitle": "Configurons votre espace de travail",
+    "organizationName": "Nom de l'organisation",
+    "organizationNamePlaceholder": "ex. Musée des Beaux-Arts",
+    "fullName": "Votre nom complet",
+    "email": "E-mail administrateur",
+    "password": "Mot de passe",
+    "confirmPassword": "Confirmer le mot de passe",
+    "passwordMismatch": "Les mots de passe ne correspondent pas",
+    "passwordTooShort": "8 caractères minimum",
+    "submitButton": "Créer mon compte administrateur",
+    "redirecting": "Déjà configuré, redirection…",
+    "featureSearch": "Chaque œuvre, sa fiche complète — technique, provenance, valeur, photos.",
+    "featureSecurity": "Vos données protégées comme une œuvre sous vitrine.",
+    "featureAi": "Une assistance qui retrouve pour vous l'histoire d'un artiste ou d'une œuvre.",
+    "modeNew": "Nouvelle organisation",
+    "modeImport": "Importer une migration",
+    "importHint": "Restaurez un fichier .zip exporté depuis une autre installation d'Arterio (Paramètres → Migration → Exporter). Tout est restauré tel quel, y compris les comptes et mots de passe existants.",
+    "importButton": "Choisir le fichier .zip",
+    "importing": "Import en cours…",
+    "importSuccessTitle": "Import terminé",
+    "importSuccessBody": "Organisation « {name} » restaurée. Connectez-vous avec un des comptes du fichier importé."
+  },
+  "exhibitions": {
+    "subtitle": "{count, plural, =0 {Aucune exposition} one {# exposition} other {# expositions}}",
+    "searchPlaceholder": "Rechercher par titre, lieu ou ville…",
+    "worksCount": "{count, plural, one {# œuvre} other {# œuvres}}",
+    "phase": {
+      "upcoming": "À venir",
+      "current": "En cours",
+      "past": "Terminée"
+    }
+  },
+  "loans": {
+    "subtitle": "{count, plural, =0 {Aucun prêt} one {# prêt} other {# prêts}}",
+    "searchPlaceholder": "Rechercher par œuvre, artiste ou partenaire…",
+    "status": {
+      "pending": "En attente",
+      "active": "En cours",
+      "returned": "Retourné",
+      "overdue": "En retard"
+    }
+  },
+  "locations": {
+    "subtitle": "{count, plural, =0 {Aucun emplacement} one {# emplacement} other {# emplacements}}",
+    "searchPlaceholder": "Rechercher par salle, étage ou bâtiment…"
+  },
+  "documents": {
+    "subtitle": "{count, plural, =0 {Aucun document} one {# document} other {# documents}}",
+    "searchPlaceholder": "Rechercher par titre ou œuvre liée…",
+    "type": {
+      "invoice": "Facture",
+      "certificate": "Certificat",
+      "report": "Rapport",
+      "insurance": "Assurance"
+    },
+    "encryptedNotice": "Chiffré au repos (AES-256)",
+    "downloadStarted": "Téléchargement de « {title} »…",
+    "ocr": {
+      "uploadFile": "Joindre le fichier",
+      "replaceFile": "Remplacer le fichier",
+      "uploaded": "Fichier joint",
+      "analyze": "Analyser (OCR)",
+      "reanalyze": "Ré-analyser",
+      "analyzing": "Analyse…",
+      "analyzed": "Document analysé",
+      "extracted": "Champs extraits de la facture",
+      "price": "Prix",
+      "date": "Date",
+      "seller": "Vendeur",
+      "invoiceNumber": "N° de facture",
+      "apply": "Appliquer à l'œuvre",
+      "applied": "Champs appliqués à l'œuvre",
+      "failed": "Échec de l'opération"
+    }
+  },
+  "reports": {
+    "subtitle": "Générez des rapports PDF et consultez un aperçu en direct de votre collection",
+    "generatePdf": "Générer le PDF",
+    "generated": "« {name} » généré et téléchargé",
+    "generateFailed": "Échec de la génération du rapport",
+    "snapshot": "Aperçu en direct",
+    "types": {
+      "catalogue": {
+        "title": "Catalogue de collection",
+        "description": "Catalogue illustré de toutes les œuvres"
+      },
+      "insurance": {
+        "title": "Résumé d'assurance",
+        "description": "Valorisations et couvertures par police"
+      },
+      "conservation": {
+        "title": "Rapport de conservation",
+        "description": "État général et besoins de restauration"
+      },
+      "financial": {
+        "title": "Bilan financier",
+        "description": "Répartition des valeurs et tendances d'acquisition"
+      }
+    }
+  },
+  "artists": {
+    "subtitle": "{count, plural, =0 {Aucun artiste} one {# artiste} other {# artistes}}",
+    "searchPlaceholder": "Rechercher par nom, nationalité ou mouvement…",
+    "biography": "Biographie",
+    "notableWorks": "Œuvres principales",
+    "influencedBy": "Influencé par",
+    "worksInCollection": "{count, plural, one {# œuvre dans la collection} other {# œuvres dans la collection}}",
+    "artistInfo": "Informations sur l'artiste",
+    "nationality": "Nationalité",
+    "born": "Né(e) le",
+    "died": "Décédé(e) le",
+    "movement": "Mouvement",
+    "authorityLinks": "Liens d'autorité",
+    "identifiers": "Identifiants d'autorité",
+    "enrichTooltip": "Données biographiques issues de Wikipedia & Wikidata (gratuit, sans clé API)",
+    "enrichButton": "Actualiser depuis Wikipedia",
+    "enriched": "Enrichi",
+    "noEnrichment": "Pas de données biographiques — cliquez sur 'Actualiser' pour récupérer depuis Wikipedia"
+  },
+  "collections": {
+    "title": "Collections",
+    "add": "Nouvelle collection",
+    "name": "Nom",
+    "namePlaceholder": "ex. Maîtres anciens",
+    "description": "Description",
+    "descriptionPlaceholder": "Description (optionnel)",
+    "color": "Couleur",
+    "nameRequired": "Le nom est obligatoire",
+    "created": "Collection créée",
+    "updated": "Collection mise à jour",
+    "deleted": "Collection supprimée",
+    "deleteConfirm": "Supprimer la collection « {name} » ? Les œuvres associées garderont leurs données mais perdront ce regroupement.",
+    "empty": "Aucune collection. Créez-en une pour regrouper vos œuvres.",
+    "worksCount": "{count, plural, =0 {Aucune œuvre} one {# œuvre} other {# œuvres}}"
+  },
+  "settings": {
+    "title": "Paramètres",
+    "general": "Général",
+    "appearance": "Apparence",
+    "security": "Sécurité",
+    "members": "Membres",
+    "roles": "Rôles et permissions",
+    "api": "API et webhooks",
+    "notifications": "Notifications",
+    "backups": "Sauvegardes",
+    "migration": "Migration",
+    "debug": "Logs IA",
+    "danger": "Zone dangereuse",
+    "language": "Langue",
+    "languageHint": "Choisissez la langue de l'interface."
+  },
+  "pwa": {
+    "install": "Installer l'application",
+    "shareReceive": {
+      "title": "Photo partagée",
+      "subtitle": "Choisissez l'œuvre à laquelle ajouter cette photo",
+      "empty": "Aucune photo partagée trouvée. Partagez une photo depuis votre galerie vers Arterio.",
+      "pickArtwork": "Ajouter à quelle œuvre ?",
+      "searchPlaceholder": "Rechercher une œuvre…",
+      "uploaded": "{count, plural, one {Photo ajoutée} other {# photos ajoutées}}",
+      "failed": "Échec de l'envoi",
+      "hint": "Les photos sont compressées automatiquement avant l'envoi."
+    }
+  },
+  "duplicates": {
+    "autoByTitle": "Fusion auto (titre + artiste)",
+    "visualAction": "Doublons visuels…",
+    "visualTitle": "Doublons visuels",
+    "visualSubtitle": "{images} images comparées par empreinte visuelle",
+    "analyzing": "Analyse des empreintes visuelles…",
+    "similarity": "{pct}% similaires",
+    "keepHint": "Touchez l'œuvre à CONSERVER — les autres seront fusionnées dedans.",
+    "keep": "à conserver",
+    "merge": "Fusionner",
+    "ignore": "Ignorer",
+    "none": "Aucun doublon visuel détecté.",
+    "mergedToast": "Œuvres fusionnées",
+    "mergeFailed": "Échec de la fusion"
+  },
+  "search": {
+    "groups": {
+      "artworks": "Œuvres",
+      "artists": "Artistes",
+      "documents": "Documents",
+      "exhibitions": "Expositions"
+    },
+    "groupAi": "Intelligence artificielle",
+    "aiSearch": "Recherche intelligente : « {query} »",
+    "askAssistant": "Demander à l'assistant",
+    "inOcr": "trouvé dans le texte scanné",
+    "aiFailed": "La recherche IA a échoué"
+  }
+}
