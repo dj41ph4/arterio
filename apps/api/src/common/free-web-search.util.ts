@@ -2,6 +2,7 @@ import * as cheerio from 'cheerio';
 import { BROWSER_HEADERS, fetchHtml } from './gallery-site-scraper.util';
 import { TtlCache } from './ttl-cache.util';
 import { isLikelyRealImage } from './download-image.util';
+import { searchPompidouArtworks, buildPompidouContext } from './pompidou-api.util';
 
 /**
  * Free, key-less web search + page-text extraction — gives ANY AI provider
@@ -419,8 +420,15 @@ export async function buildArtworkSearchContext(artistName: string, title: strin
     // specific work has no online record (common for generic titles like PAYSAGE).
     const wikiExtract = a ? await fetchWikipediaExtract(a) : null;
 
+    // Centre Pompidou / MNAM — museum-curated records (exact technique,
+    // dimensions, dates) for any of this artist's works in the collection.
+    // Marked authoritative like Wikidata: real catalogue data, not web prose.
+    const pompidouWorks = await searchPompidouArtworks([a, t].filter(Boolean).join(' '), 5).catch(() => []);
+    const pompidouBlock = buildPompidouContext(pompidouWorks);
+
     let context = `Web search results for "${[a, t].filter(Boolean).join(' ')}":\n${resultsBlock}`;
     if (pagesBlock) context += `\n\nPage excerpts:\n${pagesBlock}`;
+    if (pompidouBlock) context += `\n\n${pompidouBlock}`;
     if (wikiExtract) context += `\n\n${wikiExtract}`;
     return context.slice(0, maxTotalChars + 1000);
   } catch {

@@ -6,6 +6,7 @@ import { PrismaService } from '../../core/prisma/prisma.service';
 import { CryptoService } from '../../core/crypto/crypto.service';
 import { AI_PROVIDER, type AiProvider } from '../ai/ai.types';
 import { scrapeICAC, scrapeArtmajeur, scrapeSingulart } from '../../common/gallery-site-scraper.util';
+import { searchPompidouArtist, searchPompidouImages } from '../../common/pompidou-api.util';
 import { TtlCache } from '../../common/ttl-cache.util';
 import { translateFree, isRealBiography } from '../../common/translate.util';
 
@@ -42,7 +43,7 @@ export interface WikidataArtist {
   influencedByLabels?: string[];
 }
 
-export type FallbackSource = 'met' | 'aic' | 'cleveland' | 'vam' | 'wikiart' | 'europeana' | 'rijksmuseum' | 'harvard' | 'smithsonian' | 'dbpedia' | 'singulart' | 'icac' | 'artmajeur';
+export type FallbackSource = 'met' | 'aic' | 'pompidou' | 'cleveland' | 'vam' | 'wikiart' | 'europeana' | 'rijksmuseum' | 'harvard' | 'smithsonian' | 'dbpedia' | 'singulart' | 'icac' | 'artmajeur';
 
 /** A hit from a museum collection API — used when Wikidata has no match. */
 export interface FallbackHit {
@@ -755,6 +756,9 @@ WHERE {
     const providers: Array<[string, () => Promise<FallbackHit | null>]> = [
       ['aic', () => this.fetchFromAic(name)],
       ['met', () => this.fetchFromMet(name)],
+      // Centre Pompidou / MNAM — keyless, ~92k works, THE reference for modern
+      // & contemporary artists (and by far the best coverage of French ones).
+      ['pompidou', () => this.fetchFromPompidou(name)],
       ['cleveland', () => this.fetchFromCleveland(name)],
       ['vam', () => this.fetchFromVam(name)],
       ['wikiart', () => this.fetchFromWikiArt(name)],
@@ -900,6 +904,38 @@ WHERE {
       };
     }
     return null;
+  }
+
+  /**
+   * Centre Pompidou / MNAM via the Navigart JSON endpoint (keyless) — artist
+   * facts distilled from their records in the collection: nationality,
+   * birth/death, sometimes a short bibliography, plus a museum-photographed
+   * work image. `birthDeath` comes as "1881, Malaga (Espagne) - 1973, Mougins
+   * (France)" — the years are extracted as partial dates.
+   */
+  private async fetchFromPompidou(name: string): Promise<FallbackHit | null> {
+    const info = await searchPompidouArtist(name);
+    if (!info) return null;
+
+    let birthDate: string | undefined;
+    let deathDate: string | undefined;
+    if (info.birthDeath) {
+      const [birthPart, deathPart] = info.birthDeath.split(/\s[-–]\s/);
+      birthDate = birthPart?.match(/\d{4}/)?.[0];
+      deathDate = deathPart?.match(/\d{4}/)?.[0];
+    }
+
+    const imageUrl = (await searchPompidouImages(name, 1))[0];
+    return {
+      source: 'pompidou',
+      matchedName: name,
+      nationality: info.nationality || undefined,
+      birthDate,
+      deathDate,
+      biography: info.bibliography || info.liveAndWork || undefined,
+      imageUrl,
+      sourceUrl: 'https://collection.centrepompidou.fr/',
+    };
   }
 
   /** Cleveland Museum of Art Open Access API — keyless, JSON, generous object coverage. */

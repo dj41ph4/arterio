@@ -15,7 +15,7 @@ export interface AiDebugEntry {
   provider: string | null;
   success: boolean;
   fieldsFound: string[];
-  imageSource: 'wikiart' | 'commons' | 'artsy' | 'ddg' | 'ai-search' | null;
+  imageSource: 'wikiart' | 'pompidou' | 'commons' | 'artsy' | 'ddg' | 'ai-search' | null;
   durationMs: number;
   error?: string;
 }

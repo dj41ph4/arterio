@@ -4,6 +4,7 @@ import { PERMISSIONS, type Locale } from '@arterio/shared';
 import { AI_PROVIDER, type AiProvider, type AiAttemptLog } from './ai.types';
 import { AiProviderChain } from './ai-provider-chain';
 import { searchCommonsImage, searchCommonsImages } from '../../common/commons-image-search.util';
+import { searchPompidouImage, searchPompidouImages } from '../../common/pompidou-api.util';
 import { searchWikiArtImage, searchWikiArtImages } from '../../common/wikiart-api.util';
 import { searchArtsyImage, searchArtsyImages } from '../../common/artsy-api.util';
 import { isLikelyRealImage, downloadImageToUploads } from '../../common/download-image.util';
@@ -135,8 +136,8 @@ export class AiController {
     aiGuessedUrl?: string,
   ): Promise<{
     url: string | null;
-    source: 'wikiart' | 'commons' | 'artsy' | 'ddg' | 'ai-search' | null;
-    /** Set only when the image was already downloaded server-side (DDG/ai-search) — lets a caller create a MediaAsset without re-downloading. Null for WikiArt/Commons/Artsy which return a hotlinkable external URL. */
+    source: 'wikiart' | 'pompidou' | 'commons' | 'artsy' | 'ddg' | 'ai-search' | null;
+    /** Set only when the image was already downloaded server-side (DDG/ai-search) — lets a caller create a MediaAsset without re-downloading. Null for WikiArt/Pompidou/Commons/Artsy which return a hotlinkable external URL. */
     file: { filename: string; mimetype: string; size: number } | null;
   }> {
     try {
@@ -146,6 +147,11 @@ export class AiController {
         const fromWikiArt = await searchWikiArtImage(wikiartKey, query);
         if (fromWikiArt) return { url: fromWikiArt, source: 'wikiart', file: null };
       }
+      // Centre Pompidou / MNAM — keyless, museum-photographed, art-only: a hit
+      // here is higher-confidence than a general Commons search.
+      const fromPompidou = await searchPompidouImage(query);
+      if (fromPompidou) return { url: fromPompidou, source: 'pompidou', file: null };
+
       const fromCommons = await searchCommonsImage(query);
       if (fromCommons) return { url: fromCommons, source: 'commons', file: null };
 
@@ -193,7 +199,7 @@ export class AiController {
     artworkId: string,
     query: string,
     aiGuessedUrl?: string,
-  ): Promise<'wikiart' | 'commons' | 'artsy' | 'ddg' | 'ai-search' | null> {
+  ): Promise<'wikiart' | 'pompidou' | 'commons' | 'artsy' | 'ddg' | 'ai-search' | null> {
     const existing = await this.prisma.mediaAsset.count({ where: { artworkId } });
     if (existing > 0) return null;
 
@@ -244,28 +250,30 @@ export class AiController {
     query: string,
     organizationId: string,
     limit = 8,
-  ): Promise<{ images: string[]; wikiartCount: number; artsyCount: number; ddgCount: number }> {
+  ): Promise<{ images: string[]; wikiartCount: number; pompidouCount: number; artsyCount: number; ddgCount: number }> {
     const { wikiartKey, artsyKey } = await this.resolveImageSourceKeys(organizationId);
-    const [fromWikiArt, fromCommons, fromArtsy, fromDdg] = await Promise.all([
+    const [fromWikiArt, fromPompidou, fromCommons, fromArtsy, fromDdg] = await Promise.all([
       wikiartKey ? searchWikiArtImages(wikiartKey, query, limit) : Promise.resolve([]),
+      searchPompidouImages(query, limit),
       searchCommonsImages(query, limit),
       artsyKey ? searchArtsyImages(artsyKey, query, limit) : Promise.resolve([]),
       ddgImageSearch(query, limit),
     ]);
     const ddgUrls = fromDdg.map((r) => r.imageUrl);
     const seen = new Set<string>();
-    const images = [...fromWikiArt, ...fromCommons, ...fromArtsy, ...ddgUrls].filter((u) => {
+    const images = [...fromWikiArt, ...fromPompidou, ...fromCommons, ...fromArtsy, ...ddgUrls].filter((u) => {
       if (seen.has(u)) return false;
       seen.add(u);
       return true;
     }).slice(0, limit);
-    return { images, wikiartCount: fromWikiArt.length, artsyCount: fromArtsy.length, ddgCount: fromDdg.length };
+    return { images, wikiartCount: fromWikiArt.length, pompidouCount: fromPompidou.length, artsyCount: fromArtsy.length, ddgCount: fromDdg.length };
   }
 
-  /** Builds the "(dont N via WikiArt, M via Artsy, K via DDG)" suffix for image-search messages. */
-  private describeSourceBreakdown(wikiartCount: number, artsyCount: number, ddgCount = 0): string {
+  /** Builds the "(dont N via WikiArt, M via Centre Pompidou, …)" suffix for image-search messages. */
+  private describeSourceBreakdown(wikiartCount: number, artsyCount: number, ddgCount = 0, pompidouCount = 0): string {
     const parts = [];
     if (wikiartCount) parts.push(`${wikiartCount} via WikiArt`);
+    if (pompidouCount) parts.push(`${pompidouCount} via Centre Pompidou`);
     if (artsyCount) parts.push(`${artsyCount} via Artsy`);
     if (ddgCount) parts.push(`${ddgCount} via DDG`);
     return parts.length ? ` (dont ${parts.join(', ')})` : ' via Wikimedia Commons';
@@ -277,10 +285,10 @@ export class AiController {
   async findArtworkImages(@CurrentUser() user: AuthUser, @Body() body: { title?: string; artistName?: string }) {
     const query = `${body.artistName ?? ''} ${body.title ?? ''}`.trim();
     if (!query) throw new BadRequestException('title or artistName is required');
-    const { images, wikiartCount, artsyCount, ddgCount } = await this.findWikiImages(query, user.organizationId);
+    const { images, wikiartCount, pompidouCount, artsyCount, ddgCount } = await this.findWikiImages(query, user.organizationId);
     const message = images.length
-      ? `${images.length} image${images.length > 1 ? 's' : ''} trouvée${images.length > 1 ? 's' : ''}${this.describeSourceBreakdown(wikiartCount, artsyCount, ddgCount)}.`
-      : 'Aucune image trouvée via WikiArt/Artsy/Wikimedia Commons/DDG pour ce titre/artiste.';
+      ? `${images.length} image${images.length > 1 ? 's' : ''} trouvée${images.length > 1 ? 's' : ''}${this.describeSourceBreakdown(wikiartCount, artsyCount, ddgCount, pompidouCount)}.`
+      : 'Aucune image trouvée via WikiArt/Centre Pompidou/Artsy/Wikimedia Commons/DDG pour ce titre/artiste.';
     this.logger.log(`Recherche d'images pour une œuvre — "${query}" — ${message}`);
     return { images, message };
   }
@@ -404,6 +412,7 @@ export class AiController {
       const { url, source } = await this.findPhoto(`${body.artistName ?? ''} ${body.title}`.trim(), user.organizationId, aiGuessedUrl);
       data.imageUrl = url ?? undefined;
       if (source === 'wikiart') meta.message += ' Photo trouvée via WikiArt.';
+      else if (source === 'pompidou') meta.message += ' Photo trouvée via le Centre Pompidou.';
       else if (source === 'commons') meta.message += ' Photo trouvée via Wikimedia Commons.';
       else if (source === 'artsy') meta.message += ' Photo trouvée via Artsy.';
       else if (source === 'ddg') meta.message += ' Photo trouvée via DDG Images.';
