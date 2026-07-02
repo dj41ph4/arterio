@@ -302,15 +302,15 @@ async function fetchWikipediaExtract(name: string, locales = ['fr', 'en'], maxCh
   for (const lang of locales) {
     try {
       const searchUrl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(name)}&srlimit=1&format=json&origin=*`;
-      const searchRes = await fetch(searchUrl, { signal: AbortSignal.timeout(6000) });
-      if (!searchRes.ok) continue;
+      const searchRes = await wikimediaFetch(searchUrl, 6000);
+      if (!searchRes || !searchRes.ok) continue;
       const searchJson = await searchRes.json() as { query?: { search?: Array<{ title: string }> } };
       const pageTitle = searchJson.query?.search?.[0]?.title;
       if (!pageTitle) continue;
 
       const summaryUrl = `https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(pageTitle)}`;
-      const summaryRes = await fetch(summaryUrl, { signal: AbortSignal.timeout(6000) });
-      if (!summaryRes.ok) continue;
+      const summaryRes = await wikimediaFetch(summaryUrl, 6000);
+      if (!summaryRes || !summaryRes.ok) continue;
       const summary = await summaryRes.json() as { extract?: string; title?: string };
       if (summary.extract && summary.extract.length > 80) {
         return `Wikipedia (${lang}) — ${summary.title}:\n${summary.extract.slice(0, maxChars)}`;
