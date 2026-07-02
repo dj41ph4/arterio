@@ -54,7 +54,7 @@ const WIKIMEDIA_HEADERS: Record<string, string> = {
   'Accept-Language': 'fr,en;q=0.8',
 };
 
-async function wikimediaFetch(
+export async function wikimediaFetch(
   url: string,
   timeoutMs = 8_000,
   extraHeaders: Record<string, string> = {},
@@ -615,10 +615,15 @@ async function fetchWikipediaFull(name: string, maxChars = 4000): Promise<string
 
 const wikidataFactsCache = new TtlCache<string | null>(30 * 60_000);
 
+// All lowercase — the description is lowercased before the .includes() test, so a
+// mixed-case term here (the old 'Maler'/'Bildhauer') could NEVER match and silently
+// rejected German/Dutch-described artists. Kept lowercase + compared lowercase on
+// both sides so this can't regress.
 const WIKIDATA_ART_TERMS: string[] = [
   'painter', 'sculptor', 'artist', 'printmaker', 'photographer', 'illustrator',
   'peintre', 'sculpteur', 'artiste', 'graveur', 'photographe', 'illustrateur',
-  'pittore', 'scultore', 'schilder', 'beeldhouwer', 'Maler', 'Bildhauer',
+  'pittore', 'scultore', 'schilder', 'beeldhouwer', 'maler', 'bildhauer', 'künstler',
+  'kunstenaar', 'kunstschilder', 'grafiker', 'zeichner', 'fotograf',
 ];
 
 /**

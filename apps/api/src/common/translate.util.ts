@@ -114,13 +114,16 @@ export function isRealBiography(text: string | undefined | null): boolean {
     /biographie? (non disponible|introuvable|non trovata|nicht verfügbar)/i,
     /^(unfortunately|malheureusement|leider|lamentablemente|purtroppo)/i,
   ];
-  // Only treat a "This artist…" style opener as a refusal when the whole text is
-  // short — a long bio that opens that way is real content, keep it.
+  const hasYear = /\b(1[2-9]\d{2}|20\d{2})\b/.test(t);
+
+  // Only treat a "This artist…" style opener as a refusal when the text is short
+  // AND carries no factual year — "This artist was born in 1927…" is a real bio
+  // (translation engines render "Cet artiste" as "This artist"), while a yearless
+  // stub like "Cette artiste n'est pas documentée…" is a refusal.
   const stubOpeners = /^(this|cette|diese|questo|este) (artist|artiste|künstler)\b/i;
-  if (t.length < 240 && stubOpeners.test(t)) return false;
+  if (t.length < 240 && !hasYear && stubOpeners.test(t)) return false;
   if (refusalPatterns.some((p) => p.test(t))) return false;
 
-  const hasYear = /\b(1[2-9]\d{2}|20\d{2})\b/.test(t);
   const sentenceCount = (t.match(/[.!?]/g) ?? []).length;
   return hasYear || sentenceCount >= 2;
 }

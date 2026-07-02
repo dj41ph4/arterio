@@ -25,7 +25,16 @@ const NO_RESULT_PATTERNS = [
 ];
 
 function isNoResultFiller(value: string): boolean {
-  return NO_RESULT_PATTERNS.some((re) => re.test(value));
+  const v = value.trim();
+  // A "no result" filler is a short stub the model wrote INSTEAD of an answer
+  // ("Aucune information disponible.", "Non disponible"). A genuine biography or
+  // description is long-form prose that may legitimately CONTAIN one of these
+  // phrases mid-sentence ("…little is known, no information survives about his
+  // youth…"). Gating on length keeps us from nuking a real long field wholesale —
+  // only short values that are essentially the refusal itself get dropped. Real
+  // refusal stubs are one-liners (~100 chars); anything past 160 is content.
+  if (v.length > 160) return false;
+  return NO_RESULT_PATTERNS.some((re) => re.test(v));
 }
 
 /** Drops any field whose value is meta-commentary about not finding anything, rather than an actual answer. */

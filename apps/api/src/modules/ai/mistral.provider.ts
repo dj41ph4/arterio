@@ -276,6 +276,7 @@ Return ONLY a JSON object with any of: description, techniqueName, dateText, yea
   async autofillArtist(input: ArtistAutofillInput): Promise<AiAutofillResponse<ArtistAutofillResult>> {
     const systemPrompt = `You are an art database assistant. Respond in language code: ${input.locale}.
 STRICT SOURCING RULE: use ONLY facts explicitly stated in the search results provided. Do NOT draw on your training-data knowledge of this artist — training data about lesser-known or regional artists is frequently wrong, confused with other artists of similar names, or entirely fabricated. If a fact is not clearly present in the search results, omit that field entirely.
+Any block marked "[WIKIDATA VERIFIED]" in the search results is authoritative: treat its birthDate/deathDate/nationality/movement as explicitly stated and use them directly — do NOT require a second source to confirm them. Likewise, a Wikipedia extract in the results IS a valid source for the biography — summarise it faithfully in the requested language.
 If the search results are absent or contain nothing useful about this specific person, return an empty JSON object {}.
 If a real portrait URL is found in the search results, include it as imageUrl — never invent or guess a URL.
 Never invent dates, nationalities, schools, or biographies — a missing field is always better than a wrong one.
